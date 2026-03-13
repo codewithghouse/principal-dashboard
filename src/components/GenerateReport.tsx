@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText, Download, Calendar, Mail, FileSpreadsheet, FileJson, ChevronLeft, Send, Clock, Info } from 'lucide-react';
+import { FileText, Download, Calendar, Mail, FileSpreadsheet, FileJson, ChevronLeft, Send, Clock, Info, Settings, Trash2 } from 'lucide-react';
 
 interface GenerateReportProps {
   templateName: string;
@@ -10,190 +10,186 @@ const GenerateReport = ({ templateName, onBack }: GenerateReportProps) => {
   const [outputFormat, setOutputFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
 
   return (
-    <div className="animate-in fade-in slide-in-from-top-4 duration-500 pb-12">
+    <div className="animate-in fade-in duration-500 pb-12">
+      {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
         <span className="hover:underline cursor-pointer" onClick={onBack}>Reports</span>
         <span>/</span>
-        <span className="text-foreground font-medium">Generate Report</span>
+        <span className="text-foreground font-semibold">Generate Report</span>
       </div>
 
-      <div className="mb-8">
-        <h1 className="text-2xl font-black text-[#1e293b]">Generate: {templateName}</h1>
-        <p className="text-sm text-slate-400 font-medium">Configure and preview your school report</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column: Configuration */}
-        <div className="lg:col-span-7 space-y-8">
-          <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
-            <h2 className="text-lg font-black text-[#1e293b] mb-8">Report Configuration</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* LEFT COLUMN: Configuration */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+            <h2 className="text-base font-bold text-foreground mb-6">Report Configuration</h2>
             
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Report Type</label>
-                <div className="relative">
+            <div className="space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider pl-1 font-inter">Report Type</label>
+                <input 
+                  type="text" 
+                  defaultValue={templateName}
+                  placeholder="Select Report Type"
+                  className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium text-foreground outline-none focus:ring-2 focus:ring-[#1e3a8a]/10"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider pl-1">Date Range</label>
+                <div className="flex items-center gap-4">
                   <input 
                     type="text" 
-                    defaultValue={templateName}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-[#1e293b] focus:ring-2 focus:ring-blue-100 outline-none"
+                    placeholder="From Date"
+                    className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium text-muted-foreground outline-none"
                   />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Date Range</label>
+                  <span className="text-sm font-semibold text-muted-foreground italic">to</span>
                   <input 
-                    type="date" 
-                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-400 outline-none"
+                    type="text" 
+                    placeholder="To Date"
+                    className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium text-muted-foreground outline-none"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1 invisible">To</label>
-                  <div className="flex items-center gap-4 h-[54px]">
-                    <span className="text-xs font-bold text-slate-300">to</span>
-                    <input 
-                      type="date" 
-                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-400 outline-none"
-                    />
-                  </div>
-                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Grade</label>
-                  <select className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-[#1e293b] outline-none appearance-none cursor-pointer">
-                    <option>All Grades</option>
-                    <option>Grade 6</option>
-                    <option>Grade 9</option>
-                    <option>Grade 10</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Section</label>
-                  <select className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-[#1e293b] outline-none appearance-none cursor-pointer">
-                    <option>All Sections</option>
-                    <option>Section A</option>
-                    <option>Section B</option>
-                  </select>
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider pl-1">Grade</label>
+                <input 
+                  type="text" 
+                  placeholder="Select Grade"
+                  className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium text-foreground outline-none"
+                />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Subject (Optional)</label>
-                <select className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-[#1e293b] outline-none appearance-none cursor-pointer">
-                   <option>Select Subject</option>
-                   <option>Mathematics</option>
-                   <option>Science</option>
-                   <option>English</option>
-                </select>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider pl-1">Section</label>
+                <input 
+                  type="text" 
+                  placeholder="Select Section"
+                  className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium text-foreground outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider pl-1">Subject (Optional)</label>
+                <input 
+                  type="text" 
+                  placeholder="Select Subject"
+                  className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium text-foreground outline-none"
+                />
               </div>
             </div>
           </div>
 
-          <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
-            <h2 className="text-lg font-black text-[#1e293b] mb-8">Output Format</h2>
-            <div className="grid grid-cols-3 gap-6">
+          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+            <h2 className="text-base font-bold text-foreground mb-6">Output Format</h2>
+            <div className="grid grid-cols-3 gap-4">
               <button 
                 onClick={() => setOutputFormat('pdf')}
-                className={`flex items-center justify-center gap-3 p-4 rounded-2xl border transition-all ${
-                  outputFormat === 'pdf' ? 'bg-blue-50 border-blue-200 text-[#1e3a8a]' : 'bg-white border-slate-100 text-slate-400 hover:border-blue-100'
+                className={`flex items-center justify-center gap-3 py-4 rounded-xl border transition-all ${
+                  outputFormat === 'pdf' ? 'bg-secondary/50 border-[#1e3a8a] ring-2 ring-[#1e3a8a]/10' : 'bg-background border-border text-muted-foreground'
                 }`}
               >
-                <FileText className={`w-5 h-5 ${outputFormat === 'pdf' ? 'text-red-500' : ''}`} />
-                <span className="text-sm font-black uppercase tracking-wider">PDF</span>
+                <FileText className={`w-5 h-5 ${outputFormat === 'pdf' ? 'text-red-500' : 'text-red-500'}`} />
+                <span className="text-sm font-bold uppercase">PDF</span>
               </button>
               <button 
                 onClick={() => setOutputFormat('excel')}
-                className={`flex items-center justify-center gap-3 p-4 rounded-2xl border transition-all ${
-                  outputFormat === 'excel' ? 'bg-blue-50 border-blue-200 text-[#1e3a8a]' : 'bg-white border-slate-100 text-slate-400 hover:border-blue-100'
+                className={`flex items-center justify-center gap-3 py-4 rounded-xl border transition-all ${
+                  outputFormat === 'excel' ? 'bg-secondary/50 border-[#1e3a8a] ring-2 ring-[#1e3a8a]/10' : 'bg-background border-border text-muted-foreground'
                 }`}
               >
-                <FileSpreadsheet className={`w-5 h-5 ${outputFormat === 'excel' ? 'text-green-500' : ''}`} />
-                <span className="text-sm font-black uppercase tracking-wider">Excel</span>
+                <FileSpreadsheet className={`w-5 h-5 ${outputFormat === 'excel' ? 'text-green-600' : 'text-green-600'}`} />
+                <span className="text-sm font-bold uppercase">Excel</span>
               </button>
               <button 
                 onClick={() => setOutputFormat('csv')}
-                className={`flex items-center justify-center gap-3 p-4 rounded-2xl border transition-all ${
-                  outputFormat === 'csv' ? 'bg-blue-50 border-blue-200 text-[#1e3a8a]' : 'bg-white border-slate-100 text-slate-400 hover:border-blue-100'
+                className={`flex items-center justify-center gap-3 py-4 rounded-xl border transition-all ${
+                  outputFormat === 'csv' ? 'bg-secondary/50 border-[#1e3a8a] ring-2 ring-[#1e3a8a]/10' : 'bg-background border-border text-muted-foreground'
                 }`}
               >
-                <FileJson className={`w-5 h-5 ${outputFormat === 'csv' ? 'text-blue-500' : ''}`} />
-                <span className="text-sm font-black uppercase tracking-wider">CSV</span>
+                <FileJson className={`w-5 h-5 ${outputFormat === 'csv' ? 'text-blue-700' : 'text-blue-700'}`} />
+                <span className="text-sm font-bold uppercase">CSV</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Preview & Schedule */}
-        <div className="lg:col-span-5 space-y-8">
-          <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
-            <h2 className="text-lg font-black text-[#1e293b] mb-1">Report Preview</h2>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2">
-              <Info className="w-3 h-3" /> Live preview of report contents
-            </p>
-
-            <div className="bg-slate-50 rounded-[2rem] p-8 border border-slate-100">
+        {/* RIGHT COLUMN: Preview & Schedule */}
+        <div className="lg:col-span-5 space-y-6">
+          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+            <h2 className="text-base font-bold text-foreground mb-6">Report Preview</h2>
+            
+            <div className="bg-secondary/20 rounded-2x border border-border p-8 rounded-2xl">
                <div className="text-center mb-10">
-                  <h3 className="text-xl font-black text-[#1e293b]">{templateName} Report</h3>
-                  <p className="text-sm font-bold text-slate-400 mt-1 uppercase tracking-tight">January 2026</p>
+                  <h3 className="text-xl font-bold text-foreground">Student Progress Report</h3>
+                  <p className="text-sm font-medium text-muted-foreground mt-1">January 2026</p>
                </div>
 
-               <div className="space-y-6">
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-200/50">
-                     <span className="text-sm font-bold text-slate-500">Total Students</span>
-                     <span className="text-lg font-black text-[#1e293b]">847</span>
+               <div className="space-y-4">
+                  <div className="flex items-center justify-between py-2.5 border-b border-border">
+                     <span className="text-sm font-medium text-muted-foreground">Total Students</span>
+                     <span className="text-sm font-bold text-foreground">847</span>
                   </div>
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-200/50">
-                     <span className="text-sm font-bold text-slate-500">Average Attendance</span>
-                     <span className="text-lg font-black text-[#1e293b]">89.4%</span>
+                  <div className="flex items-center justify-between py-2.5 border-b border-border">
+                     <span className="text-sm font-medium text-muted-foreground">Average Attendance</span>
+                     <span className="text-sm font-bold text-foreground">89.4%</span>
                   </div>
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-200/50">
-                     <span className="text-sm font-bold text-slate-500">Average Marks</span>
-                     <span className="text-lg font-black text-[#1e293b]">68.2%</span>
+                  <div className="flex items-center justify-between py-2.5 border-b border-border">
+                     <span className="text-sm font-medium text-muted-foreground">Average Marks</span>
+                     <span className="text-sm font-bold text-foreground">68.2%</span>
                   </div>
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-200/50">
-                     <span className="text-sm font-bold text-slate-500">At-Risk Students</span>
-                     <span className="text-lg font-black text-red-500">12</span>
+                  <div className="flex items-center justify-between py-2.5 border-b border-border">
+                     <span className="text-sm font-medium text-muted-foreground">At-Risk Students</span>
+                     <span className="text-sm font-bold text-red-500">12</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                     <span className="text-sm font-bold text-slate-500">Discipline Incidents</span>
-                     <span className="text-lg font-black text-[#1e293b]">8</span>
+                  <div className="flex items-center justify-between py-2.5">
+                     <span className="text-sm font-medium text-muted-foreground">Discipline Incidents</span>
+                     <span className="text-sm font-bold text-foreground">8</span>
                   </div>
                </div>
             </div>
-
-            <button className="w-full mt-10 py-5 bg-[#1e3a8a] text-white rounded-2xl text-sm font-black shadow-lg shadow-blue-100 flex items-center justify-center gap-3 hover:scale-[1.02] transition-all">
-               <Download className="w-5 h-5" /> GENEREATE REPORT
-            </button>
           </div>
 
-          <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
-            <h2 className="text-lg font-black text-[#1e293b] mb-1">Schedule Delivery (Optional)</h2>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8">Schedule recurring report</p>
+          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+            <h2 className="text-base font-bold text-foreground mb-1">Schedule Delivery (Optional)</h2>
+            <p className="text-[11px] font-medium text-muted-foreground italic mb-6">Schedule recurring report</p>
             
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-[11px] font-black text-slate-400 uppercase pl-1">Frequency</label>
-                <select className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-bold text-slate-400 outline-none appearance-none cursor-pointer">
-                  <option>Never (Once only)</option>
-                  <option>Weekly</option>
-                  <option>Monthly</option>
-                </select>
+            <div className="space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase pl-1">Frequency</label>
+                <input 
+                   type="text"
+                   placeholder="Select Frequency"
+                   className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium outline-none"
+                />
               </div>
-              <div className="space-y-2">
-                <label className="text-[11px] font-black text-slate-400 uppercase pl-1">Email To</label>
-                <div className="relative">
-                  <input 
-                    type="email" 
-                    placeholder="Enter email address"
-                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 pl-12 text-sm font-bold outline-none placeholder:text-slate-300"
-                  />
-                  <Mail className="absolute left-4 top-4 w-5 h-5 text-slate-300" />
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-muted-foreground uppercase pl-1">Email To</label>
+                <input 
+                   type="text" 
+                   placeholder="Enter email addresses"
+                   className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium outline-none"
+                />
               </div>
             </div>
+          </div>
+
+          {/* Action Row */}
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+             <div className="flex items-center gap-3 mb-6">
+                <input type="checkbox" className="w-4 h-4 rounded border-border text-[#1e3a8a]" />
+                <span className="text-sm font-medium text-muted-foreground">Save as template for future use</span>
+             </div>
+             
+             <div className="flex items-center gap-3">
+                <button className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold shadow-md hover:bg-[#1e4fc0]">
+                   <Settings className="w-4 h-4" /> Generate Report
+                </button>
+                <button onClick={onBack} className="px-6 py-3.5 bg-background border border-border text-foreground rounded-xl text-sm font-bold hover:bg-secondary transition-colors">
+                   Cancel
+                </button>
+             </div>
           </div>
         </div>
       </div>

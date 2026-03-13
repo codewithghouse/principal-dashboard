@@ -1,16 +1,18 @@
 import React from 'react';
-import { ChevronLeft, CheckCircle2, Clock, User, Phone, Mail, Send, Reply, MoreVertical } from 'lucide-react';
+import { ChevronLeft, CheckCircle2, Clock, Phone, Send, Reply, MoreVertical, Paperclip, Calendar, User, ArrowUpRight, FileText } from 'lucide-react';
 
 interface ConversationDetailProps {
   conversation: {
     parent: string;
     initials: string;
-    color: string;
+    avatarBg: string;
     type: string;
+    typeStyle: string;
     subject: string;
     student: string;
     time: string;
     priority: string;
+    priorityColor: string;
     message: string;
     contact: string;
     id: string;
@@ -38,123 +40,181 @@ interface ConversationDetailProps {
 }
 
 const ConversationDetail = ({ conversation, onBack }: ConversationDetailProps) => {
+  // Mocking status data to match the image exactly
+  const statusItems = [
+    { label: "Received", time: "Jan 17, 10:30 AM", completed: true, icon: CheckCircle2, color: "text-green-500", bg: "bg-green-500" },
+    { label: "Under Review", time: "Assigned to: Accounts Dept", completed: false, active: true, icon: Clock, color: "text-amber-500", bg: "bg-amber-500" },
+    { label: "Resolved", time: "Pending", completed: false, icon: null, color: "text-slate-300", bg: "bg-slate-100" },
+  ];
+
   return (
-    <div className="animate-in fade-in slide-in-from-top-4 duration-500 pb-12">
+    <div className="animate-in fade-in duration-500 pb-12">
+      {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-        <span className="hover:underline cursor-pointer" onClick={onBack}>Parent Communication</span>
+        <button onClick={onBack} className="hover:text-foreground transition-colors cursor-pointer">Parent Communication</button>
         <span>/</span>
-        <span className="text-foreground font-medium">Message Detail</span>
+        <span className="text-foreground font-semibold">Message Detail</span>
       </div>
 
-      <div className="bg-[#fff1f2] border border-red-100 rounded-3xl p-8 mb-8 relative shadow-sm">
+      {/* ===== HEADER CARD ===== */}
+      <div className="bg-card border border-border rounded-2xl p-6 mb-6 shadow-sm" style={{ borderLeft: '4px solid #ef4444' }}>
         <div className="flex justify-between items-start">
-           <div className="flex gap-6">
-              <div className={`w-16 h-16 ${conversation.color} rounded-2xl flex items-center justify-center text-white text-2xl font-black shadow-lg shadow-black/5`}>
-                 {conversation.initials}
+          <div className="flex gap-5">
+            <div className={`w-14 h-14 ${conversation.avatarBg || 'bg-red-500'} rounded-xl flex items-center justify-center text-white text-xl font-bold shadow-sm`}>
+              {conversation.initials}
+            </div>
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-xl font-bold text-foreground">{conversation.parent}</h1>
+                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase ${conversation.typeStyle || 'text-red-500 border border-red-100 bg-red-50'}`}>
+                  {conversation.type}
+                </span>
+                <span className="px-3 py-1 bg-red-600 text-white text-[10px] font-bold rounded-full uppercase tracking-wider">
+                  HIGH PRIORITY
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium">
+                <span>Student: {conversation.student}</span>
+                <span className="opacity-30">•</span>
+                <span>Parent Contact: {conversation.contact}</span>
+              </div>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1 opacity-60">Received</p>
+            <p className="text-sm font-bold text-foreground">Jan 17, 2026 • 10:30 AM</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* ===== LEFT COLUMN: MESSAGE THREAD & REPLY ===== */}
+        <div className="lg:col-span-8 space-y-6">
+          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+            <h3 className="text-base font-bold text-foreground mb-8">Message Thread</h3>
+            
+            <div className="space-y-8">
+              {/* Parent Message */}
+              <div className="flex gap-4">
+                <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm shrink-0">
+                  {conversation.initials}
+                </div>
+                <div className="flex-1 bg-secondary/20 border border-border/50 rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold text-foreground">{conversation.parent}</h4>
+                    <span className="text-[10px] font-medium text-muted-foreground">Jan 17, 10:30 AM</span>
+                  </div>
+                  <p className="text-sm text-slate-600 leading-relaxed font-medium capitalize">
+                    Dear Principal, I am writing to bring to your attention a serious issue regarding fee payment. I have been double-charged for the month of January 2026. My son Aarav Gupta (Grade 8A) has only one admission, but the system shows two separate charges of ₹15,000 each. I have already paid once on January 5th, but received another payment reminder yesterday. This is causing unnecessary confusion and stress. Please look into this matter urgently and resolve it at the earliest. I have attached the payment receipt for your reference.
+                  </p>
+                </div>
+              </div>
+
+              {/* System Message */}
+              <div className="flex gap-4">
+                <div className="w-10 h-10 bg-[#1e3a8a] rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm shrink-0">
+                  E
+                </div>
+                <div className="flex-1 bg-blue-50/50 border border-blue-100/50 rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold text-[#1e3a8a]">EDUINTELLECT System</h4>
+                    <span className="text-[10px] font-medium text-muted-foreground">Jan 17, 10:31 AM</span>
+                  </div>
+                  <p className="text-sm text-[#1e3a8a]/80 leading-relaxed font-medium">
+                    Thank you for reaching out. Your complaint has been registered with ID #COMP-2026-0117. Our team will investigate and respond within 24 hours.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Reply Section */}
+          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+            <h3 className="text-base font-bold text-foreground mb-6">Reply</h3>
+            <div className="space-y-4">
+              <textarea 
+                placeholder="Write your response here..."
+                className="w-full bg-secondary/20 border border-border rounded-xl p-5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 min-h-[140px] resize-none"
+              />
+              <div className="flex items-center justify-between">
+                <div className="flex gap-2">
+                  <button className="flex items-center gap-2 px-4 py-2 border border-border rounded-xl text-xs font-bold text-foreground hover:bg-secondary transition-colors">
+                    <Paperclip className="w-4 h-4 text-muted-foreground" /> Attach
+                  </button>
+                  <button className="flex items-center gap-2 px-4 py-2 border border-border rounded-xl text-xs font-bold text-foreground hover:bg-secondary transition-colors">
+                    <Calendar className="w-4 h-4 text-muted-foreground" /> Schedule
+                  </button>
+                </div>
+                <button className="flex items-center gap-2 px-6 py-2.5 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold shadow-md hover:bg-[#1e4fc0]">
+                  <Send className="w-4 h-4" /> Send Reply
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ===== RIGHT COLUMN: STATUS, ASSIGNMENT & ACTIONS ===== */}
+        <div className="lg:col-span-4 space-y-6">
+          {/* Status Tracker */}
+          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+            <h3 className="text-base font-bold text-foreground mb-6">Status Tracker</h3>
+            <div className="space-y-6 relative">
+              <div className="absolute left-[15px] top-6 bottom-6 w-0.5 bg-secondary" />
+              {statusItems.map((s, i) => (
+                <div key={i} className="flex gap-4 items-start relative z-10">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${s.bg}`}>
+                    {s.icon ? <s.icon className="w-4 h-4 text-white" /> : <div className="w-2 h-2 bg-slate-200 rounded-full" />}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-foreground leading-tight">{s.label}</h4>
+                    <p className={`text-[11px] font-medium mt-0.5 ${s.active ? 'text-amber-500' : 'text-muted-foreground'}`}>{s.time}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Assigned To */}
+          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+            <h3 className="text-base font-bold text-foreground mb-4">Assigned To</h3>
+            <div className="flex items-center gap-4 bg-secondary/20 p-4 rounded-xl border border-secondary">
+              <div className="w-10 h-10 bg-[#1e3a8a] rounded-lg flex items-center justify-center text-white text-sm font-bold shadow-sm shrink-0">
+                AS
               </div>
               <div>
-                 <div className="flex items-center gap-3 mb-1">
-                    <h1 className="text-2xl font-black text-[#1e293b]">{conversation.parent}</h1>
-                    <span className="px-2.5 py-0.5 bg-red-50 text-red-500 rounded-full text-[10px] font-bold">{conversation.type}</span>
-                    <span className="px-3 py-1 bg-red-600 text-white text-[10px] font-black rounded-full uppercase tracking-tighter shadow-sm">
-                       {conversation.priority} PRIORITY
-                    </span>
-                 </div>
-                 <div className="flex flex-wrap items-center gap-4 text-sm font-bold text-slate-500">
-                    <span className="flex items-center gap-2">Student: {conversation.student}</span>
-                    <span className="w-1.5 h-1.5 bg-slate-200 rounded-full" />
-                    <span className="flex items-center gap-2">Parent Contact: {conversation.contact}</span>
-                 </div>
+                <h4 className="text-sm font-bold text-foreground">Mr. Ashok Sharma</h4>
+                <p className="text-xs text-muted-foreground font-medium">Accounts Manager</p>
               </div>
-           </div>
-           <div className="text-right">
-              <p className="text-xs font-bold text-slate-400 uppercase mb-1">Received</p>
-              <p className="text-sm font-black text-[#1e293b]">{conversation.time}</p>
-           </div>
-        </div>
-      </div>
+            </div>
+          </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column: Message Thread */}
-        <div className="lg:col-span-8 space-y-8">
-           <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
-              <h3 className="text-lg font-black text-[#1e293b] mb-8">Message Thread</h3>
-              <div className="space-y-10">
-                 {conversation.thread.map((t, i) => (
-                   <div key={i} className="flex gap-6">
-                      <div className={`w-12 h-12 shrink-0 ${t.color} rounded-2xl flex items-center justify-center text-white text-lg font-black shadow-sm`}>
-                         {t.initials}
-                      </div>
-                      <div className={`flex-1 p-6 rounded-3xl ${t.isSystem ? 'bg-blue-50/50 border border-blue-50' : 'bg-slate-50/50 border border-slate-50'}`}>
-                         <div className="flex items-center justify-between mb-3">
-                            <h4 className="text-sm font-black text-[#1e293b]">{t.sender}</h4>
-                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-tighter">{t.time}</span>
-                         </div>
-                         <p className="text-sm font-medium text-slate-600 leading-relaxed italic">
-                           {t.message}
-                         </p>
-                      </div>
-                   </div>
-                 ))}
-              </div>
-
-              <div className="mt-12 pt-10 border-t border-slate-50">
-                 <h4 className="text-sm font-black text-[#1e293b] mb-4">Reply</h4>
-                 <div className="relative">
-                    <textarea 
-                      placeholder="Write your response here..."
-                      className="w-full bg-slate-50 border border-slate-100 rounded-3xl p-6 text-sm font-medium focus:ring-2 focus:ring-[#1e3a8a]/10 focus:border-[#1e3a8a] outline-none transition-all placeholder:text-slate-300 min-h-[120px] resize-none"
-                    />
-                    <div className="absolute bottom-4 right-4">
-                       <button className="bg-[#1e3a8a] text-white p-3 rounded-2xl shadow-lg shadow-blue-100 hover:scale-105 active:scale-95 transition-all">
-                          <Send className="w-5 h-5" />
-                       </button>
-                    </div>
-                 </div>
-              </div>
-           </div>
-        </div>
-
-        {/* Right Column: Status & Assignment */}
-        <div className="lg:col-span-4 space-y-8">
-           <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
-              <h3 className="text-lg font-black text-[#1e293b] mb-8">Status Tracker</h3>
-              <div className="space-y-8 relative">
-                 <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-slate-50" />
-                 {conversation.status.map((s, i) => (
-                   <div key={i} className="relative pl-12">
-                      <div className={`absolute left-0 top-0 w-8 h-8 rounded-full ${s.completed ? 'bg-green-500' : s.subtext ? 'bg-orange-500' : 'bg-slate-100'} ring-4 ring-white flex items-center justify-center z-10 shadow-sm`}>
-                         {s.completed ? <CheckCircle2 className="w-4 h-4 text-white" /> : s.subtext ? <Clock className="w-4 h-4 text-white" /> : <div className="w-2 h-2 bg-slate-300 rounded-full" />}
-                      </div>
-                      <div>
-                         <p className="text-sm font-black text-[#1e293b] leading-tight">{s.label}</p>
-                         <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">{s.time}</p>
-                         {s.subtext && <p className="text-[10px] font-bold text-orange-500 mt-1 tracking-tight">{s.subtext}</p>}
-                      </div>
-                   </div>
-                 ))}
-              </div>
-           </div>
-
-           <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
-              <h3 className="text-lg font-black text-[#1e293b] mb-6">Assigned To</h3>
-              <div className="flex items-center gap-4 p-4 bg-slate-50/50 rounded-2xl">
-                 <div className="w-12 h-12 bg-[#1e3a8a] rounded-2xl flex items-center justify-center text-white text-sm font-black shadow-sm">
-                   {conversation.assignedTo.initials}
-                 </div>
-                 <div>
-                    <h4 className="text-sm font-black text-[#1e293b]">{conversation.assignedTo.name}</h4>
-                    <p className="text-xs font-bold text-slate-400">{conversation.assignedTo.role}</p>
-                 </div>
-              </div>
-           </div>
-
-           <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
-              <h3 className="text-lg font-black text-[#1e293b] mb-6">Quick Actions</h3>
-              <button className="w-full flex items-center justify-center gap-3 py-4 bg-[#22c55e] text-white rounded-2xl text-sm font-black shadow-lg shadow-green-100 group hover:opacity-90 transition-all">
-                 <CheckCircle2 className="w-5 h-5" /> Mark Resolved
+          {/* Quick Actions */}
+          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+            <h3 className="text-base font-bold text-foreground mb-5">Quick Actions</h3>
+            <div className="space-y-3">
+              <button className="w-full flex items-center justify-center gap-2 py-3 bg-[#22c55e] text-white rounded-xl text-sm font-bold shadow-md hover:bg-green-600">
+                <CheckCircle2 className="w-4 h-4" /> Mark Resolved
               </button>
-           </div>
+              <button className="w-full flex items-center justify-center gap-2 py-3 bg-card border border-border text-foreground rounded-xl text-sm font-bold hover:bg-secondary transition-colors">
+                <ArrowUpRight className="w-4 h-4 text-muted-foreground" /> Escalate
+              </button>
+              <button className="w-full flex items-center justify-center gap-2 py-3 bg-card border border-border text-foreground rounded-xl text-sm font-bold hover:bg-secondary transition-colors text-slate-600">
+                <Phone className="w-4 h-4 text-muted-foreground" /> Schedule Call
+              </button>
+              <button className="w-full flex items-center justify-center gap-2 py-3 bg-card border border-border text-foreground rounded-xl text-sm font-bold hover:bg-secondary transition-colors text-slate-600">
+                <User className="w-4 h-4 text-muted-foreground" /> View Student Profile
+              </button>
+            </div>
+          </div>
+
+          {/* Attachments */}
+          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+            <h3 className="text-base font-bold text-foreground mb-4">Attachments</h3>
+            <div className="flex items-center gap-3 p-3 bg-secondary/30 rounded-xl border border-border hover:bg-secondary transition-colors cursor-pointer group">
+              <FileText className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+              <span className="text-sm font-medium text-foreground">Payment_Receipt_Jan.pdf</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

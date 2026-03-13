@@ -1,5 +1,11 @@
 import React from 'react';
 import { ChevronLeft, Filter, Download, User, BookOpen, Clock, Users } from 'lucide-react';
+import { 
+  PieChart, Pie, Cell, 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
+  AreaChart, Area, 
+  ResponsiveContainer, Legend
+} from 'recharts';
 
 interface ClassPerformanceProps {
   section: {
@@ -20,6 +26,64 @@ const studentsPerformance = [
   { rank: 4, initials: "VK", name: "Vikram Kumar", math: 92, science: 88, english: 90, sst: 94, total: "91.0%", attendance: "98%", status: "Excellent" },
   { rank: 5, initials: "SN", name: "Sneha Nair", math: 74, science: 72, english: 78, sst: 75, total: "74.8%", attendance: "94%", status: "Good" },
 ];
+
+// Chart Data
+const pieData = [
+  { name: 'Excellent', value: 15, color: '#22c55e' },
+  { name: 'Good', value: 40, color: '#1e3a8a' },
+  { name: 'Average', value: 30, color: '#f59e0b' },
+  { name: 'At Risk', value: 15, color: '#ef4444' },
+];
+
+const subjectData = [
+  { subject: 'MATH', avg: 42, color: '#ef4444' },
+  { subject: 'SCI', avg: 48, color: '#ef4444' },
+  { subject: 'ENG', avg: 58, color: '#f59e0b' },
+  { subject: 'SST', avg: 62, color: '#f59e0b' },
+];
+
+const attendanceTrendData = [
+  { day: 'M', value: 82 },
+  { day: 'T', value: 80 },
+  { day: 'W', value: 78 },
+  { day: 'T ', value: 83 },
+  { day: 'F', value: 81 },
+];
+
+const RADIAN = Math.PI / 180;
+const renderCustomizedLabel = ({ cx, cy, midAngle, outerRadius, name }: any) => {
+  const radius = outerRadius + 25;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text x={x} y={y} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central"
+      fontSize={10} fontWeight={700} fill="#94a3b8">
+      {name}
+    </text>
+  );
+};
+
+const CustomBarTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-[#1e293b] text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg">
+        {payload[0].payload.subject}: {payload[0].value}%
+      </div>
+    );
+  }
+  return null;
+};
+
+const CustomAreaTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-[#1e293b] text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg">
+        Attendance: {payload[0].value}%
+      </div>
+    );
+  }
+  return null;
+};
 
 const ClassPerformance = ({ section, onBack }: ClassPerformanceProps) => {
   return (
@@ -49,113 +113,103 @@ const ClassPerformance = ({ section, onBack }: ClassPerformanceProps) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* Performance Distribution */}
-        <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm min-h-[300px]">
-           <h3 className="text-[14px] font-bold text-[#1e293b] mb-10">Performance Distribution</h3>
-           <div className="relative h-44 flex items-center justify-center">
-              <svg viewBox="0 0 100 100" className="w-36 h-36 transform -rotate-90">
-                <circle cx="50" cy="50" r="35" fill="none" stroke="#f1f5f9" strokeWidth="15" />
-                {/* At Risk - 15% (Red) */}
-                <circle cx="50" cy="50" r="35" fill="none" stroke="#ef4444" strokeWidth="15" strokeDasharray="10 210" strokeDashoffset="0" />
-                {/* Average - 30% (Orange) */}
-                <circle cx="50" cy="50" r="35" fill="none" stroke="#f59e0b" strokeWidth="15" strokeDasharray="66 154" strokeDashoffset="-10" />
-                {/* Good - 40% (Blue) */}
-                <circle cx="50" cy="50" r="35" fill="none" stroke="#1e3a8a" strokeWidth="15" strokeDasharray="88 132" strokeDashoffset="-76" />
-                {/* Excellent - 15% (Green) */}
-                <circle cx="50" cy="50" r="35" fill="none" stroke="#22c55e" strokeWidth="15" strokeDasharray="33 187" strokeDashoffset="-164" />
-              </svg>
-
-              {/* Labels with Leader Lines */}
-              <div className="absolute top-0 left-8 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-slate-400 mb-1">At Risk</span>
-                <div className="w-[1px] h-6 bg-slate-300 transform -rotate-45" />
-              </div>
-              <div className="absolute top-2 right-8 flex flex-col items-center">
-                <span className="text-[10px] font-bold text-slate-400 mb-1">Excellent</span>
-                <div className="w-[1px] h-6 bg-slate-300 transform rotate-45" />
-              </div>
-              <div className="absolute top-1/2 -left-2 -translate-y-1/2 flex items-center gap-1 px-2">
-                <span className="text-[10px] font-bold text-slate-400">Average</span>
-                <div className="w-6 h-[1px] bg-slate-300" />
-              </div>
-              <div className="absolute bottom-2 right-4 flex flex-col items-center">
-                <div className="w-[1px] h-6 bg-slate-300 transform -rotate-45" />
-                <span className="text-[10px] font-bold text-slate-400 mt-1">Good</span>
-              </div>
-           </div>
+        {/* Performance Distribution - Donut Chart */}
+        <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
+          <h3 className="text-[14px] font-bold text-[#1e293b] mb-2">Performance Distribution</h3>
+          <ResponsiveContainer width="100%" height={230}>
+            <PieChart>
+              <Pie
+                data={pieData}
+                cx="50%"
+                cy="50%"
+                innerRadius={50}
+                outerRadius={75}
+                paddingAngle={3}
+                dataKey="value"
+                label={renderCustomizedLabel}
+                labelLine={{ stroke: '#cbd5e1', strokeWidth: 1 }}
+                animationBegin={0}
+                animationDuration={1200}
+              >
+                {pieData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                ))}
+              </Pie>
+              <Tooltip
+                formatter={(value: number, name: string) => [`${value}%`, name]}
+                contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 'bold' }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
         </div>
 
-        {/* Subject-wise Average */}
+        {/* Subject-wise Average - Bar Chart */}
         <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
-           <h3 className="text-[14px] font-bold text-[#1e293b] mb-8">Subject-wise Average</h3>
-           <div className="relative h-44 mt-4">
-              {/* Y-Axis Grid */}
-              <div className="absolute inset-0 flex flex-col justify-between">
-                 {[100, 80, 60, 40, 20, 0].map(val => (
-                   <div key={val} className="flex items-center gap-3 w-full">
-                      <span className="text-[10px] text-slate-400 w-6 font-bold">{val}%</span>
-                      <div className="flex-1 h-[1px] bg-slate-100" />
-                   </div>
-                 ))}
-              </div>
-              {/* Bars */}
-              <div className="absolute inset-0 pl-9 pr-2 flex items-end justify-around gap-4 pb-[1px]">
-                 {[
-                   { label: "Math", value: 42, color: "bg-[#ef4444]" },
-                   { label: "Sci", value: 48, color: "bg-[#ef4444]" },
-                   { label: "Eng", value: 58, color: "bg-[#f59e0b]" },
-                   { label: "SST", value: 62, color: "bg-[#f59e0b]" },
-                 ].map((s, i) => (
-                   <div key={i} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
-                      <div className={`w-10 ${s.color} rounded-t-sm relative`} style={{ height: `${s.value}%` }}>
-                         <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 text-[10px] font-bold bg-slate-800 text-white px-1.5 py-0.5 rounded transition-opacity">{s.value}%</div>
-                      </div>
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight mt-1">{s.label}</span>
-                   </div>
-                 ))}
-              </div>
-           </div>
+          <h3 className="text-[14px] font-bold text-[#1e293b] mb-2">Subject-wise Average</h3>
+          <ResponsiveContainer width="100%" height={230}>
+            <BarChart data={subjectData} barCategoryGap="25%">
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <XAxis 
+                dataKey="subject" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: 11, fontWeight: 700, fill: '#94a3b8' }} 
+              />
+              <YAxis 
+                domain={[0, 100]} 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
+                tickFormatter={(v) => `${v}%`}
+              />
+              <Tooltip content={<CustomBarTooltip />} cursor={{ fill: 'rgba(0,0,0,0.02)' }} />
+              <Bar dataKey="avg" radius={[4, 4, 0, 0]} animationDuration={1200}>
+                {subjectData.map((entry, index) => (
+                  <Cell key={`bar-${index}`} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
 
-        {/* Attendance Trend */}
+        {/* Attendance Trend - Area Chart */}
         <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
-           <h3 className="text-[14px] font-bold text-[#1e293b] mb-8">Attendance Trend</h3>
-           <div className="relative h-44 mt-4">
-              {/* Y-Axis Grid */}
-              <div className="absolute inset-0 flex flex-col justify-between">
-                 {[90, 85, 80, 75, 70].map(val => (
-                   <div key={val} className="flex items-center gap-3 w-full">
-                      <span className="text-[10px] text-slate-400 w-6 font-bold">{val}%</span>
-                      <div className="flex-1 h-[1px] bg-slate-100 shadow-[0_0_0_0.5px_#f8fafc]" />
-                   </div>
-                 ))}
-              </div>
-              {/* Line Chart */}
-              <div className="absolute inset-x-0 inset-y-0 pl-9 pr-4 pb-[1px]">
-                 <svg viewBox="0 0 100 100" className="w-full h-full overflow-visible" preserveAspectRatio="none">
-                    {/* Spline Path */}
-                    <path 
-                      d="M 0,40 C 15,40 25,55 33,65 S 50,35 66,45 S 85,60 100,55" 
-                      fill="none" 
-                      stroke="#ef4444" 
-                      strokeWidth="2" 
-                    />
-                    {/* Dots */}
-                    {[0, 25, 50, 75, 100].map((x, i) => (
-                       <circle 
-                         key={i} 
-                         cx={x} 
-                         cy={[40, 50, 65, 45, 55][i]} 
-                         r="1.5" 
-                         className="fill-white stroke-[#ef4444] stroke-[1px]" 
-                       />
-                    ))}
-                 </svg>
-                 <div className="flex justify-between mt-3 text-[11px] font-bold text-slate-400">
-                    <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span>
-                 </div>
-              </div>
-           </div>
+          <h3 className="text-[14px] font-bold text-[#1e293b] mb-2">Attendance Trend</h3>
+          <ResponsiveContainer width="100%" height={230}>
+            <AreaChart data={attendanceTrendData}>
+              <defs>
+                <linearGradient id="attendGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <XAxis 
+                dataKey="day" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: 11, fontWeight: 700, fill: '#94a3b8' }} 
+              />
+              <YAxis 
+                domain={[70, 90]} 
+                axisLine={false} 
+                tickLine={false}
+                tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
+                tickFormatter={(v) => `${v}%`}
+              />
+              <Tooltip content={<CustomAreaTooltip />} />
+              <Area 
+                type="monotone" 
+                dataKey="value" 
+                stroke="#ef4444" 
+                strokeWidth={2.5} 
+                fill="url(#attendGradient)"
+                dot={{ r: 5, fill: '#ffffff', stroke: '#ef4444', strokeWidth: 2.5 }}
+                activeDot={{ r: 7, fill: '#ef4444', stroke: '#ffffff', strokeWidth: 2 }}
+                animationDuration={1500}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </div>
 

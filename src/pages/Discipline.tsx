@@ -1,25 +1,26 @@
 import { useState } from "react";
-import { ShieldAlert, Clock, AlertTriangle, AlertCircle, Plus, LayoutGrid, FileText, ArrowRight } from "lucide-react";
+import { ShieldAlert, Clock, AlertTriangle, AlertCircle, Plus, LayoutGrid, FileText, Calendar } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import IncidentDetail from "@/components/IncidentDetail";
 
 const incidentsData = [
-  { 
-    id: "#INC-2026-0117", 
+  {
+    id: "#INC-2026-0117",
     title: "Bullying Incident - Physical Altercation",
-    date: "Jan 17, 2026", 
+    date: "Jan 17, 2026",
     time: "11:30 AM",
     location: "School Playground",
     reportedBy: "Mr. Verma",
-    student: { 
-      name: "Rahul Sharma", 
-      grade: "9A", 
+    student: {
+      name: "Rahul Sharma",
+      grade: "9A",
       rollNo: "205",
       initials: "RS",
       riskStatus: "Critical",
       previousIncidents: 3
-    }, 
-    type: "Bullying", 
-    severity: "CRITICAL", 
+    },
+    type: "Bullying",
+    severity: "CRITICAL",
     status: "Under Review",
     description: "Student Rahul Sharma was involved in a physical altercation with another student during recess. Witnesses report that Rahul pushed the other student to the ground after a verbal argument. The victim sustained minor bruises. Mr. Verma intervened and separated the students immediately.",
     witnesses: [
@@ -31,37 +32,57 @@ const incidentsData = [
       { action: "Student Isolated", time: "Jan 17, 2026 • 12:00 PM", by: "Principal Office", color: "bg-orange-500" }
     ]
   },
-  { 
-    id: "#INC-2026-0116", 
+  {
+    id: "#INC-2026-0116",
     title: "Disruptive Behavior during Assembly",
-    date: "Jan 16, 2026", 
+    date: "Jan 16, 2026",
     time: "09:15 AM",
     location: "Assembly Hall",
     reportedBy: "Ms. Priya",
-    student: { name: "Priya Patel", grade: "8B", rollNo: "112", initials: "PP", riskStatus: "Normal", previousIncidents: 1 }, 
-    type: "Disruptive Behavior", 
-    severity: "MEDIUM", 
+    student: { name: "Priya Patel", grade: "8B", rollNo: "112", initials: "PP", riskStatus: "Normal", previousIncidents: 1 },
+    type: "Disruptive Behavior",
+    severity: "MEDIUM",
     status: "Resolved",
     description: "Standard disruptive behavior during the morning assembly.",
     witnesses: [],
     actionLog: []
   },
-  { 
-    id: "#INC-2026-0115", 
+  {
+    id: "#INC-2026-0115",
     title: "Vandalism - Library Desk",
-    date: "Jan 15, 2026", 
+    date: "Jan 15, 2026",
     time: "02:45 PM",
-    location: "Schoo Library",
+    location: "School Library",
     reportedBy: "Librarian",
-    student: { name: "Arjun Mehta", grade: "9C", rollNo: "331", initials: "AM", riskStatus: "At Risk", previousIncidents: 2 }, 
-    type: "Property Damage", 
-    severity: "MEDIUM", 
+    student: { name: "Arjun Mehta", grade: "9C", rollNo: "331", initials: "AM", riskStatus: "At Risk", previousIncidents: 2 },
+    type: "Property Damage",
+    severity: "MEDIUM",
     status: "Open",
     description: "Intentional damage to library property.",
     witnesses: [],
     actionLog: []
   },
 ];
+
+const pieData = [
+  { name: "Behavioral", value: 55, color: "#f59e0b" },
+  { name: "Academic", value: 25, color: "#1e3a8a" },
+  { name: "Safety", value: 12, color: "#ef4444" },
+  { name: "Property", value: 8, color: "#94a3b8" },
+];
+
+const RADIAN = Math.PI / 180;
+const renderLabel = ({ cx, cy, midAngle, outerRadius, name }: any) => {
+  const radius = outerRadius + 20;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text x={x} y={y} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central"
+      fontSize={10} fontWeight={700} fill="#64748b">
+      {name}
+    </text>
+  );
+};
 
 const Discipline = () => {
   const [selectedIncident, setSelectedIncident] = useState<typeof incidentsData[0] | null>(null);
@@ -71,171 +92,172 @@ const Discipline = () => {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500 pb-10">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-[#1e293b]">Discipline & Incidents</h1>
-        <p className="text-sm text-slate-400 font-medium">Track and manage disciplinary incidents</p>
+        <h1 className="text-2xl font-bold text-foreground">Discipline & Incidents</h1>
+        <p className="text-sm text-muted-foreground">Track and manage disciplinary incidents</p>
       </div>
 
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm flex items-start justify-between">
-           <div>
-              <p className="text-sm font-bold text-slate-400 uppercase tracking-tight mb-4">Today's Incidents</p>
-              <div className="text-4xl font-black text-[#1e293b] mb-1">2</div>
-              <p className="text-xs font-bold text-slate-400">Logged today</p>
-           </div>
-           <div className="p-2 bg-red-50 text-red-500 rounded-full">
-              <AlertCircle className="w-5 h-5" />
-           </div>
+      {/* ===== 4 STAT CARDS ===== */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        {/* Today's Incidents */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium text-muted-foreground">Today's Incidents</span>
+            <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
+              <AlertCircle className="w-4 h-4 text-red-500" />
+            </div>
+          </div>
+          <p className="text-4xl font-black text-foreground mb-1">2</p>
+          <p className="text-xs text-muted-foreground font-medium">Logged today</p>
         </div>
 
-        <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm flex items-start justify-between">
-           <div>
-              <p className="text-sm font-bold text-slate-400 uppercase tracking-tight mb-4">Pending Actions</p>
-              <div className="text-4xl font-black text-[#1e293b] mb-1">3</div>
-              <p className="text-xs font-bold text-slate-400">Require follow-up</p>
-           </div>
-           <div className="p-2 bg-orange-50 text-orange-500 rounded-full">
-              <Clock className="w-5 h-5" />
-           </div>
+        {/* Pending Actions */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium text-muted-foreground">Pending Actions</span>
+            <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center">
+              <Clock className="w-4 h-4 text-amber-500" />
+            </div>
+          </div>
+          <p className="text-4xl font-black text-red-500 mb-1">3</p>
+          <p className="text-xs text-muted-foreground font-medium">Require follow-up</p>
         </div>
 
-        <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm flex items-start justify-between">
-           <div>
-              <p className="text-sm font-bold text-slate-400 uppercase tracking-tight mb-4">This Week</p>
-              <div className="text-4xl font-black text-[#1e293b] mb-1">8</div>
-              <p className="text-xs font-bold text-slate-400">Total incidents</p>
-           </div>
-           <div className="p-2 bg-blue-50 text-blue-600 rounded-full">
-              <LayoutGrid className="w-5 h-5" />
-           </div>
+        {/* This Week */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium text-muted-foreground">This Week</span>
+            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
+              <Calendar className="w-4 h-4 text-blue-600" />
+            </div>
+          </div>
+          <p className="text-4xl font-black text-foreground mb-1">8</p>
+          <p className="text-xs text-muted-foreground font-medium">Total incidents</p>
         </div>
 
-        <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm flex items-start justify-between">
-           <div>
-              <p className="text-sm font-bold text-slate-400 uppercase tracking-tight mb-4">Critical Cases</p>
-              <div className="text-4xl font-black text-[#1e293b] mb-1">1</div>
-              <p className="text-xs font-bold text-slate-400">High priority</p>
-           </div>
-           <div className="p-2 bg-red-50 text-red-600 rounded-full">
-              <AlertTriangle className="w-5 h-5" />
-           </div>
+        {/* Critical Cases */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium text-muted-foreground">Critical Cases</span>
+            <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
+              <AlertTriangle className="w-4 h-4 text-red-600" />
+            </div>
+          </div>
+          <p className="text-4xl font-black text-red-500 mb-1">1</p>
+          <p className="text-xs text-muted-foreground font-medium">High priority</p>
         </div>
       </div>
 
-      <div className="flex justify-between items-center py-2">
-         <div className="flex gap-4">
-            <div className="w-24 h-10 border border-slate-100 rounded-xl bg-white/50" />
-            <div className="w-24 h-10 border border-slate-100 rounded-xl bg-white/50" />
-            <div className="w-24 h-10 border border-slate-100 rounded-xl bg-white/50" />
-         </div>
-         <button className="flex items-center gap-2 px-6 py-3 bg-[#e11d48] text-white rounded-xl text-sm font-black shadow-lg shadow-red-200 hover:opacity-90 transition-all active:scale-95">
-            <Plus className="w-5 h-5" /> Log New Incident
-         </button>
+      {/* ===== FILTER ROW + LOG BUTTON ===== */}
+      <div className="flex justify-between items-center">
+        <div className="flex gap-3">
+          {['All Types', 'This Week', 'Critical Only'].map((f, i) => (
+            <button key={i} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${
+              i === 0 ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]' : 'bg-card border-border text-muted-foreground hover:bg-secondary'
+            }`}>
+              {f}
+            </button>
+          ))}
+        </div>
+        <button className="flex items-center gap-2 px-5 py-2.5 bg-[#e11d48] text-white rounded-xl text-sm font-bold shadow-lg shadow-red-200 hover:bg-red-600 transition-all">
+          <Plus className="w-4 h-4" /> Log New Incident
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-         {/* Incident Type Breakdown */}
-         <div className="lg:col-span-5 bg-white border border-slate-100 rounded-[2rem] p-8 shadow-sm">
-            <h3 className="text-xl font-black text-[#1e293b] mb-12">Incident Type Breakdown</h3>
-            <div className="relative h-64 flex items-center justify-center">
-               <svg viewBox="0 0 100 100" className="w-52 h-52 transform -rotate-[70deg]">
-                  {/* Total circumference for r=25 is ~157 */}
-                  {/* Behavior (Orange) - 55% */}
-                  <circle cx="50" cy="50" r="25" fill="none" stroke="#f59e0b" strokeWidth="50" strokeDasharray="86.3 157" strokeDashoffset="0" />
-                  {/* Academic (Blue) - 25% */}
-                  <circle cx="50" cy="50" r="25" fill="none" stroke="#1e3a8a" strokeWidth="50" strokeDasharray="39.2 157" strokeDashoffset="-86.3" />
-                  {/* Safety (Red) - 12% */}
-                  <circle cx="50" cy="50" r="25" fill="none" stroke="#ef4444" strokeWidth="50" strokeDasharray="18.8 157" strokeDashoffset="-125.5" />
-                  {/* Property (Grey) - 8% */}
-                  <circle cx="50" cy="50" r="25" fill="none" stroke="#94a3b8" strokeWidth="50" strokeDasharray="12.7 157" strokeDashoffset="-144.3" />
-               </svg>
-               
-               {/* Label: Behavior (Right) */}
-               <div className="absolute top-1/2 right-[5%] flex items-center translate-x-1/2">
-                  <div className="w-10 h-[1px] bg-slate-200" />
-                  <span className="text-[10px] font-black text-slate-400 ml-2 uppercase tracking-widest whitespace-nowrap">Behavior</span>
-               </div>
-               
-               {/* Label: Property (Top Left) */}
-               <div className="absolute top-10 left-4 flex items-center">
-                  <span className="text-[10px] font-black text-slate-400 mr-2 uppercase tracking-widest">Property</span>
-                  <div className="w-10 h-[1px] bg-slate-200" />
-               </div>
-               
-               {/* Label: Safety (Left) */}
-               <div className="absolute top-[40%] left-4 flex items-center">
-                  <span className="text-[10px] font-black text-slate-400 mr-2 uppercase tracking-widest">Safety</span>
-                  <div className="w-6 h-[1px] bg-red-200" />
-               </div>
-               
-               {/* Label: Academic (Bottom Left) */}
-               <div className="absolute bottom-16 left-4 flex items-center">
-                  <span className="text-[10px] font-black text-slate-400 mr-2 uppercase tracking-widest">Academic</span>
-                  <div className="w-10 h-[1px] bg-blue-200" />
-               </div>
-            </div>
-         </div>
+      {/* ===== PIE CHART + RECENT INCIDENTS ===== */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Incident Type Breakdown - PieChart */}
+        <div className="lg:col-span-5 bg-card border border-border rounded-2xl p-7 shadow-sm">
+          <h3 className="text-base font-bold text-foreground mb-2">Incident Type Breakdown</h3>
+          <ResponsiveContainer width="100%" height={260}>
+            <PieChart>
+              <Pie
+                data={pieData}
+                cx="50%"
+                cy="50%"
+                outerRadius={85}
+                dataKey="value"
+                label={renderLabel}
+                labelLine={{ stroke: '#cbd5e1', strokeWidth: 1 }}
+                animationBegin={0}
+                animationDuration={1200}
+              >
+                {pieData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                ))}
+              </Pie>
+              <Tooltip
+                formatter={(value: number, name: string) => [`${value}%`, name]}
+                contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 'bold' }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
 
-         {/* Recent Incidents Table */}
-         <div className="lg:col-span-7 bg-white border border-slate-100 rounded-[2rem] shadow-sm overflow-hidden flex flex-col">
-            <div className="px-8 py-6 flex items-center justify-between">
-               <h3 className="text-xl font-black text-[#1e293b]">Recent Incidents</h3>
-            </div>
-            <div className="overflow-x-auto flex-1">
-               <table className="w-full">
-                  <thead>
-                     <tr className="bg-slate-50 border-y border-slate-100">
-                        <th className="text-left px-8 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Date</th>
-                        <th className="text-left px-8 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Student</th>
-                        <th className="text-left px-8 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Type</th>
-                        <th className="text-left px-8 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Severity</th>
-                        <th className="text-left px-8 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                        <th className="text-left px-8 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
-                     </tr>
-                  </thead>
-                  <tbody>
-                     {incidentsData.map((inc, i) => (
-                        <tr 
-                          key={i} 
-                          className={`border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors cursor-pointer group ${inc.severity === 'CRITICAL' ? 'bg-red-50/30' : ''}`}
-                          onClick={() => setSelectedIncident(inc)}
-                        >
-                           <td className="px-8 py-6 text-xs font-bold text-slate-500 whitespace-nowrap">{inc.date}</td>
-                           <td className="px-8 py-6">
-                              <p className="text-sm font-black text-[#1e293b] group-hover:text-[#1e3a8a] transition-colors">{inc.student.name} ({inc.student.grade})</p>
-                           </td>
-                           <td className="px-8 py-6 text-sm font-bold text-slate-600">{inc.type}</td>
-                           <td className="px-8 py-6">
-                              <span className={`text-[11px] font-black italic tracking-tighter ${inc.severity === 'CRITICAL' ? 'text-red-500' : 'text-orange-500'}`}>
-                                 {inc.severity}
-                              </span>
-                           </td>
-                           <td className="px-8 py-6">
-                              <span className={`text-sm font-bold ${inc.status === "Resolved" ? "text-green-500" : inc.status === "Open" ? "text-orange-500" : "text-red-500"}`}>
-                                 {inc.status}
-                              </span>
-                           </td>
-                           <td className="px-8 py-6">
-                              <button className="text-sm font-black text-[#1e3a8a] uppercase tracking-tighter hover:underline flex items-center gap-1">
-                                 View <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </button>
-                           </td>
-                        </tr>
-                     ))}
-                  </tbody>
-               </table>
-            </div>
-            <div className="px-8 py-6 border-t border-slate-100 flex items-center justify-between">
-               <button className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest hover:text-[#1e3a8a] transition-colors">
-                  <LayoutGrid className="w-4 h-4" /> View All Incidents
-               </button>
-               <button className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest hover:text-[#1e3a8a] transition-colors">
-                  <FileText className="w-4 h-4" /> Generate Report
-               </button>
-            </div>
-         </div>
+        {/* Recent Incidents Table */}
+        <div className="lg:col-span-7 bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-7 py-5">
+            <h3 className="text-base font-bold text-foreground">Recent Incidents</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-y border-border bg-secondary/30">
+                  <th className="text-left px-7 py-3 text-xs font-bold text-[#1e3a8a] uppercase tracking-wider">Date</th>
+                  <th className="text-left px-7 py-3 text-xs font-bold text-[#1e3a8a] uppercase tracking-wider">Student</th>
+                  <th className="text-left px-7 py-3 text-xs font-bold text-[#1e3a8a] uppercase tracking-wider">Type</th>
+                  <th className="text-left px-7 py-3 text-xs font-bold text-[#1e3a8a] uppercase tracking-wider">Severity</th>
+                  <th className="text-left px-7 py-3 text-xs font-bold text-[#1e3a8a] uppercase tracking-wider">Status</th>
+                  <th className="text-left px-7 py-3 text-xs font-bold text-[#1e3a8a] uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {incidentsData.map((inc, i) => (
+                  <tr
+                    key={i}
+                    className={`hover:bg-secondary/30 transition-colors cursor-pointer ${inc.severity === 'CRITICAL' ? 'bg-red-50/30' : ''}`}
+                    onClick={() => setSelectedIncident(inc)}
+                  >
+                    <td className="px-7 py-5 text-sm font-medium text-muted-foreground whitespace-nowrap">{inc.date}</td>
+                    <td className="px-7 py-5 text-sm font-bold text-foreground">{inc.student.name} ({inc.student.grade})</td>
+                    <td className="px-7 py-5 text-sm font-medium text-foreground">{inc.type}</td>
+                    <td className="px-7 py-5">
+                      <span className={`text-xs font-bold uppercase tracking-wider ${
+                        inc.severity === 'CRITICAL' ? 'text-red-500' : 'text-amber-500'
+                      }`}>
+                        {inc.severity}
+                      </span>
+                    </td>
+                    <td className="px-7 py-5">
+                      <span className={`text-sm font-bold ${
+                        inc.status === "Resolved" ? "text-muted-foreground" :
+                        inc.status === "Open" ? "text-foreground" :
+                        "text-foreground"
+                      }`}>
+                        {inc.status}
+                      </span>
+                    </td>
+                    <td className="px-7 py-5">
+                      <button className="text-sm font-bold text-[#1e3a8a] hover:underline">View</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== ACTION BUTTONS ===== */}
+      <div className="flex items-center gap-3">
+        <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors">
+          <LayoutGrid className="w-4 h-4 text-muted-foreground" /> View All Incidents
+        </button>
+        <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors">
+          <FileText className="w-4 h-4 text-muted-foreground" /> Generate Report
+        </button>
       </div>
     </div>
   );

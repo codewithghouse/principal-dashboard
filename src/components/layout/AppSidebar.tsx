@@ -33,7 +33,7 @@ const AppSidebar = () => {
   const location = useLocation();
 
   return (
-    <aside className="w-64 min-h-screen bg-card border-r border-border flex flex-col shrink-0">
+    <aside className="w-64 h-[calc(100vh-64px)] sticky top-16 bg-card border-r border-border flex flex-col shrink-0 overflow-y-auto">
       <div className="px-4 py-3">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Main Menu

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { 
   FileText, Download, GraduationCap, Calendar, Shield, IndianRupee, 
   Settings, UserCheck, Layout, CalendarCheck, AlertTriangle, Trophy, 
-  Users2, MessageSquare, LineChart, Trash2, ArrowRight
+  Users2, MessageSquare, LineChart, Trash2, ArrowRight, Plus
 } from "lucide-react";
 import GenerateReport from "@/components/GenerateReport";
 
@@ -46,9 +46,17 @@ const Reports = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-top-4 duration-500 pb-10">
-      <div>
-        <h1 className="text-2xl font-bold text-[#1e293b]">Reports</h1>
-        <p className="text-sm text-slate-400 font-medium">Generate and manage school reports</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1e293b]">Reports</h1>
+          <p className="text-sm text-slate-400 font-medium tracking-tight">Generate and manage school reports</p>
+        </div>
+        <button 
+          onClick={() => setSelectedTemplate("Custom")}
+          className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-100 hover:bg-[#1e4fc0] transition-all active:scale-95"
+        >
+          <Plus className="w-4 h-4" /> Create Custom Report
+        </button>
       </div>
 
       {/* Category Selection Row */}

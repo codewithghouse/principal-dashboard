@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { AlertTriangle, AlertCircle, Users } from "lucide-react";
+import { AlertTriangle, AlertCircle, Users, UserPlus, Send, CalendarCheck, Download } from "lucide-react";
 import StatCard from "@/components/dashboard/StatCard";
 import RiskIntervention from "@/components/RiskIntervention";
 
 const riskStudents = [
-  { initials: "RS", name: "Rahul Sharma", grade: "9A", roll: "205", level: "CRITICAL", factors: "Attendance, Academics", days: "15 days", lastAction: "Parent called - no response", assigned: "Mrs. Kavita" },
+  { initials: "RS", name: "Rahul Sharma", grade: "9A", roll: "205", level: "CRITICAL", factors: "Attendance (45%), Academics", days: "15 days", lastAction: "Parent called - no response", assigned: "Mrs. Kavita" },
   { initials: "AK", name: "Ankit Kumar", grade: "10C", roll: "412", level: "CRITICAL", factors: "Academics, Discipline", days: "8 days", lastAction: "Counselor assigned", assigned: "Mr. Sharma" },
   { initials: "PP", name: "Priya Patel", grade: "8B", roll: "156", level: "WARNING", factors: "Discipline (3 incidents)", days: "5 days", lastAction: "Warning letter sent", assigned: "Mrs. Reddy" },
+  { initials: "NG", name: "Neha Gupta", grade: "7A", roll: "089", level: "WARNING", factors: "Attendance (68%)", days: "3 days", lastAction: "SMS sent to parent", assigned: "Mr. Verma" },
+  { initials: "SK", name: "Saurabh Khan", grade: "10A", roll: "301", level: "CRITICAL", factors: "Attendance, Behavior", days: "12 days", lastAction: "Parent meeting scheduled", assigned: "Mrs. Kavita" },
+  { initials: "DM", name: "Divya Mehta", grade: "9B", roll: "178", level: "WARNING", factors: "Academics (Math: 35%)", days: "7 days", lastAction: "Extra classes assigned", assigned: "Mr. Sharma" },
 ];
 
 const tabs = ["All (12)", "Critical (4)", "Warning (8)", "Monitoring"];
@@ -43,6 +46,22 @@ const RiskStudents = () => {
             {tab}
           </button>
         ))}
+      </div>
+
+      {/* Action Toolbar */}
+      <div className="flex items-center gap-3">
+        <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#1e3a8a] text-white text-sm font-bold hover:bg-[#1e4fc0] transition-colors shadow-md">
+          <UserPlus className="w-4 h-4" /> Assign Counselor
+        </button>
+        <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors">
+          <Send className="w-4 h-4 text-muted-foreground" /> Notify Parents
+        </button>
+        <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors">
+          <CalendarCheck className="w-4 h-4 text-muted-foreground" /> Schedule Meetings
+        </button>
+        <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors">
+          <Download className="w-4 h-4 text-muted-foreground" /> Export List
+        </button>
       </div>
 
       <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm">
@@ -103,4 +122,3 @@ const RiskStudents = () => {
 };
 
 export default RiskStudents;
-

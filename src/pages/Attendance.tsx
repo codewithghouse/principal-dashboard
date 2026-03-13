@@ -1,26 +1,38 @@
 import { useState } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import StatCard from "@/components/dashboard/StatCard";
-import { CheckCircle, XCircle, Clock, TrendingUp, Calendar, ArrowRight } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { CheckCircle, XCircle, Clock, TrendingUp, Send, Edit3, Bell, FileText } from "lucide-react";
 import ClassAttendanceDetail from "@/components/ClassAttendanceDetail";
 
 const trendData = Array.from({ length: 30 }, (_, i) => ({
   day: i + 1,
-  value: 88 + Math.random() * 6,
+  value: parseFloat((88 + Math.sin(i * 0.4) * 3 + Math.random() * 2).toFixed(1)),
 }));
 
-const gradeAttendance = [
-  { grade: "Grade 6", pct: "95%", color: "bg-[#22c55e]", students: 142 },
-  { grade: "Grade 7", pct: "94%", color: "bg-[#22c55e]", students: 138 },
-  { grade: "Grade 8", pct: "91%", color: "bg-[#22c55e]", students: 156 },
-  { grade: "Grade 9", pct: "82%", color: "bg-[#f59e0b]", students: 201 },
-  { grade: "Grade 10", pct: "90%", color: "bg-[#22c55e]", students: 210 },
+const gradeHeatmap = [
+  { grade: "Grade 6", pct: "94%", value: 94, color: "#22c55e", textColor: "white" },
+  { grade: "Grade 7", pct: "88%", value: 88, color: "#f59e0b", textColor: "white" },
+  { grade: "Grade 8", pct: "91%", value: 91, color: "#22c55e", textColor: "white" },
+  { grade: "Grade 9", pct: "82%", value: 82, color: "#ef4444", textColor: "white" },
+  { grade: "Grade 10", pct: "90%", value: 90, color: "#22c55e", textColor: "white" },
 ];
 
 const absentStudents = [
   { initials: "RS", name: "Rahul Sharma", grade: "9A", contact: "+91 98765 43211", consecutive: "5 days", monthly: "45%", status: "Chronic" },
-  { initials: "AR", name: "Aarav Reddy", grade: "8B", contact: "+91 98765 43222", consecutive: "1 day", monthly: "93%", status: "Occasional" },
+  { initials: "NG", name: "Neha Gupta", grade: "7A", contact: "+91 98765 43220", consecutive: "2 days", monthly: "68%", status: "Warning" },
+  { initials: "AK", name: "Ankit Kumar", grade: "10C", contact: "+91 98765 43233", consecutive: "3 days", monthly: "52%", status: "Chronic" },
+  { initials: "DM", name: "Divya Mehta", grade: "9B", contact: "+91 98765 43244", consecutive: "1 day", monthly: "89%", status: "Occasional" },
 ];
+
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-[#1e293b] text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg">
+        Day {payload[0].payload.day}: {payload[0].value}%
+      </div>
+    );
+  }
+  return null;
+};
 
 const Attendance = () => {
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
@@ -30,110 +42,197 @@ const Attendance = () => {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-[#1e293b]">Attendance</h1>
-        <p className="text-sm text-slate-400">Monitor student attendance patterns and trends</p>
+        <h1 className="text-2xl font-bold text-foreground">Attendance</h1>
+        <p className="text-sm text-muted-foreground">Monitor student attendance patterns and trends</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Today's Present" value="91.2%" subtitle="772 students" subtitleColor="muted" icon={CheckCircle} iconColor="text-green-500" />
-        <StatCard title="Absent Today" value={75} subtitle="8.8% of total" subtitleColor="destructive" icon={XCircle} iconColor="text-red-500" />
-        <StatCard title="Late Arrivals" value={23} subtitle="2.7% of total" subtitleColor="warning" icon={Clock} iconColor="text-orange-500" />
-        <StatCard title="Monthly Avg" value="89.4%" subtitle="↑ 1.2% vs last month" subtitleColor="success" icon={TrendingUp} iconColor="text-blue-600" />
+      {/* ===== 4 STAT CARDS ===== */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        {/* Today's Present */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium text-muted-foreground">Today's Present</span>
+            <CheckCircle className="w-5 h-5 text-green-500" />
+          </div>
+          <p className="text-4xl font-black text-[#1e3a8a] mb-1">772</p>
+          <p className="text-xs text-muted-foreground font-medium">91.2% attendance</p>
+        </div>
+
+        {/* Absent Today */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium text-muted-foreground">Absent Today</span>
+            <XCircle className="w-5 h-5 text-red-500" />
+          </div>
+          <p className="text-4xl font-black text-red-500 mb-1">75</p>
+          <p className="text-xs text-muted-foreground font-medium">8.8% of total</p>
+        </div>
+
+        {/* Late Arrivals */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium text-muted-foreground">Late Arrivals</span>
+            <Clock className="w-5 h-5 text-amber-500" />
+          </div>
+          <p className="text-4xl font-black text-amber-500 mb-1">23</p>
+          <p className="text-xs text-muted-foreground font-medium">2.7% of total</p>
+        </div>
+
+        {/* Monthly Avg */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium text-muted-foreground">Monthly Avg</span>
+            <TrendingUp className="w-5 h-5 text-[#1e3a8a]" />
+          </div>
+          <p className="text-4xl font-black text-foreground mb-1">89.4%</p>
+          <p className="text-xs text-green-500 font-bold">↑ 1.2% vs last month</p>
+        </div>
       </div>
 
+      {/* ===== HEATMAP + TREND ===== */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-[#1e293b] mb-6 flex items-center justify-between">
-            Grade-wise Attendance
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Click bar for details</span>
-          </h2>
-          <div className="space-y-6">
-            {gradeAttendance.map((g) => (
-              <div 
-                key={g.grade} 
-                className="group cursor-pointer"
-                onClick={() => setSelectedClass(g.grade)}
-              >
-                <div className="flex justify-between text-xs font-bold text-slate-400 uppercase mb-2 group-hover:text-[#1e3a8a] transition-colors">
-                   <span>{g.grade}</span>
-                   <span>{g.pct}</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex-1 h-2.5 bg-slate-50 rounded-full overflow-hidden">
-                    <div className={`h-full ${g.color} rounded-full transition-all duration-1000 group-hover:brightness-95`} style={{ width: g.pct }} />
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-200 group-hover:text-[#1e3a8a] transition-colors" />
+        {/* Grade-wise Attendance Heatmap */}
+        <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+          <h2 className="text-base font-bold text-foreground mb-6">Grade-wise Attendance Heatmap</h2>
+          <div className="flex items-end justify-between gap-3 mb-6">
+            {gradeHeatmap.map((g, i) => (
+              <div key={i} className="flex-1 text-center cursor-pointer" onClick={() => setSelectedClass(g.grade)}>
+                <p className="text-xs font-bold text-muted-foreground mb-2">{g.grade}</p>
+                <div
+                  className="rounded-xl py-4 px-2 hover:scale-105 transition-transform shadow-sm"
+                  style={{ backgroundColor: g.color }}
+                >
+                  <p className="text-lg font-black text-white">{g.pct}</p>
                 </div>
               </div>
             ))}
           </div>
+          {/* Legend */}
+          <div className="flex items-center gap-6 pt-4 border-t border-border">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-[#22c55e]" />
+              <span className="text-[10px] font-bold text-muted-foreground">90-100%</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-[#f59e0b]" />
+              <span className="text-[10px] font-bold text-muted-foreground">80-89%</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-[#ef4444]" />
+              <span className="text-[10px] font-bold text-muted-foreground">Below 80%</span>
+            </div>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-[#1e293b] mb-6">30-Day Attendance Trend</h2>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={trendData}>
+        {/* 30-Day Attendance Trend */}
+        <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
+          <h2 className="text-base font-bold text-foreground mb-2">30-Day Attendance Trend</h2>
+          <ResponsiveContainer width="100%" height={250}>
+            <AreaChart data={trendData}>
+              <defs>
+                <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#64748b" stopOpacity={0.1} />
+                  <stop offset="95%" stopColor="#64748b" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-              <XAxis dataKey="day" tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis domain={[85, 96]} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
-              <Tooltip 
-                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                formatter={(v: number) => [`${v.toFixed(1)}%`, "Attendance"]} 
+              <XAxis
+                dataKey="day"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
+                interval={4}
               />
-              <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={3} dot={false} activeDot={{ r: 6, strokeWidth: 0 }} />
-            </LineChart>
+              <YAxis
+                domain={[85, 95]}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
+                tickFormatter={(v) => `${v}%`}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke="#475569"
+                strokeWidth={2}
+                fill="url(#trendGradient)"
+                dot={{ r: 3, fill: '#ffffff', stroke: '#475569', strokeWidth: 2 }}
+                activeDot={{ r: 6, fill: '#475569', stroke: '#ffffff', strokeWidth: 2 }}
+                animationDuration={1500}
+              />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm mt-8">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-[#1e293b]">Absent Students Today</h2>
-          <button className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-colors">
-            <Calendar className="w-4 h-4" /> Alert All Parents
+      {/* ===== ABSENT STUDENTS TABLE ===== */}
+      <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between px-7 py-5 border-b border-border">
+          <h2 className="text-base font-bold text-foreground">Absent Students Today</h2>
+          <button className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold hover:bg-[#1e4fc0] transition-colors shadow-md">
+            <Send className="w-4 h-4" /> Alert Parents
           </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="text-left px-6 py-4 text-slate-400 font-bold uppercase tracking-widest text-[11px]">Student</th>
-                <th className="text-left px-6 py-4 text-slate-400 font-bold uppercase tracking-widest text-[11px]">Grade-Section</th>
-                <th className="text-left px-6 py-4 text-slate-400 font-bold uppercase tracking-widest text-[11px]">Parent Contact</th>
-                <th className="text-center px-6 py-4 text-slate-400 font-bold uppercase tracking-widest text-[11px]">Consecutive Absent</th>
-                <th className="text-center px-6 py-4 text-slate-400 font-bold uppercase tracking-widest text-[11px]">Monthly %</th>
-                <th className="text-left px-6 py-4 text-slate-400 font-bold uppercase tracking-widest text-[11px]">Status</th>
+              <tr className="border-b border-border">
+                <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Student</th>
+                <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Grade-Section</th>
+                <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Parent Contact</th>
+                <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Consecutive Absent</th>
+                <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Monthly %</th>
+                <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border">
               {absentStudents.map((s) => (
-                <tr key={s.name} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-6 py-5">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-[10px] font-bold text-[#64748b]">
+                <tr key={s.name} className="hover:bg-secondary/30 transition-colors">
+                  <td className="px-7 py-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-[10px] font-bold text-muted-foreground">
                         {s.initials}
                       </div>
-                      <span className="font-bold text-[#1e293b]">{s.name}</span>
+                      <span className="font-bold text-foreground text-sm">{s.name}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-5 font-bold text-slate-600">{s.grade}</td>
-                  <td className="px-6 py-5 italic text-slate-400 text-sm">{s.contact}</td>
-                  <td className="px-6 py-5 text-center text-red-500 font-black">{s.consecutive}</td>
-                  <td className="px-6 py-5 text-center text-red-500 font-black">{s.monthly}</td>
-                  <td className="px-6 py-5">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      s.status === 'Chronic' ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-orange-50 text-orange-500 border border-orange-100'
-                    }`}>
-                      {s.status}
-                    </span>
+                  <td className="px-7 py-5 font-bold text-foreground text-sm">{s.grade}</td>
+                  <td className="px-7 py-5 text-muted-foreground text-sm font-medium">{s.contact}</td>
+                  <td className="px-7 py-5">
+                    <span className="text-red-500 font-bold text-sm">{s.consecutive}</span>
+                  </td>
+                  <td className="px-7 py-5">
+                    <span className={`font-bold text-sm ${
+                      parseFloat(s.monthly) < 60 ? 'text-red-500' :
+                      parseFloat(s.monthly) < 80 ? 'text-amber-500' :
+                      'text-green-500'
+                    }`}>{s.monthly}</span>
+                  </td>
+                  <td className="px-7 py-5">
+                    <span className="text-sm font-bold text-foreground">{s.status}</span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ===== ACTION BUTTONS ===== */}
+      <div className="flex items-center gap-3">
+        <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#1e3a8a] text-white text-sm font-bold hover:bg-[#1e4fc0] transition-colors shadow-md">
+          <Edit3 className="w-4 h-4" /> Mark Attendance
+        </button>
+        <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors">
+          <Bell className="w-4 h-4 text-muted-foreground" /> Send Absence Alerts
+        </button>
+        <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors">
+          <FileText className="w-4 h-4 text-muted-foreground" /> Generate Monthly Report
+        </button>
       </div>
     </div>
   );
