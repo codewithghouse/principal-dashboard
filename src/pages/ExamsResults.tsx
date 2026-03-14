@@ -122,7 +122,7 @@ const ExamsResults = () => {
                 />
                 <Tooltip 
                   cursor={{ fill: 'transparent' }}
-                  contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', shadow: 'none', fontWeight: 'bold' }}
+                  contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontWeight: 'bold' }}
                 />
                 <Bar dataKey="rate" radius={[4, 4, 0, 0]} barSize={50} label={{ position: 'top', fontSize: 10, fontWeight: 700, fill: '#64748b', offset: 10 }}>
                   {barData.map((entry, index) => (
