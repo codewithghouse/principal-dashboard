@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Download, Plus } from "lucide-react";
 import StudentProfile from "@/components/StudentProfile";
 import { 
@@ -13,12 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, where, onSnapshot } from "firebase/firestore";
 import { sendEmail } from "@/lib/resend";
 import { useAuth } from "@/lib/AuthContext";
 import { Loader2 } from "lucide-react";
-
-const studentsData: any[] = [];
 
 const statusColor = (s: string) => {
   if (s === "Excellent") return "text-success font-medium";
@@ -29,7 +27,8 @@ const statusColor = (s: string) => {
 
 const Students = () => {
   const { userData } = useAuth();
-  const [selectedStudent, setSelectedStudent] = useState<typeof studentsData[0] | null>(null);
+  const [studentsData, setStudentsData] = useState<any[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [inviteForm, setInviteForm] = useState({
@@ -38,6 +37,37 @@ const Students = () => {
     grade: "",
     rollNo: ""
   });
+
+  useEffect(() => {
+    if (!userData?.schoolId) return;
+
+    const q = query(
+      collection(db, "students"), 
+      where("schoolId", "==", userData.schoolId)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const students = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          initials: data.name ? data.name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : "S",
+          gender: data.gender || "Not Specified",
+          contact: data.contact || data.parentEmail || data.email,
+          attendance: data.attendance || "0%",
+          status: data.status || "Enrolled",
+          risk: data.risk || false
+        };
+      });
+      setStudentsData(students);
+    }, (error) => {
+      console.error("Error fetching students:", error);
+      toast.error("Failed to load students data");
+    });
+
+    return () => unsubscribe();
+  }, [userData?.schoolId]);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -266,7 +296,7 @@ const Students = () => {
           </table>
         </div>
         <div className="flex items-center justify-between px-6 py-4 border-t border-border text-sm text-muted-foreground font-medium">
-          <span>Showing 1-5 of 847 students</span>
+          <span>Showing 1-{studentsData.length} of {studentsData.length} students</span>
           <div className="flex items-center gap-2">
             <button className="px-3 py-1.5 rounded-lg border border-border hover:bg-secondary transition-colors">Previous</button>
             <div className="flex items-center gap-1">
