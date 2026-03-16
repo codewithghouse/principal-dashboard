@@ -2,13 +2,7 @@ import { useState } from "react";
 import { Search, Download, Plus } from "lucide-react";
 import StudentProfile from "@/components/StudentProfile";
 
-const studentsData = [
-  { initials: "AR", name: "Aarav Reddy", gender: "Male", rollNo: "101", grade: "10A", contact: "+91 98765 43210", attendance: "94%", status: "Excellent", risk: false },
-  { initials: "RS", name: "Rahul Sharma", gender: "Male", rollNo: "205", grade: "9A", contact: "+91 98765 43211", attendance: "45%", status: "At Risk", risk: true },
-  { initials: "PP", name: "Priya Patel", gender: "Female", rollNo: "156", grade: "8B", contact: "+91 98765 43212", attendance: "78%", status: "Average", risk: false },
-  { initials: "VK", name: "Vikram Kumar", gender: "Male", rollNo: "089", grade: "7A", contact: "+91 98765 43213", attendance: "91%", status: "Good", risk: false },
-  { initials: "SN", name: "Sneha Nair", gender: "Female", rollNo: "312", grade: "10B", contact: "+91 98765 43214", attendance: "88%", status: "Good", risk: false },
-];
+const studentsData: any[] = [];
 
 const statusColor = (s: string) => {
   if (s === "Excellent") return "text-success font-medium";
@@ -63,40 +57,52 @@ const Students = () => {
                 <th className="text-center px-6 py-4 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {studentsData.map((s) => (
-                <tr key={s.rollNo} className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center text-[10px] font-bold text-white shadow-sm">{s.initials}</div>
-                      <div>
-                        <p className="font-bold text-foreground leading-tight">{s.name}</p>
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase">{s.gender}</p>
+            <tbody className="divide-y divide-border text-slate-700">
+              {studentsData.length > 0 ? (
+                studentsData.map((s) => (
+                  <tr key={s.rollNo} className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center text-[10px] font-bold text-white shadow-sm">{s.initials}</div>
+                        <div>
+                          <p className="font-bold text-foreground leading-tight">{s.name}</p>
+                          <p className="text-[10px] text-muted-foreground font-bold uppercase">{s.gender}</p>
+                        </div>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 font-medium">{s.rollNo}</td>
+                    <td className="px-6 py-4 font-medium">{s.grade}</td>
+                    <td className="px-6 py-4 text-muted-foreground font-medium">{s.contact}</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="font-bold text-primary">{s.attendance}</span>
+                    </td>
+                    <td className={`px-6 py-4 ${statusColor(s.status)} text-xs font-bold`}>
+                      <span className={`px-2 py-1 rounded-full bg-muted/50`}>{s.status}</span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {s.risk && <div className="w-2 h-2 mx-auto rounded-full bg-destructive animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]" />}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <button 
+                        onClick={() => setSelectedStudent(s)}
+                        className="text-primary text-xs font-bold hover:underline uppercase tracking-wider"
+                      >
+                        View Profile
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={8} className="px-6 py-20 text-center">
+                    <div className="flex flex-col items-center justify-center opacity-40">
+                      <Plus className="w-12 h-12 mb-4 text-slate-300" />
+                      <p className="text-lg font-bold text-slate-900">No students found</p>
+                      <p className="text-sm font-medium text-slate-500 mt-1 uppercase tracking-widest">Awaiting Enrollment</p>
                     </div>
                   </td>
-                  <td className="px-6 py-4 font-medium">{s.rollNo}</td>
-                  <td className="px-6 py-4 font-medium">{s.grade}</td>
-                  <td className="px-6 py-4 text-muted-foreground font-medium">{s.contact}</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="font-bold text-primary">{s.attendance}</span>
-                  </td>
-                  <td className={`px-6 py-4 ${statusColor(s.status)} text-xs font-bold`}>
-                    <span className={`px-2 py-1 rounded-full bg-muted/50`}>{s.status}</span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    {s.risk && <div className="w-2 h-2 mx-auto rounded-full bg-destructive animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]" />}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <button 
-                      onClick={() => setSelectedStudent(s)}
-                      className="text-primary text-xs font-bold hover:underline uppercase tracking-wider"
-                    >
-                      View Profile
-                    </button>
-                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
