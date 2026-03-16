@@ -44,6 +44,7 @@ const Teachers = () => {
       // 1. Save to Firestore Whitelist for Teachers
       await addDoc(collection(db, "teachers"), {
         ...inviteForm,
+        email: inviteForm.email.toLowerCase(),
         schoolId: userData?.schoolId,
         schoolName: userData?.schoolName,
         branch: userData?.branch,

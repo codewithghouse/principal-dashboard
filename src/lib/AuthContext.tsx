@@ -32,7 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (currentUser && currentUser.email) {
         try {
           // 1. Try Principals Collection
-          const principalQ = query(collection(db, "principals"), where("email", "==", currentUser.email));
+          const principalQ = query(collection(db, "principals"), where("email", "==", currentUser.email.toLowerCase()));
           const principalSnap = await getDocs(principalQ);
 
           if (!principalSnap.empty) {
@@ -44,7 +44,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           // 2. Try Teachers Collection
-          const teacherQ = query(collection(db, "teachers"), where("email", "==", currentUser.email));
+          const teacherQ = query(collection(db, "teachers"), where("email", "==", currentUser.email.toLowerCase()));
           const teacherSnap = await getDocs(teacherQ);
 
           if (!teacherSnap.empty) {
@@ -56,7 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           // 3. Try Students Collection
-          const studentQ = query(collection(db, "students"), where("email", "==", currentUser.email));
+          const studentQ = query(collection(db, "students"), where("email", "==", currentUser.email.toLowerCase()));
           const studentSnap = await getDocs(studentQ);
 
           if (!studentSnap.empty) {
