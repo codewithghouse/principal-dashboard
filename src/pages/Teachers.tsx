@@ -17,13 +17,17 @@ import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot } from "firebase/firestore";
 import { sendEmail } from "@/lib/resend";
 import { useAuth } from "@/lib/AuthContext";
-import { Loader2 } from "lucide-react";
+import { Loader2, GraduationCap } from "lucide-react";
+import { doc, updateDoc } from "firebase/firestore";
 
 const Teachers = () => {
   const { userData } = useAuth();
   const [teachersData, setTeachersData] = useState<any[]>([]);
   const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [teacherToAssign, setTeacherToAssign] = useState<any | null>(null);
+  const [assignedGrade, setAssignedGrade] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [inviteForm, setInviteForm] = useState({
     name: "",
@@ -111,6 +115,28 @@ const Teachers = () => {
     } catch (error: any) {
       console.error("Invite Error:", error);
       toast.error(error.message || "Failed to send invitation");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleAssignGrade = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!teacherToAssign || !assignedGrade) return;
+
+    setIsSending(true);
+    try {
+      const teacherDocRef = doc(db, "teachers", teacherToAssign.id);
+      await updateDoc(teacherDocRef, {
+        classes: assignedGrade
+      });
+      toast.success(`Assigned ${assignedGrade} to ${teacherToAssign.name}`);
+      setIsAssignOpen(false);
+      setTeacherToAssign(null);
+      setAssignedGrade("");
+    } catch (error: any) {
+      console.error("Assign Error:", error);
+      toast.error("Failed to assign grade");
     } finally {
       setIsSending(false);
     }
@@ -214,6 +240,53 @@ const Teachers = () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-[#1e294b]">Assign Grade / Class</DialogTitle>
+            <DialogDescription className="text-slate-500 font-medium">
+              Assign a specific grade to {teacherToAssign?.name}.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAssignGrade} className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="grade" className="text-xs font-bold uppercase tracking-wider text-slate-500">Select Grade</Label>
+              <select 
+                id="grade"
+                value={assignedGrade}
+                onChange={(e) => setAssignedGrade(e.target.value)}
+                className="w-full h-11 rounded-xl border-slate-200 bg-white border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                required
+              >
+                <option value="">Select a Grade</option>
+                <option value="Grade 1">Grade 1</option>
+                <option value="Grade 2">Grade 2</option>
+                <option value="Grade 3">Grade 3</option>
+                <option value="Grade 4">Grade 4</option>
+                <option value="Grade 5">Grade 5</option>
+                <option value="Grade 6">Grade 6</option>
+                <option value="Grade 7">Grade 7</option>
+                <option value="Grade 8">Grade 8</option>
+                <option value="Grade 9">Grade 9</option>
+                <option value="Grade 10">Grade 10</option>
+                <option value="Grade 11">Grade 11</option>
+                <option value="Grade 12">Grade 12</option>
+              </select>
+            </div>
+            <DialogFooter className="pt-4">
+              <button 
+                type="submit" 
+                disabled={isSending}
+                className="w-full h-12 rounded-xl bg-[#1e3a8a] text-white font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+              >
+                {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <GraduationCap className="w-4 h-4" />}
+                {isSending ? "Assigning..." : "Confirm Assignment"}
+              </button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {teachersData.length > 0 ? (
           teachersData.map((t) => (
@@ -243,7 +316,18 @@ const Teachers = () => {
                 <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest ${t.status === "Active" ? "bg-green-50 text-green-500 border border-green-100" : "bg-red-50 text-red-500 border border-red-100"}`}>
                   {t.status}
                 </span>
-                <button className="text-[10px] font-black text-[#1e3a8a] uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">View Profile →</button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTeacherToAssign(t);
+                    setAssignedGrade(t.classes === "N/A" ? "" : t.classes);
+                    setIsAssignOpen(true);
+                  }}
+                  className="text-[10px] font-black text-[#1e3a8a] uppercase tracking-tighter hover:underline flex items-center gap-1"
+                >
+                  <GraduationCap className="w-3 h-3" /> Assign Grade
+                </button>
+                <button className="text-[10px] font-black text-slate-400 uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">View Profile →</button>
               </div>
             </div>
           ))
