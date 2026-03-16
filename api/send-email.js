@@ -18,9 +18,11 @@ export default async function handler(req, res) {
   }
 
   const { to, subject, html } = req.body;
-  const apiKey = process.env.VITE_RESEND_API_KEY;
+  // Support both standard and VITE prefixed env vars
+  const apiKey = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY;
 
   if (!apiKey) {
+    console.error("CRITICAL: Resend API Key is missing in Principal Dashboard");
     return res.status(500).json({ error: 'API key not configured' });
   }
 
@@ -32,7 +34,7 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        from: 'EDUINTELLECT <invite@edulent.dgion.com>',
+        from: 'EduIntellect <onboarding@resend.dev>',
         to,
         subject,
         html,
@@ -44,7 +46,7 @@ export default async function handler(req, res) {
     if (response.ok) {
       return res.status(200).json(data);
     } else {
-      console.error('Resend API Error:', data);
+      console.error('Resend API Error (fromfetch):', data);
       return res.status(response.status).json(data);
     }
   } catch (error) {
