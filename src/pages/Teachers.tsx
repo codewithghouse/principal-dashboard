@@ -17,8 +17,8 @@ import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot } from "firebase/firestore";
 import { sendEmail } from "@/lib/resend";
 import { useAuth } from "@/lib/AuthContext";
-import { Loader2, GraduationCap } from "lucide-react";
-import { doc, updateDoc } from "firebase/firestore";
+import { Loader2, GraduationCap, Eye } from "lucide-react";
+import { doc, updateDoc, getDocs } from "firebase/firestore";
 
 const Teachers = () => {
   const { userData } = useAuth();
@@ -26,7 +26,10 @@ const Teachers = () => {
   const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [isRosterOpen, setIsRosterOpen] = useState(false);
   const [teacherToAssign, setTeacherToAssign] = useState<any | null>(null);
+  const [teacherRoster, setTeacherRoster] = useState<any[]>([]);
+  const [loadingRoster, setLoadingRoster] = useState(false);
   const [assignedGrade, setAssignedGrade] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [inviteForm, setInviteForm] = useState({
@@ -139,6 +142,26 @@ const Teachers = () => {
       toast.error("Failed to assign grade");
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleOpenRoster = async (teacher: any) => {
+    setTeacherToAssign(teacher);
+    setIsRosterOpen(true);
+    setLoadingRoster(true);
+    try {
+      const q = query(
+        collection(db, "students"),
+        where("teacherId", "==", teacher.id)
+      );
+      const snapshot = await getDocs(q);
+      const students = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTeacherRoster(students);
+    } catch (error) {
+      console.error("Error fetching roster:", error);
+      toast.error("Failed to load roster");
+    } finally {
+      setLoadingRoster(false);
     }
   };
 
@@ -287,6 +310,63 @@ const Teachers = () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={isRosterOpen} onOpenChange={setIsRosterOpen}>
+        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-[#1e294b]">Class Roster: {teacherToAssign?.name}</DialogTitle>
+            <DialogDescription className="text-slate-500 font-bold italic">
+              Students assigned to this teacher across different sections.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {loadingRoster ? (
+              <div className="flex justify-center py-10">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : teacherRoster.length > 0 ? (
+              <div className="space-y-6">
+                <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-[#1e3a8a] text-white font-bold uppercase text-[10px] tracking-widest">
+                      <tr>
+                        <th className="px-4 py-4">Student</th>
+                        <th className="px-4 py-4">Grade</th>
+                        <th className="px-4 py-4 text-center">Section</th>
+                        <th className="px-4 py-4 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {teacherRoster.map((s) => (
+                        <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-4">
+                            <div className="font-bold text-slate-900 leading-none">{s.name}</div>
+                            <div className="text-[10px] text-slate-400 mt-1 font-bold">{s.email}</div>
+                          </td>
+                          <td className="px-4 py-4 font-black text-[#1e3a8a]">{s.grade}</td>
+                          <td className="px-4 py-4 text-center font-black text-slate-600 italic">
+                            {s.section || 'N/A'}
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-tighter ${s.status === 'Active' ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'}`}>
+                              {s.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm font-bold text-slate-400 uppercase tracking-tighter">No students assigned yet.</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {teachersData.length > 0 ? (
           teachersData.map((t) => (
@@ -326,6 +406,15 @@ const Teachers = () => {
                   className="text-[10px] font-black text-[#1e3a8a] uppercase tracking-tighter hover:underline flex items-center gap-1"
                 >
                   <GraduationCap className="w-3 h-3" /> Assign Grade
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenRoster(t);
+                  }}
+                  className="text-[10px] font-black text-[#1e3a8a] uppercase tracking-tighter hover:underline flex items-center gap-1"
+                >
+                  <Eye className="w-3 h-3" /> View Roster
                 </button>
                 <button className="text-[10px] font-black text-slate-400 uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">View Profile →</button>
               </div>
