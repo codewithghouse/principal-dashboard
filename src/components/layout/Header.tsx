@@ -2,7 +2,7 @@ import { Bell, GraduationCap, LogOut } from "lucide-react";
 import { useAuth } from "../../lib/AuthContext";
 
 const Header = () => {
-  const { principalData, user, logout } = useAuth();
+  const { userData, user, logout } = useAuth();
 
   return (
     <header className="h-16 bg-card border-b border-border flex items-center justify-between px-6 sticky top-0 z-50">
@@ -12,10 +12,10 @@ const Header = () => {
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-bold text-primary uppercase leading-tight">
-            {principalData?.schoolName || "EDUINTELLECT"}
+            {userData?.schoolName || "EDUINTELLECT"}
           </span>
           <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">
-            {principalData?.branch || "Principal Portal"}
+            {userData?.branch || "Portal"}
           </span>
         </div>
       </div>
@@ -28,14 +28,14 @@ const Header = () => {
         <div className="flex items-center gap-3">
           <div className="flex flex-col items-end hidden sm:flex">
             <span className="text-sm font-bold text-foreground leading-none">
-              {principalData?.name || user?.displayName || "Principal"}
+              {userData?.name || user?.displayName || "User"}
             </span>
             <span className="text-[10px] font-medium text-muted-foreground uppercase">
-              Administrator
+              {userData?.role || "Administrator"}
             </span>
           </div>
           <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-semibold shadow-md">
-            {principalData?.avatar || user?.displayName?.substring(0, 2).toUpperCase() || "P"}
+            {userData?.avatar || user?.displayName?.substring(0, 2).toUpperCase() || "U"}
           </div>
           <button 
             onClick={logout}

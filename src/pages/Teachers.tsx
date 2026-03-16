@@ -22,7 +22,7 @@ import { Loader2 } from "lucide-react";
 const teachersData: any[] = [];
 
 const Teachers = () => {
-  const { principalData } = useAuth();
+  const { userData } = useAuth();
   const [selectedTeacher, setSelectedTeacher] = useState<typeof teachersData[0] | null>(null);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -44,24 +44,24 @@ const Teachers = () => {
       // 1. Save to Firestore Whitelist for Teachers
       await addDoc(collection(db, "teachers"), {
         ...inviteForm,
-        schoolId: principalData?.schoolId,
-        schoolName: principalData?.schoolName,
-        branch: principalData?.branch,
+        schoolId: userData?.schoolId,
+        schoolName: userData?.schoolName,
+        branch: userData?.branch,
         status: 'Invited',
         role: 'teacher',
         createdAt: serverTimestamp()
       });
 
       // 2. Send Email via Resend
-      const dashboardUrl = window.location.origin; // Or the specific teacher dashboard URL if separate
+      const dashboardUrl = "https://teacher-dashboard-ochre.vercel.app";
       await sendEmail({
         to: inviteForm.email,
-        subject: `Invitation to join ${principalData?.schoolName} as a Teacher`,
+        subject: `Invitation to join ${userData?.schoolName} as a Teacher`,
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; rounded: 12px;">
             <h2 style="color: #1e3a8a;">Welcome to EduIntellect</h2>
             <p>Hello <strong>${inviteForm.name}</strong>,</p>
-            <p>You have been invited by the Principal of <strong>${principalData?.schoolName} (${principalData?.branch})</strong> to join as a Teacher.</p>
+            <p>You have been invited by the Principal of <strong>${userData?.schoolName} (${userData?.branch})</strong> to join as a Teacher.</p>
             <p>Please use the link below to access your dashboard using your Google account (${inviteForm.email}):</p>
             <div style="margin: 30px 0;">
               <a href="${dashboardUrl}" style="background-color: #1e3a8a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Access Teacher Dashboard</a>
@@ -125,7 +125,7 @@ const Teachers = () => {
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-[#1e294b]">Invite Teacher</DialogTitle>
             <DialogDescription className="text-slate-500 font-medium">
-              Send an invitation to join {principalData?.schoolName}. They will login using Google.
+              Send an invitation to join {userData?.schoolName}. They will login using Google.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleInvite} className="space-y-4 pt-4">

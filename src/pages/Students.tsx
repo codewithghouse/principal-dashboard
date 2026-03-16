@@ -28,7 +28,7 @@ const statusColor = (s: string) => {
 };
 
 const Students = () => {
-  const { principalData } = useAuth();
+  const { userData } = useAuth();
   const [selectedStudent, setSelectedStudent] = useState<typeof studentsData[0] | null>(null);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -51,24 +51,24 @@ const Students = () => {
       // 1. Save to Firestore Whitelist for Students
       await addDoc(collection(db, "students"), {
         ...inviteForm,
-        schoolId: principalData?.schoolId,
-        schoolName: principalData?.schoolName,
-        branch: principalData?.branch,
+        schoolId: userData?.schoolId,
+        schoolName: userData?.schoolName,
+        branch: userData?.branch,
         status: 'Invited',
         role: 'student',
         createdAt: serverTimestamp()
       });
 
       // 2. Send Email via Resend
-      const dashboardUrl = window.location.origin; // Or student dashboard if separate
+      const dashboardUrl = "https://parent-dashboard-ten.vercel.app";
       await sendEmail({
         to: inviteForm.email,
-        subject: `Welcome to ${principalData?.schoolName} - Student Invitation`,
+        subject: `Welcome to ${userData?.schoolName} - Student Invitation`,
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
             <h2 style="color: #1e3a8a;">Welcome to EduIntellect</h2>
             <p>Hello <strong>${inviteForm.name}</strong>,</p>
-            <p>You have been enrolled as a student at <strong>${principalData?.schoolName} (${principalData?.branch})</strong>.</p>
+            <p>You have been enrolled as a student at <strong>${userData?.schoolName} (${userData?.branch})</strong>.</p>
             <p>Please use your Google account (${inviteForm.email}) to access your student portal and view your classes, attendance, and grades.</p>
             <div style="margin: 30px 0;">
               <a href="${dashboardUrl}" style="background-color: #1e3a8a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Access Student Portal</a>
