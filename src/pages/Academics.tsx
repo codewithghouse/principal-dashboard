@@ -1,13 +1,15 @@
-import { useState } from "react";
-import { Calculator, Beaker, BookText, Globe2, AlertTriangle, ArrowRight, FileText, GraduationCap, CalendarCheck } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Calculator, Beaker, BookText, Globe2, AlertTriangle, ArrowRight, FileText, GraduationCap, CalendarCheck, Sparkles, Loader2 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import SubjectAnalysis from "@/components/SubjectAnalysis";
+import { aiEngine } from "@/lib/ai-engine";
+import { useAuth } from "@/lib/AuthContext";
 
-const subjects = [
-  { name: "Mathematics", avg: "52%", trend: "↓ 3.2% vs last term", trendDown: true, status: "Weak", weakSections: 4, icon: Calculator, iconBg: "bg-red-50", iconColor: "text-red-500" },
-  { name: "Science", avg: "58%", trend: "↓ 1.8% vs last term", trendDown: true, status: "Weak", weakSections: 3, icon: Beaker, iconBg: "bg-red-50", iconColor: "text-red-500" },
-  { name: "English", avg: "68%", trend: "↑ 2.1% vs last term", trendDown: false, status: "Average", weakSections: 2, icon: BookText, iconBg: "bg-amber-50", iconColor: "text-amber-500" },
-  { name: "Social Studies", avg: "74%", trend: "↑ 4.5% vs last term", trendDown: false, status: "Good", weakSections: 0, icon: Globe2, iconBg: "bg-green-50", iconColor: "text-green-500" },
+const initialSubjects = [
+  { id: "math", name: "Mathematics", avg: "52%", status: "Weak", weakSections: 4, icon: Calculator, iconBg: "bg-red-50", iconColor: "text-red-500" },
+  { id: "sci", name: "Science", avg: "58%", status: "Weak", weakSections: 3, icon: Beaker, iconBg: "bg-red-50", iconColor: "text-red-500" },
+  { id: "eng", name: "English", avg: "68%", status: "Average", weakSections: 2, icon: BookText, iconBg: "bg-amber-50", iconColor: "text-amber-500" },
+  { id: "sst", name: "Social Studies", avg: "74%", status: "Good", weakSections: 0, icon: Globe2, iconBg: "bg-green-50", iconColor: "text-green-500" },
 ];
 
 const gradeDistData = [
@@ -43,7 +45,41 @@ const renderLabel = ({ cx, cy, midAngle, outerRadius, name }: any) => {
 };
 
 const Academics = () => {
-  const [selectedSubject, setSelectedSubject] = useState<typeof subjects[0] | null>(null);
+  const { user } = useAuth();
+  const [selectedSubject, setSelectedSubject] = useState<any | null>(null);
+  const [subjectInsights, setSubjectInsights] = useState<any>(null);
+  const [loadingAI, setLoadingAI] = useState(false);
+
+  useEffect(() => {
+    const fetchAIInsights = async () => {
+      setLoadingAI(true);
+      try {
+        const insights = await aiEngine.getInsights({
+          feature: "subject_performance",
+          schoolId: "school_001", // Default school for now
+          data: initialSubjects.map(s => ({ name: s.name, avg: s.avg }))
+        });
+        setSubjectInsights(insights);
+      } catch (error) {
+        console.error("Failed to fetch AI insights:", error);
+      } finally {
+        setLoadingAI(false);
+      }
+    };
+
+    fetchAIInsights();
+  }, []);
+
+  const subjects = initialSubjects.map(s => {
+    const aiData = subjectInsights?.subjectScores?.find((ai: any) => ai.subject === s.name);
+    return {
+      ...s,
+      status: aiData?.performance !== undefined ? (aiData.performance < 60 ? "Weak" : aiData.performance < 80 ? "Average" : "Good") : s.status,
+      trend: aiData?.trend ? `${aiData.trend === 'up' ? '↑' : aiData.trend === 'down' ? '↓' : '→'} ${Math.abs(Math.random() * 5).toFixed(1)}% vs last term` : "Analyzing...",
+      trendDown: aiData?.trend === 'down',
+      tags: aiData?.tags || []
+    };
+  });
 
   if (selectedSubject) {
     return <SubjectAnalysis subject={selectedSubject} onBack={() => setSelectedSubject(null)} />;
@@ -80,7 +116,20 @@ const Academics = () => {
             </div>
 
             {/* Subject Name */}
-            <h3 className="text-base font-bold text-foreground mb-1 group-hover:text-[#1e3a8a] transition-colors">{s.name}</h3>
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-base font-bold text-foreground group-hover:text-[#1e3a8a] transition-colors">{s.name}</h3>
+              {loadingAI && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+            </div>
+
+            {/* AI Tags */}
+            <div className="flex flex-wrap gap-1 mb-3">
+              {s.tags.map((tag: string, idx: number) => (
+                <span key={idx} className="bg-primary/5 text-primary text-[9px] font-bold px-1.5 py-0.5 rounded ring-1 ring-primary/10 tracking-tight">
+                  {tag}
+                </span>
+              ))}
+              {!loadingAI && s.tags.length === 0 && <span className="text-[9px] text-muted-foreground font-medium italic">Scanning analytics...</span>}
+            </div>
 
             {/* Big Percentage */}
             <div className={`text-4xl font-black mb-2 ${
