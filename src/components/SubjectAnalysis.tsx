@@ -1,6 +1,10 @@
-import React from 'react';
-import { ChevronLeft, Download, Lightbulb, TrendingUp, TrendingDown } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { ChevronLeft, Download, Lightbulb, TrendingUp, TrendingDown, Loader2, User } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { db } from "@/lib/firebase";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { useAuth } from "@/lib/AuthContext";
+import { aiEngine } from "@/lib/ai-engine";
 
 interface SubjectAnalysisProps {
   subject: {
@@ -14,28 +18,105 @@ interface SubjectAnalysisProps {
 }
 
 const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
-  const sectionsPerformance = [
-    { section: "10B", value: 68, color: "#22c55e" },
-    { section: "10A", value: 72, color: "#22c55e" },
-    { section: "8B", value: 62, color: "#f59e0b" },
-    { section: "8A", value: 58, color: "#f59e0b" },
-    { section: "9C", value: 55, color: "#f59e0b" },
-    { section: "9B", value: 48, color: "#ef4444" },
-    { section: "9A", value: 42, color: "#ef4444" },
-  ];
+  const { userData } = useAuth();
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [loadingTeachers, setLoadingTeachers] = useState(true);
 
-  const marksDistData = [
-    { range: '0-20', students: 35, color: '#ef4444' },
-    { range: '21-40', students: 110, color: '#ef4444' },
-    { range: '41-60', students: 300, color: '#f59e0b' },
-    { range: '61-80', students: 270, color: '#1e3a8a' },
-    { range: '81-100', students: 45, color: '#22c55e' },
-  ];
+  useEffect(() => {
+    const schoolId = userData?.schoolId || userData?.id;
+    if (!schoolId) return;
 
-  const teachers = [
-    { name: "Mrs. Kavita", grades: "Grades 8-10", avg: "58%", avgColor: "#ef4444", initials: "MK", avatarBg: "#1e3a8a" },
-    { name: "Mr. Verma", grades: "Grades 6-7", avg: "68%", avgColor: "#f59e0b", initials: "RV", avatarBg: "#22c55e" },
-  ];
+    // Fetch teachers for this school who teach this subject (or all teachers)
+    const q = query(
+      collection(db, "teachers"),
+      where("schoolId", "==", schoolId)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const colors = ["#1e3a8a", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
+      const data = snapshot.docs.map((doc, idx) => {
+        const t = doc.data();
+        const performance = Math.floor(Math.random() * (95 - 65 + 1)) + 65; // Simulated for now
+        
+        return {
+          id: doc.id,
+          name: t.name || "Unknown Teacher",
+          grades: t.classes || "N/A",
+          avg: `${performance}%`,
+          avgColor: performance < 70 ? "#ef4444" : performance < 85 ? "#f59e0b" : "#22c55e",
+          initials: t.name ? t.name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : "T",
+          avatarBg: colors[idx % colors.length]
+        };
+      });
+      setTeachers(data);
+      setLoadingTeachers(false);
+    }, (error) => {
+      console.error("Error fetching teachers:", error);
+      setLoadingTeachers(false);
+    });
+
+    return () => unsubscribe();
+  }, [userData?.schoolId, userData?.id]);
+
+  const [marksDistData, setMarksDistData] = useState<any[]>([]);
+  const [loadingChart, setLoadingChart] = useState(true);
+
+  useEffect(() => {
+    const fetchChartData = async () => {
+      const schoolId = userData?.schoolId || userData?.id;
+      if (!schoolId) return;
+
+      console.info(`%c 📊 [UI] Fetching Marks Distribution for: ${subject.name} `, 'color: #8b5cf6; font-weight: bold;');
+      setLoadingChart(true);
+      try {
+        const result = await aiEngine.getInsights({
+          feature: "marks_distribution",
+          schoolId: `${schoolId}_${subject.name.toLowerCase()}`,
+          data: { subject: subject.name, avg: subject.avg }
+        });
+        
+        if (result && result.distribution) {
+          setMarksDistData(result.distribution);
+        }
+      } catch (error) {
+        console.error("Error fetching chart data:", error);
+      } finally {
+        setLoadingChart(false);
+      }
+    };
+
+    fetchChartData();
+  }, [subject.name, userData?.schoolId, userData?.id]);
+
+  const [sectionsPerformance, setSectionsPerformance] = useState<any[]>([]);
+  const [loadingSections, setLoadingSections] = useState(true);
+
+  useEffect(() => {
+    const fetchSectionsData = async () => {
+      const schoolId = userData?.schoolId || userData?.id;
+      if (!schoolId) return;
+
+      console.info(`%c 📈 [UI] Fetching Section Performance for: ${subject.name} `, 'color: #3b82f6; font-weight: bold;');
+      setLoadingSections(true);
+      try {
+        const result = await aiEngine.getInsights({
+          feature: "section_performance",
+          schoolId: `${schoolId}_sections_${subject.name.toLowerCase()}`,
+          data: { subject: subject.name, avg: subject.avg }
+        });
+        
+        if (result && result.sections) {
+          setSectionsPerformance(result.sections);
+        }
+      } catch (error) {
+        console.error("Error fetching sections data:", error);
+      } finally {
+        setLoadingSections(false);
+      }
+    };
+
+    fetchSectionsData();
+  }, [subject.name, userData?.schoolId, userData?.id]);
 
   const CustomBarTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -86,51 +167,60 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Section-wise Performance - Horizontal Bar Chart (recharts) */}
         <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
-          <h3 className="text-base font-bold text-foreground mb-2">Section-wise Performance</h3>
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart
-              data={sectionsPerformance}
-              layout="vertical"
-              margin={{ top: 5, right: 40, left: 5, bottom: 5 }}
-              barCategoryGap="22%"
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-              <XAxis
-                type="number"
-                domain={[0, 100]}
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 11, fontWeight: 700, fill: '#94a3b8' }}
-                tickFormatter={(v) => `${v}%`}
-              />
-              <YAxis
-                type="category"
-                dataKey="section"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 12, fontWeight: 700, fill: '#64748b' }}
-                width={35}
-              />
-              <Tooltip
-                content={({ active, payload }: any) => {
-                  if (active && payload && payload.length) {
-                    return (
-                      <div className="bg-[#1e293b] text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg">
-                        {payload[0].payload.section}: {payload[0].value}%
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-                cursor={{ fill: 'rgba(0,0,0,0.02)' }}
-              />
-              <Bar dataKey="value" radius={[0, 6, 6, 0]} animationDuration={1200} barSize={22}>
-                {sectionsPerformance.map((entry, index) => (
-                  <Cell key={`section-bar-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-bold text-foreground">Section-wise Performance</h3>
+            {loadingSections && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+          </div>
+          {loadingSections ? (
+            <div className="h-[320px] flex items-center justify-center bg-secondary/10 rounded-xl border border-dashed border-border">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Analyzing Sections...</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart
+                data={sectionsPerformance}
+                layout="vertical"
+                margin={{ top: 5, right: 40, left: 5, bottom: 5 }}
+                barCategoryGap="22%"
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                <XAxis
+                  type="number"
+                  domain={[0, 100]}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 11, fontWeight: 700, fill: '#94a3b8' }}
+                  tickFormatter={(v) => `${v}%`}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="section"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fontWeight: 700, fill: '#64748b' }}
+                  width={35}
+                />
+                <Tooltip
+                  content={({ active, payload }: any) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="bg-[#1e293b] text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg">
+                          {payload[0].payload.section}: {payload[0].value}%
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                  cursor={{ fill: 'rgba(0,0,0,0.02)' }}
+                />
+                <Bar dataKey="value" radius={[0, 6, 6, 0]} animationDuration={1200} barSize={22}>
+                  {sectionsPerformance.map((entry, index) => (
+                    <Cell key={`section-bar-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Performance Insights */}
@@ -180,52 +270,73 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Student Marks Distribution - Bar Chart */}
         <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
-          <h3 className="text-base font-bold text-foreground mb-4">Student Marks Distribution</h3>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={marksDistData} barCategoryGap="20%">
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-              <XAxis
-                dataKey="range"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 11, fontWeight: 700, fill: '#94a3b8' }}
-              />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
-              />
-              <Tooltip content={<CustomBarTooltip />} cursor={{ fill: 'rgba(0,0,0,0.02)' }} />
-              <Bar dataKey="students" radius={[4, 4, 0, 0]} animationDuration={1200}>
-                {marksDistData.map((entry, index) => (
-                  <Cell key={`bar-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-bold text-foreground">Student Marks Distribution</h3>
+            {loadingChart && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+          </div>
+          {loadingChart ? (
+            <div className="h-[260px] flex items-center justify-center bg-secondary/10 rounded-xl border border-dashed border-border">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Generating Distribution...</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={marksDistData} barCategoryGap="20%">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis
+                  dataKey="range"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 11, fontWeight: 700, fill: '#94a3b8' }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
+                />
+                <Tooltip content={<CustomBarTooltip />} cursor={{ fill: 'rgba(0,0,0,0.02)' }} />
+                <Bar dataKey="students" radius={[4, 4, 0, 0]} animationDuration={1200}>
+                  {marksDistData.map((entry, index) => (
+                    <Cell key={`bar-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Teacher Effectiveness */}
         <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
           <h3 className="text-base font-bold text-foreground mb-6">Teacher Effectiveness</h3>
           <div className="space-y-4">
-            {teachers.map((t, i) => (
-              <div key={i} className="flex items-center justify-between p-5 border border-border rounded-xl hover:shadow-sm transition-all cursor-pointer bg-secondary/20">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md" style={{ backgroundColor: t.avatarBg }}>
-                    {t.initials}
-                  </div>
-                  <div>
-                    <p className="font-bold text-foreground text-sm">{t.name}</p>
-                    <p className="text-xs text-muted-foreground font-medium">{t.grades}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-black" style={{ color: t.avgColor }}>{t.avg}</p>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">avg</p>
-                </div>
+            {loadingTeachers ? (
+              <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+                <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                <p className="text-xs font-bold uppercase tracking-widest">Loading staff data...</p>
               </div>
-            ))}
+            ) : teachers.length > 0 ? (
+              teachers.map((t, i) => (
+                <div key={t.id || i} className="flex items-center justify-between p-5 border border-border rounded-xl hover:shadow-sm transition-all cursor-pointer bg-secondary/20">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md" style={{ backgroundColor: t.avatarBg }}>
+                      {t.initials}
+                    </div>
+                    <div>
+                      <p className="font-bold text-foreground text-sm">{t.name}</p>
+                      <p className="text-xs text-muted-foreground font-medium">{t.grades}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-black" style={{ color: t.avgColor }}>{t.avg}</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">avg</p>
+                  </div>
+                </div>
+              ))
+            ) : (
+                <div className="flex flex-col items-center justify-center py-10 text-muted-foreground bg-muted/20 rounded-xl border border-dashed border-border">
+                  <User className="w-8 h-8 mb-2 opacity-20" />
+                  <p className="text-xs font-bold uppercase tracking-widest">No teachers found</p>
+                </div>
+            )}
           </div>
         </div>
       </div>
