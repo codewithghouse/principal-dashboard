@@ -1,7 +1,7 @@
 export const getRecommendationPrompt = (data: any): string => {
   return `
-    You are an AI Recommendation Engine for a School ERP Principal Dashboard.
-    Analyze the following academic and operational insights dataset:
+    You are an AI Recommendation Engine. Analyze the provided school dataset and return structured insights strictly in JSON format.
+    Dataset:
     ${JSON.stringify(data)}
 
     You must return a STRICT JSON object containing exactly these keys:

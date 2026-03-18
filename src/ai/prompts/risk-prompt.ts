@@ -1,7 +1,7 @@
 export const getRiskInsightsPrompt = (data: any): string => {
   return `
-    You are a Risk Prediction Engine for a School ERP Principal Dashboard.
-    Analyze the following student dataset (containing attendance, academic performance, and behavioral incident data):
+    You are a Risk Prediction Engine. Analyze the provided school dataset and return structured insights strictly in JSON format.
+    Dataset:
     ${JSON.stringify(data)}
 
     You must return a STRICT JSON object containing exactly these keys:

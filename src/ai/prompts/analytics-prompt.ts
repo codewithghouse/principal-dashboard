@@ -1,7 +1,7 @@
 export const getAcademicAnalyticsPrompt = (data: any): string => {
   return `
-    You are an Academic Analytics Engine for a School ERP Principal Dashboard.
-    Analyze the following academic performance dataset:
+    You are an academic analytics AI system. Analyze the provided school dataset and return structured insights strictly in JSON format.
+    Dataset:
     ${JSON.stringify(data)}
 
     You must return a STRICT JSON object containing exactly these keys:

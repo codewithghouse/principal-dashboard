@@ -16,7 +16,12 @@ export async function generateRecommendations(data: any): Promise<any> {
     },
     body: JSON.stringify({
       model: "gpt-4.1-mini", 
-      input: prompt
+      input: prompt,
+      text: {
+        format: {
+          type: "json_object"
+        }
+      }
     })
   });
 
@@ -25,7 +30,7 @@ export async function generateRecommendations(data: any): Promise<any> {
   }
 
   const result = await response.json();
-  let outputText = result.output || "{}";
+  let outputText = result.output || result.text || "{}";
   
   // Strip code block markings if present
   outputText = outputText.replace(/```json/g, "").replace(/```/g, "").trim();

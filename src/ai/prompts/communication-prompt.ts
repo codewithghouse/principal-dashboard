@@ -1,7 +1,7 @@
 export const getCommunicationPrompt = (data: any): string => {
   return `
-    You are a Communication Intelligence Engine for a School ERP Principal Dashboard.
-    Analyze the following communication messages dataset:
+    You are a Communication Intelligence Engine. Analyze the provided school dataset and return structured insights strictly in JSON format.
+    Dataset:
     ${JSON.stringify(data)}
 
     You must return a STRICT JSON object containing exactly these keys:
