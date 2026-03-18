@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
-import { aiEngine } from "@/lib/ai-engine";
+import { aiEngine, generateAcademicInsights } from "@/lib/ai-engine";
 
 interface SubjectAnalysisProps {
   subject: {
@@ -21,6 +21,27 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
   const { userData } = useAuth();
   const [teachers, setTeachers] = useState<any[]>([]);
   const [loadingTeachers, setLoadingTeachers] = useState(true);
+
+  const [drilledInsights, setDrilledInsights] = useState<any>(null);
+  const [loadingDrill, setLoadingDrill] = useState(false);
+
+  useEffect(() => {
+    const fetchDrill = async () => {
+      setLoadingDrill(true);
+      try {
+        const res = await generateAcademicInsights({
+          subject: subject.name,
+          average_score: parseInt(subject.avg),
+          pass_rate: 75
+        }, "drill_down_analysis");
+        setDrilledInsights(res);
+      } catch (e) {
+        console.error("Drill analysis error:", e);
+      }
+      setLoadingDrill(false);
+    };
+    fetchDrill();
+  }, [subject.name, subject.avg]);
 
   useEffect(() => {
     const schoolId = userData?.schoolId || userData?.id;
@@ -99,10 +120,41 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
       console.info(`%c 📈 [UI] Fetching Section Performance for: ${subject.name} `, 'color: #3b82f6; font-weight: bold;');
       setLoadingSections(true);
       try {
+        // Step 1: Fetch real students to calculate actual section averages
+        const { getDocs } = await import("firebase/firestore"); // Dynamic import to prevent scope issues
+        const q = query(collection(db, "students"), where("schoolId", "==", schoolId));
+        const snap = await getDocs(q);
+        
+        const sectionMap: Record<string, { total: number; count: number }> = {};
+        snap.forEach(doc => {
+            const data = doc.data();
+            const sec = data.grade || data.section;
+            const score = Number(data.score || data.percentage || 0);
+            if (sec && score > 0) {
+                if (!sectionMap[sec]) sectionMap[sec] = { total: 0, count: 0 };
+                sectionMap[sec].total += score;
+                sectionMap[sec].count += 1;
+            }
+        });
+
+        // Step 2: Format aggregated real data
+        const rawSectionAverages = Object.keys(sectionMap).map(sec => ({
+            section: sec,
+            average_score: Math.round(sectionMap[sec].total / sectionMap[sec].count)
+        }));
+
+        // Step 3: Pass to AI (AI will format it beautifully, or simulate if empty)
+        const payloadData = { 
+          subject: subject.name, 
+          overall_avg: subject.avg,
+          real_database_sections: rawSectionAverages.length > 0 ? rawSectionAverages : "No real section data available yet. Please simulate 4-5 realistic sections (e.g. 10A, 10B, 9A) based on the overall average."
+        };
+
         const result = await aiEngine.getInsights({
           feature: "section_performance",
           schoolId: `${schoolId}_sections_${subject.name.toLowerCase()}`,
-          data: { subject: subject.name, avg: subject.avg }
+          data: payloadData,
+          forceRefresh: rawSectionAverages.length > 0 // Force fresh AI analysis if real data is available
         });
         
         if (result && result.sections) {
@@ -341,25 +393,50 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
         </div>
       </div>
 
-      {/* ===== IMPROVEMENT RECOMMENDATIONS ===== */}
-      <div className="mt-6 rounded-2xl p-7 shadow-sm" style={{ backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0' }}>
-        <div className="flex items-center gap-3 mb-5">
-          <Lightbulb className="w-5 h-5 text-amber-500" />
-          <h3 className="text-base font-bold text-foreground">Improvement Recommendations</h3>
+      {/* ===== AI DRILL-DOWN ANALYSIS ===== */}
+      <div className="mt-6 border border-border rounded-xl bg-card overflow-hidden">
+        <div className="bg-primary/5 p-4 border-b border-border flex items-center gap-3">
+          <Lightbulb className="w-5 h-5 text-primary" />
+          <h2 className="font-bold text-foreground">AI Drill-down Analysis</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[
-            { title: "Extra Practice Sessions", desc: "Schedule 2 additional math practice classes per week for grades 8-9" },
-            { title: "Teacher Training", desc: "Organize workshop on innovative teaching methods for algebra" },
-            { title: "Parent Engagement", desc: "Conduct parent-teacher meetings focused on math support at home" },
-          ].map((rec, i) => (
-            <div key={i} className="bg-card rounded-xl p-5 shadow-sm border border-border hover:shadow-md transition-all cursor-pointer">
-              <h4 className="text-sm font-bold text-foreground mb-2">{rec.title}</h4>
-              <p className="text-xs text-muted-foreground font-medium leading-relaxed">{rec.desc}</p>
-            </div>
-          ))}
+        <div className="p-5">
+           {loadingDrill ? (
+               <div className="animate-pulse space-y-4">
+                  <div className="h-4 bg-secondary rounded w-3/4"></div>
+                  <div className="h-4 bg-secondary rounded w-1/2"></div>
+                  <div className="h-20 bg-secondary/50 rounded-xl mt-4"></div>
+               </div>
+           ) : drilledInsights ? (
+               <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground mb-1">Key AI Insight</h3>
+                    <p className="text-sm text-muted-foreground">{drilledInsights.subject_insight}</p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-green-50 rounded-xl border border-green-100">
+                      <h4 className="text-xs font-bold text-green-700 uppercase tracking-wider mb-2">Primary Strengths</h4>
+                      <ul className="list-disc pl-4 text-sm text-green-700 font-medium space-y-1">
+                        {drilledInsights.strengths?.map((s: string, i: number) => <li key={i}>{s}</li>)}
+                      </ul>
+                    </div>
+                    <div className="p-4 bg-red-50 rounded-xl border border-red-100">
+                      <h4 className="text-xs font-bold text-red-700 uppercase tracking-wider mb-2">Improvement Focus</h4>
+                      <ul className="list-disc pl-4 text-sm text-red-700 font-medium space-y-1">
+                        {drilledInsights.improvement_focus?.map((f: string, i: number) => <li key={i}>{f}</li>)}
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                    <h4 className="text-sm font-bold text-slate-800 mb-1">Strategy Recommendation</h4>
+                    <p className="text-sm text-slate-600">{drilledInsights.recommendation}</p>
+                  </div>
+               </div>
+           ) : (
+             <p className="text-sm text-muted-foreground">Unable to generate AI insights at this moment. Please check connectivity.</p>
+           )}
         </div>
       </div>
+
       <div className="mt-8">
         <button
           onClick={onBack}

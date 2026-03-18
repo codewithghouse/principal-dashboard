@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { BarChart2, CalendarCheck, Star, Users, Search, List, Plus } from "lucide-react";
 import StatCard from "@/components/dashboard/StatCard";
 import TeacherProfile from "@/components/TeacherProfile";
+import Recommendations from "@/components/Recommendations";
 import { 
   Dialog, 
   DialogContent, 
@@ -183,7 +184,10 @@ const Teachers = () => {
         <StatCard title="Active Teachers" value="42/45" subtitle="3 on leave" subtitleColor="destructive" icon={Users} iconColor="text-primary" />
       </div>
 
-      <div className="flex items-center justify-between">
+      {/* AI Recommendation Intelligence Panel */}
+      <Recommendations />
+
+      <div className="flex items-center justify-between mt-8">
         <div className="relative max-w-xs flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Search teachers..." />

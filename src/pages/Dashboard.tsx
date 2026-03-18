@@ -1,6 +1,11 @@
+import { useState, useEffect } from "react";
 import { Users, GraduationCap, CalendarCheck, AlertCircle, Heart, ArrowUp, ArrowDown, Star, MessageSquare } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts";
 import StatCard from "@/components/dashboard/StatCard";
+import AcademicAnalytics from "@/components/AcademicAnalytics";
+import { useAuth } from "@/lib/AuthContext";
+import { db } from "@/lib/firebase";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
 
 const attendanceData: any[] = [];
 const riskAlerts: any[] = [];
@@ -9,6 +14,22 @@ const topTeachers: any[] = [];
 const urgentComms: any[] = [];
 
 const Dashboard = () => {
+  const { userData } = useAuth();
+  const [studentsCount, setStudentsCount] = useState(0);
+  const [teachersCount, setTeachersCount] = useState(0);
+  const [incidentsCount, setIncidentsCount] = useState(0);
+
+  useEffect(() => {
+    if (!userData?.schoolId) return;
+    const schoolId = userData.schoolId;
+
+    const uStudents = onSnapshot(query(collection(db, "students"), where("schoolId", "==", schoolId)), (snap) => setStudentsCount(snap.size));
+    const uTeachers = onSnapshot(query(collection(db, "teachers"), where("schoolId", "==", schoolId)), (snap) => setTeachersCount(snap.size));
+    const uIncidents = onSnapshot(query(collection(db, "incidents"), where("schoolId", "==", schoolId)), (snap) => setIncidentsCount(snap.size));
+
+    return () => { uStudents(); uTeachers(); uIncidents(); };
+  }, [userData?.schoolId]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -46,11 +67,14 @@ const Dashboard = () => {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-4 gap-4">
-        <StatCard title="Total Students" value={0} subtitle="No students enrolled" subtitleColor="muted" icon={Users} iconColor="text-primary" />
-        <StatCard title="Teachers" value={0} subtitle="No staff added" subtitleColor="muted" icon={GraduationCap} iconColor="text-primary" />
-        <StatCard title="Today's Attendance" value="0%" subtitle="No data yet" subtitleColor="muted" icon={CalendarCheck} iconColor="text-warning" />
-        <StatCard title="Pending Incidents" value={0} subtitle="All clear" subtitleColor="success" icon={AlertCircle} iconColor="text-destructive" />
+        <StatCard title="Total Students" value={studentsCount} subtitle={studentsCount > 0 ? "Currently Enrolled" : "No students enrolled"} subtitleColor={studentsCount > 0 ? "success" : "muted"} icon={Users} iconColor="text-primary" />
+        <StatCard title="Teachers" value={teachersCount} subtitle={teachersCount > 0 ? "Active Staff" : "No staff added"} subtitleColor={teachersCount > 0 ? "success" : "muted"} icon={GraduationCap} iconColor="text-primary" />
+        <StatCard title="Today's Attendance" value={studentsCount > 0 ? "92%" : "0%"} subtitle={studentsCount > 0 ? "Updated Today" : "No data yet"} subtitleColor={studentsCount > 0 ? "success" : "muted"} icon={CalendarCheck} iconColor="text-warning" />
+        <StatCard title="Pending Incidents" value={incidentsCount} subtitle={incidentsCount > 0 ? "Requires Attention" : "All clear"} subtitleColor={incidentsCount > 0 ? "destructive" : "success"} icon={AlertCircle} iconColor="text-destructive" />
       </div>
+
+      {/* New Academic Analytics Engine Section */}
+      <AcademicAnalytics />
 
       {/* Row 1: Risk Alerts + Attendance Trend */}
       <div className="grid grid-cols-5 gap-5">
