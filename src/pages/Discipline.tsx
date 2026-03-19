@@ -4,6 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { db } from "@/lib/firebase";
 import { collection, query, limit, getDocs } from "firebase/firestore";
 import IncidentDetail from "@/components/IncidentDetail";
+import DisciplineIntelligence from "@/components/DisciplineIntelligence";
 
 const pieData = [
   { name: "Behavioral", value: 55, color: "#f59e0b" },
@@ -299,6 +300,11 @@ const Discipline = () => {
           </div>
         </>
       )}
+
+      {/* AI Discipline Engine Layer (Features 19 & 21) */}
+      <div className="mt-8 mb-8">
+         <DisciplineIntelligence />
+      </div>
 
       {/* ===== ACTION BUTTONS ===== */}
       <div className="flex items-center gap-3">

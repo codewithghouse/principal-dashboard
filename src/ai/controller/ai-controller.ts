@@ -2,12 +2,14 @@ import { generateAcademicAnalytics } from "../engines/analytics-engine";
 import { generateRiskInsights } from "../engines/risk-engine";
 import { generateRecommendations } from "../engines/recommendation-engine";
 import { generateCommunicationInsights } from "../engines/communication-engine";
+import { generateDisciplineInsights } from "../engines/discipline-engine";
 
 // Memory caches
 const analyticsCache = new Map<string, any>();
 const riskCache = new Map<string, any>();
 const recommendationCache = new Map<string, any>();
 const communicationCache = new Map<string, any>();
+const disciplineCache = new Map<string, any>();
 
 // Standard response messages
 const NO_DATA_MSG = "AI insights will activate automatically once relevant data is available.";
@@ -86,6 +88,25 @@ export const AIController = {
       return { status: "success", data: insights };
     } catch (error) {
       console.error("[AI Controller] Communication error:", error);
+      return { status: "error", message: ERROR_MSG };
+    }
+  },
+
+  // 5. DISCIPLINE INTELLIGENCE ENGINE
+  async getDisciplineInsights(data: any): Promise<any> {
+    if (!data || Object.keys(data).length === 0 || (Array.isArray(data) && data.length === 0)) {
+      return { status: "no_data", message: "Discipline intelligence will activate automatically once incident logs are recorded." };
+    }
+    let cacheKey = JSON.stringify(data);
+    if (disciplineCache.has(cacheKey)) return { status: "success", data: disciplineCache.get(cacheKey) };
+    
+    try {
+      const insights = await generateDisciplineInsights(data);
+      if (!insights) throw new Error("Null response");
+      disciplineCache.set(cacheKey, insights);
+      return { status: "success", data: insights };
+    } catch (error) {
+      console.error("[AI Controller] Discipline error:", error);
       return { status: "error", message: ERROR_MSG };
     }
   }
