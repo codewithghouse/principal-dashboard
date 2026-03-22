@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider, 
   signOut,
   User
@@ -27,12 +29,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Handle redirect result first
+    const handleRedirect = async () => {
+      try {
+        await getRedirectResult(auth);
+      } catch (err: any) {
+        console.error("Redirect Error:", err);
+        setError(err.message);
+      }
+    };
+    handleRedirect();
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setLoading(true);
       if (currentUser && currentUser.email) {
         try {
+          const userEmail = currentUser.email.toLowerCase();
+          
           // 1. Try Principals Collection
-          const principalQ = query(collection(db, "principals"), where("email", "==", currentUser.email.toLowerCase()));
+          const principalQ = query(collection(db, "principals"), where("email", "==", userEmail));
           const principalSnap = await getDocs(principalQ);
 
           if (!principalSnap.empty) {
@@ -56,7 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           // 2. Try Teachers Collection
-          const teacherQ = query(collection(db, "teachers"), where("email", "==", currentUser.email.toLowerCase()));
+          const teacherQ = query(collection(db, "teachers"), where("email", "==", userEmail));
           const teacherSnap = await getDocs(teacherQ);
 
           if (!teacherSnap.empty) {
@@ -68,7 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           // 3. Try Students Collection
-          const studentQ = query(collection(db, "students"), where("email", "==", currentUser.email.toLowerCase()));
+          const studentQ = query(collection(db, "students"), where("email", "==", userEmail));
           const studentSnap = await getDocs(studentQ);
 
           if (!studentSnap.empty) {
@@ -101,9 +116,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' }); // Enforce account selector
     try {
       setError(null);
-      await signInWithPopup(auth, provider);
+      // Using redirect for better mobile/in-app browser support
+      await signInWithRedirect(auth, provider);
     } catch (err: any) {
       setError(err.message);
       throw err;
