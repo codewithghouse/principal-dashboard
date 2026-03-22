@@ -7,7 +7,7 @@ import {
   User
 } from 'firebase/auth';
 import { auth, db } from './firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -36,7 +36,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const principalSnap = await getDocs(principalQ);
 
           if (!principalSnap.empty) {
-            setUserData({ ...principalSnap.docs[0].data(), role: 'principal' });
+            const principalDoc = principalSnap.docs[0];
+            const data = principalDoc.data();
+            
+            // If the principal is logging in for the first time or status is still invited
+            if (data.status !== 'Active') {
+              await updateDoc(doc(db, "principals", principalDoc.id), {
+                status: 'Active',
+                lastActive: new Date().toLocaleString(),
+                uid: currentUser.uid
+              });
+            }
+
+            setUserData({ ...data, id: principalDoc.id, role: 'principal' });
             setUser(currentUser);
             setError(null);
             setLoading(false);
