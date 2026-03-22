@@ -46,20 +46,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const userEmail = currentUser.email.toLowerCase();
           
-          // 1. Try Principals Collection
-          const principalQ = query(collection(db, "principals"), where("email", "==", userEmail));
-          const principalSnap = await getDocs(principalQ);
+          // 1. Try Principals Collection (Robust Multi-Case Query)
+          let principalQ = query(collection(db, "principals"), where("email", "==", userEmail));
+          let principalSnap = await getDocs(principalQ);
+          
+          // Fallback: If lowercase search failed, try exact search (for old mixed-case records)
+          if (principalSnap.empty) {
+            principalQ = query(collection(db, "principals"), where("email", "==", currentUser.email));
+            principalSnap = await getDocs(principalQ);
+          }
 
           if (!principalSnap.empty) {
             const principalDoc = principalSnap.docs[0];
             const data = principalDoc.data();
             
-            // If the principal is logging in for the first time or status is still invited
-            if (data.status !== 'Active') {
+            // Link UID and update status to Active
+            if (data.status !== 'Active' || !data.uid) {
               await updateDoc(doc(db, "principals", principalDoc.id), {
                 status: 'Active',
                 lastActive: new Date().toLocaleString(),
-                uid: currentUser.uid
+                uid: currentUser.uid,
+                email: userEmail // Normalize email to lowercase
               });
             }
 
@@ -71,11 +78,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           // 2. Try Teachers Collection
-          const teacherQ = query(collection(db, "teachers"), where("email", "==", userEmail));
-          const teacherSnap = await getDocs(teacherQ);
+          let teacherQ = query(collection(db, "teachers"), where("email", "==", userEmail));
+          let teacherSnap = await getDocs(teacherQ);
+          
+          if (teacherSnap.empty) {
+            teacherQ = query(collection(db, "teachers"), where("email", "==", currentUser.email));
+            teacherSnap = await getDocs(teacherQ);
+          }
 
           if (!teacherSnap.empty) {
-            setUserData({ ...teacherSnap.docs[0].data(), role: 'teacher' });
+            const data = teacherSnap.docs[0].data();
+            setUserData({ ...data, role: 'teacher' });
             setUser(currentUser);
             setError(null);
             setLoading(false);
@@ -83,26 +96,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           // 3. Try Students Collection
-          const studentQ = query(collection(db, "students"), where("email", "==", userEmail));
-          const studentSnap = await getDocs(studentQ);
+          let studentQ = query(collection(db, "students"), where("email", "==", userEmail));
+          let studentSnap = await getDocs(studentQ);
+
+          if (studentSnap.empty) {
+            studentQ = query(collection(db, "students"), where("email", "==", currentUser.email));
+            studentSnap = await getDocs(studentQ);
+          }
 
           if (!studentSnap.empty) {
-            setUserData({ ...studentSnap.docs[0].data(), role: 'student' });
+            const data = studentSnap.docs[0].data();
+            setUserData({ ...data, role: 'student' });
             setUser(currentUser);
             setError(null);
             setLoading(false);
             return;
           }
 
-          // If none of the above
+          // If no authorized record found
+          setError("You are not authorized. Contact school admin.");
           await signOut(auth);
           setUser(null);
           setUserData(null);
-          setError("You are not authorized to access this dashboard. Please contact your school administration.");
           
         } catch (err: any) {
           console.error("Auth Error:", err);
-          setError("An error occurred during verification.");
+          setError("Verification failed.");
         }
       } else {
         setUser(null);
