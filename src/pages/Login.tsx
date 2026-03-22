@@ -5,13 +5,16 @@ import { GraduationCap, ShieldCheck, Mail, AlertCircle, Loader2 } from "lucide-r
 import { toast } from "sonner";
 
 export default function LoginPage() {
-  const { loginWithGoogle, loading, error } = useAuth();
+  const { loginWithGoogle, error } = useAuth();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
+  // ONLY triggers the redirect — do NOT navigate manually here.
+  // App.tsx will automatically show Dashboard once auth resolves.
   const handleLogin = async () => {
     setIsLoggingIn(true);
     try {
       await loginWithGoogle();
+      // onAuthStateChanged handles everything after this
     } catch (err: any) {
       console.error(err);
       toast.error("Login failed. Please try again.");
@@ -55,7 +58,7 @@ export default function LoginPage() {
           <div className="space-y-4">
             <Button 
               onClick={handleLogin}
-              disabled={isLoggingIn || loading}
+              disabled={isLoggingIn}
               className="w-full h-14 rounded-2xl bg-white border-2 border-slate-100 text-[#1e294b] hover:bg-slate-50 hover:border-blue-200 transition-all duration-300 flex items-center justify-center gap-3 group relative overflow-hidden shadow-sm hover:shadow-md"
             >
               {isLoggingIn ? (

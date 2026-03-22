@@ -1,166 +1,127 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  signInWithRedirect,
-  getRedirectResult,
-  GoogleAuthProvider, 
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut,
-  User
+  User,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import { auth, db } from './firebase';
-import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface AuthContextType {
   user: User | null;
-  userData: any | null; // Renamed from principalData
+  userData: any | null;
   loading: boolean;
+  error: string | null;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
-  error: string | null;
 }
 
+// ─── Context ──────────────────────────────────────────────────────────────────
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// ─── Provider ─────────────────────────────────────────────────────────────────
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser]         = useState<User | null>(null);
   const [userData, setUserData] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading]   = useState(true);   // true until Firebase responds
+  const [error, setError]       = useState<string | null>(null);
 
   useEffect(() => {
-    // Handle redirect result first
-    const handleRedirect = async () => {
-      try {
-        await getRedirectResult(auth);
-      } catch (err: any) {
-        console.error("Redirect Error:", err);
-        setError(err.message);
-      }
-    };
-    handleRedirect();
+    // 1. Set persistence FIRST before listener starts
+    //    This ensures session is restored correctly on refresh
+    setPersistence(auth, browserLocalPersistence).then(() => {
+      console.log('✅ Firebase persistence set to LOCAL');
+    });
 
+    // 2. THE ONLY auth listener in the entire app
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setLoading(true);
-      if (currentUser && currentUser.email) {
+      if (currentUser?.email) {
         try {
-          const userEmail = currentUser.email.toLowerCase();
-          
-          // 1. Try Principals Collection (Robust Multi-Case Query)
-          let principalQ = query(collection(db, "principals"), where("email", "==", userEmail));
-          let principalSnap = await getDocs(principalQ);
-          
-          // Fallback: If lowercase search failed, try exact search (for old mixed-case records)
-          if (principalSnap.empty) {
-            principalQ = query(collection(db, "principals"), where("email", "==", currentUser.email));
-            principalSnap = await getDocs(principalQ);
-          }
+          const userEmail = currentUser.email.toLowerCase().trim();
 
-          if (!principalSnap.empty) {
-            const principalDoc = principalSnap.docs[0];
-            const data = principalDoc.data();
-            
-            // Link UID and update status to Active
+          // 3. Fetch principals whitelist and match in-memory
+          //    (Handles case-insensitive emails & avoids Firestore index errors)
+          const snap = await getDocs(collection(db, 'principals'));
+          const matched = snap.docs.find(
+            (d) => d.data().email?.toLowerCase().trim() === userEmail
+          );
+
+          if (matched) {
+            const data = matched.data();
+
+            // 4. One-time UID linking + status upgrade
             if (data.status !== 'Active' || !data.uid) {
-              await updateDoc(doc(db, "principals", principalDoc.id), {
-                status: 'Active',
-                lastActive: new Date().toLocaleString(),
+              await updateDoc(doc(db, 'principals', matched.id), {
                 uid: currentUser.uid,
-                email: userEmail // Normalize email to lowercase
+                status: 'Active',
+                email: userEmail,
+                lastActive: new Date().toLocaleString()
               });
             }
 
-            setUserData({ ...data, id: principalDoc.id, role: 'principal' });
             setUser(currentUser);
+            setUserData({ ...data, id: matched.id, role: 'principal' });
             setError(null);
-            setLoading(false);
-            return;
+          } else {
+            // User authenticated via Google but NOT in principals whitelist
+            setUser(currentUser);   // keep user so Login page doesn't flicker
+            setUserData(null);      // App.tsx will show Login with error
+            setError(`Access denied: ${userEmail} is not an invited principal.`);
           }
-
-          // 2. Try Teachers Collection
-          let teacherQ = query(collection(db, "teachers"), where("email", "==", userEmail));
-          let teacherSnap = await getDocs(teacherQ);
-          
-          if (teacherSnap.empty) {
-            teacherQ = query(collection(db, "teachers"), where("email", "==", currentUser.email));
-            teacherSnap = await getDocs(teacherQ);
-          }
-
-          if (!teacherSnap.empty) {
-            const data = teacherSnap.docs[0].data();
-            setUserData({ ...data, role: 'teacher' });
-            setUser(currentUser);
-            setError(null);
-            setLoading(false);
-            return;
-          }
-
-          // 3. Try Students Collection
-          let studentQ = query(collection(db, "students"), where("email", "==", userEmail));
-          let studentSnap = await getDocs(studentQ);
-
-          if (studentSnap.empty) {
-            studentQ = query(collection(db, "students"), where("email", "==", currentUser.email));
-            studentSnap = await getDocs(studentQ);
-          }
-
-          if (!studentSnap.empty) {
-            const data = studentSnap.docs[0].data();
-            setUserData({ ...data, role: 'student' });
-            setUser(currentUser);
-            setError(null);
-            setLoading(false);
-            return;
-          }
-
-          // If no authorized record found
-          setError("You are not authorized. Contact school admin.");
-          await signOut(auth);
+        } catch (err: any) {
+          console.error('Auth lookup error:', err);
+          setError('Could not verify your identity. Check network.');
           setUser(null);
           setUserData(null);
-          
-        } catch (err: any) {
-          console.error("Auth Error:", err);
-          setError("Verification failed.");
         }
       } else {
+        // Logged out
         setUser(null);
         setUserData(null);
+        setError(null);
       }
+
+      // 5. Always release the loading gate at the end
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
+  // ─── Actions ────────────────────────────────────────────────────────────────
   const loginWithGoogle = async () => {
+    setError(null);
+    setLoading(true);
     const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' }); // Enforce account selector
-    try {
-      setError(null);
-      // Using redirect for better mobile/in-app browser support
-      await signInWithRedirect(auth, provider);
-    } catch (err: any) {
-      setError(err.message);
-      throw err;
-    }
+    provider.setCustomParameters({ prompt: 'select_account' });
+    // signInWithPopup works on localhost AND production
+    // onAuthStateChanged fires automatically after popup resolves
+    await signInWithPopup(auth, provider);
+    // NOTE: Do NOT navigate here. App.tsx re-renders automatically via state.
   };
 
   const logout = async () => {
     await signOut(auth);
+    setUser(null);
+    setUserData(null);
+    setError(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, userData, loading, loginWithGoogle, logout, error }}>
+    <AuthContext.Provider value={{ user, userData, loading, error, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
+  return ctx;
 };
