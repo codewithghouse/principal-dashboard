@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { ShieldAlert, Clock, AlertTriangle, AlertCircle, Plus, LayoutGrid, FileText, Calendar, Pin, PinOff } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { db } from "@/lib/firebase";
-import { collection, query, limit, getDocs } from "firebase/firestore";
+import { collection, query, limit, getDocs, where } from "firebase/firestore";
+import { useAuth } from "@/lib/AuthContext";
 import IncidentDetail from "@/components/IncidentDetail";
 import DisciplineIntelligence from "@/components/DisciplineIntelligence";
 
@@ -35,6 +36,7 @@ const getSeverityBadge = (severity: string) => {
 };
 
 const Discipline = () => {
+  const { userData } = useAuth();
   const [selectedIncident, setSelectedIncident] = useState<any | null>(null);
   const [incidents, setIncidents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,9 +45,14 @@ const Discipline = () => {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
 
   useEffect(() => {
+    if (!userData?.schoolId) return;
+
     const fetchIncidents = async () => {
       try {
-        const q = query(collection(db, "incidents"), limit(50));
+        const constraints = [where("schoolId", "==", userData.schoolId)];
+        if (userData.branch) constraints.push(where("branch", "==", userData.branch));
+
+        const q = query(collection(db, "incidents"), ...constraints, limit(50));
         const snap = await getDocs(q);
         if (!snap.empty) {
           const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -57,7 +64,7 @@ const Discipline = () => {
       setLoading(false);
     };
     fetchIncidents();
-  }, []);
+  }, [userData?.schoolId]);
 
   const togglePin = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();

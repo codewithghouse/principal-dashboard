@@ -5,7 +5,7 @@ import {
   CheckCircle, Loader2, Plus, Sparkles, X
 } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, limit, getDocs, onSnapshot, orderBy, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, limit, getDocs, onSnapshot, orderBy, addDoc, serverTimestamp, where } from "firebase/firestore";
 import ConversationDetail from "@/components/ConversationDetail";
 import CommunicationIntelligence from "@/components/CommunicationIntelligence";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts";
@@ -65,8 +65,11 @@ const ParentCommunication = () => {
 
     setLoading(true);
 
+    const constraints = [where("schoolId", "==", userData.schoolId)];
+    if (userData.branch) constraints.push(where("branch", "==", userData.branch));
+
     // 1. Alerts Listener
-    const qAlerts = query(collection(db, "parent_alerts"), limit(10));
+    const qAlerts = query(collection(db, "parent_alerts"), ...constraints, limit(10));
     const unsubAlerts = onSnapshot(qAlerts, (snap) => {
       setAlerts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (err) => console.warn("Parent alerts fetch failed:", err));
@@ -74,6 +77,7 @@ const ParentCommunication = () => {
     // 2. Communications Listener
     const qComms = query(
       collection(db, "communications"), 
+      ...constraints,
       limit(50)
     );
     const unsubComms = onSnapshot(qComms, (snap) => {
@@ -100,13 +104,13 @@ const ParentCommunication = () => {
     }, (err) => console.warn("Communications fetch failed:", err));
 
     // 3. Broadcasts Listener
-    const qBroadcasts = query(collection(db, "broadcasts"), limit(10));
+    const qBroadcasts = query(collection(db, "broadcasts"), ...constraints, limit(10));
     const unsubBroadcasts = onSnapshot(qBroadcasts, (snap) => {
       setBroadcasts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (err) => console.warn("Broadcasts fetch failed:", err));
 
     // 4. Meetings Listener
-    const qMeetings = query(collection(db, "meetings"), limit(10));
+    const qMeetings = query(collection(db, "meetings"), ...constraints, limit(10));
     const unsubMeetings = onSnapshot(qMeetings, (snap) => {
       setMeetings(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (err) => console.warn("Meetings fetch failed:", err));

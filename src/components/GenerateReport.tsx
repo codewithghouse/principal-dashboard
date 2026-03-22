@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
   FileText, Calendar, FileSpreadsheet, FileJson, Settings, 
   BarChart2, Loader2, Download, Send, Clock, PieChart as PieChartIcon, 
-  ListOrdered
+  ListOrdered, Mail
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts";
 import { db } from "@/lib/firebase";
-import { collection, query, limit, getDocs } from "firebase/firestore";
+import { collection, query, limit, getDocs, where } from "firebase/firestore";
+import { useAuth } from "@/lib/AuthContext";
 
 interface GenerateReportProps {
   templateName: string;
@@ -14,6 +15,7 @@ interface GenerateReportProps {
 }
 
 const GenerateReport = ({ templateName, onBack }: GenerateReportProps) => {
+  const { userData } = useAuth();
   const [outputFormat, setOutputFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
   const [reportType, setReportType] = useState('Academic Performance');
   const [grade, setGrade] = useState('All Grades');
@@ -28,12 +30,17 @@ const GenerateReport = ({ templateName, onBack }: GenerateReportProps) => {
 
   // 1. Fetch data
   useEffect(() => {
+    if (!userData?.schoolId) return;
+
     const fetchData = async () => {
       try {
-        const sysSnap = await getDocs(query(collection(db, "exam_results"), limit(5)));
+        const constraints = [where("schoolId", "==", userData.schoolId)];
+        if (userData.branch) constraints.push(where("branch", "==", userData.branch));
+
+        const sysSnap = await getDocs(query(collection(db, "exam_results"), ...constraints, limit(5)));
         setSystemData(sysSnap.docs.map(d => d.data()));
         
-        const scheduleSnap = await getDocs(query(collection(db, "scheduled_reports"), limit(5)));
+        const scheduleSnap = await getDocs(query(collection(db, "scheduled_reports"), ...constraints, limit(5)));
         setScheduledReports(scheduleSnap.docs.map(d => d.data()));
       } catch (e) {
         console.warn("Error fetching reporting info.");
@@ -41,7 +48,7 @@ const GenerateReport = ({ templateName, onBack }: GenerateReportProps) => {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [userData?.schoolId]);
 
   const hasData = systemData.length > 0;
 

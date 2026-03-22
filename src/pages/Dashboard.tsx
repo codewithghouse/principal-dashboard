@@ -28,12 +28,15 @@ const Dashboard = () => {
     if (!userData?.schoolId) return;
     const schoolId = userData.schoolId;
 
-    const uStudents = onSnapshot(query(collection(db, "students"), where("schoolId", "==", schoolId)), (snap) => setStudentsCount(snap.size), (err) => console.warn("Failed to fetch students count:", err));
-    const uTeachers = onSnapshot(query(collection(db, "teachers"), where("schoolId", "==", schoolId)), (snap) => setTeachersCount(snap.size), (err) => console.warn("Failed to fetch teachers count:", err));
-    const uIncidents = onSnapshot(query(collection(db, "incidents"), where("schoolId", "==", schoolId)), (snap) => setIncidentsCount(snap.size), (err) => console.warn("Failed to fetch incidents count:", err));
+    const constraints = [where("schoolId", "==", schoolId)];
+    if (userData.branch) constraints.push(where("branch", "==", userData.branch));
+
+    const uStudents = onSnapshot(query(collection(db, "students"), ...constraints), (snap) => setStudentsCount(snap.size), (err) => console.warn("Failed to fetch students count:", err));
+    const uTeachers = onSnapshot(query(collection(db, "teachers"), ...constraints), (snap) => setTeachersCount(snap.size), (err) => console.warn("Failed to fetch teachers count:", err));
+    const uIncidents = onSnapshot(query(collection(db, "incidents"), ...constraints), (snap) => setIncidentsCount(snap.size), (err) => console.warn("Failed to fetch incidents count:", err));
 
     // Fetch Risk Alerts
-    const uRisks = onSnapshot(query(collection(db, "risks"), where("schoolId", "==", schoolId), limit(5)), (snap) => {
+    const uRisks = onSnapshot(query(collection(db, "risks"), ...constraints, limit(5)), (snap) => {
       setRiskAlerts(snap.docs.map(doc => {
         const d = doc.data();
         return {
@@ -46,7 +49,7 @@ const Dashboard = () => {
     }, (err) => console.warn("Risk alerts require index or failed:", err));
 
     // Fetch Urgent Comms
-    const uUrgent = onSnapshot(query(collection(db, "communications"), limit(3)), (snap) => {
+    const uUrgent = onSnapshot(query(collection(db, "communications"), ...constraints, limit(3)), (snap) => {
       setUrgentComms(snap.docs.map(doc => {
         const d = doc.data();
         return {
@@ -103,10 +106,10 @@ const Dashboard = () => {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <StatCard title="Total Students" value={studentsCount} subtitle="Active Enrollment" icon={Users} color="text-indigo-600" />
-        <StatCard title="Teachers" value={teachersCount} subtitle="Academic Staff" icon={GraduationCap} color="text-slate-900" />
-        <StatCard title="School Attendance" value="94.2%" subtitle="Updated 5m ago" icon={CalendarCheck} color="text-emerald-600" />
-        <StatCard title="Pending Incidents" value={incidentsCount} subtitle={incidentsCount > 0 ? "Requires Attention" : "Safe Environment"} icon={AlertCircle} color={incidentsCount > 0 ? "text-red-500" : "text-slate-500"} />
+        <StatCard title="Total Students" value={studentsCount} subtitle="Active Enrollment" icon={Users} iconColor="text-indigo-600" />
+        <StatCard title="Teachers" value={teachersCount} subtitle="Academic Staff" icon={GraduationCap} iconColor="text-slate-900" />
+        <StatCard title="School Attendance" value="94.2%" subtitle="Updated 5m ago" icon={CalendarCheck} iconColor="text-emerald-600" />
+        <StatCard title="Pending Incidents" value={incidentsCount} subtitle={incidentsCount > 0 ? "Requires Attention" : "Safe Environment"} icon={AlertCircle} iconColor={incidentsCount > 0 ? "text-red-500" : "text-slate-500"} />
       </div>
 
       <AcademicAnalytics />

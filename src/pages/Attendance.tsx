@@ -3,7 +3,8 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { CheckCircle, XCircle, Clock, TrendingUp, Send, Edit3, Bell, FileText, AlertTriangle } from "lucide-react";
 import ClassAttendanceDetail from "@/components/ClassAttendanceDetail";
 import { db } from "@/lib/firebase";
-import { collection, query, limit, getDocs } from "firebase/firestore";
+import { collection, query, limit, getDocs, where } from "firebase/firestore";
+import { useAuth } from "@/lib/AuthContext";
 
 const trendData = Array.from({ length: 30 }, (_, i) => ({
   day: i + 1,
@@ -37,14 +38,20 @@ const CustomTooltip = ({ active, payload }: any) => {
 };
 
 const Attendance = () => {
+  const { userData } = useAuth();
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [hasAttendanceData, setHasAttendanceData] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!userData?.schoolId) return;
+
     const checkAttendanceRecords = async () => {
       try {
-        const q = query(collection(db, "attendance"), limit(1));
+        const constraints = [where("schoolId", "==", userData.schoolId)];
+        if (userData.branch) constraints.push(where("branch", "==", userData.branch));
+
+        const q = query(collection(db, "attendance"), ...constraints, limit(1));
         const snap = await getDocs(q);
         setHasAttendanceData(!snap.empty);
       } catch (e) {
@@ -53,7 +60,7 @@ const Attendance = () => {
       setLoading(false);
     };
     checkAttendanceRecords();
-  }, []);
+  }, [userData?.schoolId]);
 
   if (selectedClass) {
     return <ClassAttendanceDetail className={selectedClass} onBack={() => setSelectedClass(null)} />;

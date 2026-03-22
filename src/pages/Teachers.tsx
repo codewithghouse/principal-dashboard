@@ -42,9 +42,12 @@ const Teachers = () => {
   useEffect(() => {
     if (!userData?.schoolId) return;
 
+    const constraints = [where("schoolId", "==", userData.schoolId)];
+    if (userData.branch) constraints.push(where("branch", "==", userData.branch));
+
     const q = query(
       collection(db, "teachers"), 
-      where("schoolId", "==", userData.schoolId)
+      ...constraints
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {

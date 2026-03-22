@@ -55,7 +55,10 @@ const Academics = () => {
   useEffect(() => {
     if (!userData?.schoolId) return;
 
-    const q = query(collection(db, "students"), where("schoolId", "==", userData.schoolId));
+    const constraints = [where("schoolId", "==", userData.schoolId)];
+    if (userData.branch) constraints.push(where("branch", "==", userData.branch));
+
+    const q = query(collection(db, "students"), ...constraints);
     const unsubscribe = onSnapshot(q, (snapshot) => {
       let aCount = 0, bCount = 0, cCount = 0, dCount = 0, total = 0;
 

@@ -27,7 +27,10 @@ const RiskStudents = () => {
       setLoading(true);
       try {
         // 1. Fetch real students to analyze
-        const q = query(collection(db, "students"), where("schoolId", "==", userData.schoolId));
+        const constraints = [where("schoolId", "==", userData.schoolId)];
+        if (userData.branch) constraints.push(where("branch", "==", userData.branch));
+
+        const q = query(collection(db, "students"), ...constraints);
         const snap = await getDocs(q);
         
         if (snap.empty) {
