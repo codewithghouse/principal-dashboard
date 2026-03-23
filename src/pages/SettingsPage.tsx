@@ -24,36 +24,47 @@ const SettingsPage = () => {
   const [isSaving, setIsSaving] = useState(false);
   
   const [formData, setFormData] = useState({
-    schoolName: "EduIntellect International School",
-    address: "123 School Road, Banjara Hills, Hyderabad, Telangana 500034",
-    phone: "+91 98765 43210",
-    email: "admin@eduintellect.com",
+    schoolName: userData?.schoolName || "EduIntellect International School",
+    address: userData?.address || "123 School Road, Banjara Hills, Hyderabad, Telangana 500034",
+    phone: userData?.phone || "+91 98765 43210",
+    email: userData?.schoolEmail || "admin@eduintellect.com",
     website: "https://www.eduintellect-school.com",
-    principalName: "Dr. Satish Prasad",
-    principalEmail: "satish.prasad@eduintellect.com",
-    principalPhone: "+91 99887 76655"
+    principalName: userData?.name || "Dr. Satish Prasad",
+    principalEmail: userData?.email || "satish.prasad@eduintellect.com",
+    principalPhone: userData?.phone || "+91 99887 76655"
   });
 
+  const schoolId = userData?.schoolId || userData?.school || userData?.schoolID;
+
   useEffect(() => {
-    if (!userData?.schoolId) return;
+    if (!schoolId) return;
 
     const fetchSettings = async () => {
       setLoading(true);
       try {
-        const docRef = doc(db, "schools", userData.schoolId);
+        const docRef = doc(db, "schools", schoolId);
         const docSnap = await getDoc(docRef);
+        
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setFormData({
-            schoolName: data.name || formData.schoolName,
-            address: data.address || formData.address,
-            phone: data.phone || formData.phone,
-            email: data.email || formData.email,
-            website: data.website || formData.website,
-            principalName: data.principalName || formData.principalName,
-            principalEmail: data.principalEmail || formData.principalEmail,
-            principalPhone: data.principalPhone || formData.principalPhone
-          });
+          setFormData(prev => ({
+            ...prev,
+            schoolName: data.name || prev.schoolName,
+            address: data.address || prev.address,
+            phone: data.phone || prev.phone,
+            email: data.email || prev.email,
+            website: data.website || prev.website,
+            principalName: data.principalName || userData?.name || prev.principalName,
+            principalEmail: data.principalEmail || userData?.email || prev.principalEmail,
+            principalPhone: data.principalPhone || userData?.phone || prev.principalPhone
+          }));
+        } else {
+          setFormData(prev => ({
+            ...prev,
+            schoolName: userData?.schoolName || prev.schoolName,
+            principalName: userData?.name || prev.principalName,
+            principalEmail: userData?.email || prev.principalEmail,
+          }));
         }
       } catch (err) {
         console.error("Error fetching settings:", err);
@@ -62,13 +73,13 @@ const SettingsPage = () => {
       }
     };
     fetchSettings();
-  }, [userData?.schoolId]);
+  }, [userData, schoolId]);
 
   const handleSave = async () => {
-    if (!userData?.schoolId) return;
+    if (!schoolId) return toast.error("No School ID found. Cannot save.");
     setIsSaving(true);
     try {
-      const docRef = doc(db, "schools", userData.schoolId);
+      const docRef = doc(db, "schools", schoolId);
       await updateDoc(docRef, {
         name: formData.schoolName,
         address: formData.address,
