@@ -18,20 +18,20 @@ const tabs = [
 ];
 
 const SettingsPage = () => {
-  const { userData } = useAuth();
+  const { user, userData } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   
   const [formData, setFormData] = useState({
     schoolName: userData?.schoolName || "EduIntellect International School",
-    address: userData?.address || "123 School Road, Banjara Hills, Hyderabad, Telangana 500034",
-    phone: userData?.phone || "+91 98765 43210",
-    email: userData?.schoolEmail || "admin@eduintellect.com",
-    website: "https://www.eduintellect-school.com",
-    principalName: userData?.name || "Dr. Satish Prasad",
-    principalEmail: userData?.email || "satish.prasad@eduintellect.com",
-    principalPhone: userData?.phone || "+91 99887 76655"
+    address: userData?.address || "",
+    phone: userData?.phone || userData?.schoolPhone || "",
+    email: userData?.schoolEmail || "",
+    website: userData?.website || "",
+    principalName: userData?.name || user?.displayName || "",
+    principalEmail: userData?.email || user?.email || "",
+    principalPhone: userData?.phone || ""
   });
 
   const schoolId = userData?.schoolId || userData?.school || userData?.schoolID;
@@ -47,6 +47,14 @@ const SettingsPage = () => {
         
         if (docSnap.exists()) {
           const data = docSnap.data();
+          
+          // Helper to check if a value is dummy/placeholder
+          const isDummy = (val: string) => !val || 
+            val.toLowerCase().includes("satish") || 
+            val.toLowerCase().includes("prasad") || 
+            val.toLowerCase().includes("dummy") || 
+            val.toLowerCase().includes("admin@eduintellect.com");
+
           setFormData(prev => ({
             ...prev,
             schoolName: data.name || prev.schoolName,
@@ -54,16 +62,17 @@ const SettingsPage = () => {
             phone: data.phone || prev.phone,
             email: data.email || prev.email,
             website: data.website || prev.website,
-            principalName: data.principalName || userData?.name || prev.principalName,
-            principalEmail: data.principalEmail || userData?.email || prev.principalEmail,
-            principalPhone: data.principalPhone || userData?.phone || prev.principalPhone
+            principalName:  !isDummy(data.principalName)  ? data.principalName  : (userData?.name  || user?.displayName || prev.principalName),
+            principalEmail: !isDummy(data.principalEmail) ? data.principalEmail : (userData?.email || user?.email        || prev.principalEmail),
+            principalPhone: !isDummy(data.principalPhone) ? data.principalPhone : (userData?.phone || prev.principalPhone)
           }));
         } else {
           setFormData(prev => ({
             ...prev,
             schoolName: userData?.schoolName || prev.schoolName,
-            principalName: userData?.name || prev.principalName,
-            principalEmail: userData?.email || prev.principalEmail,
+            principalName: userData?.name || user?.displayName || prev.principalName,
+            principalEmail: userData?.email || user?.email || prev.principalEmail,
+            principalPhone: userData?.phone || prev.principalPhone
           }));
         }
       } catch (err) {
@@ -73,7 +82,7 @@ const SettingsPage = () => {
       }
     };
     fetchSettings();
-  }, [userData, schoolId]);
+  }, [user, userData, schoolId]);
 
   const handleSave = async () => {
     if (!schoolId) return toast.error("No School ID found. Cannot save.");
