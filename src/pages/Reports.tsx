@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   FileText, Download, GraduationCap, Calendar, Shield, IndianRupee, 
   Settings, UserCheck, Layout, CalendarCheck, AlertTriangle, Trophy, 
-  Users2, MessageSquare, LineChart, Trash2, ArrowRight, Plus
+  Users2, MessageSquare, LineChart, Trash2, ArrowRight, Plus, Loader2, Clock
 } from "lucide-react";
 import GenerateReport from "@/components/GenerateReport";
+import { useAuth } from "@/lib/AuthContext";
+import { db } from "@/lib/firebase";
+import { collection, query, where, onSnapshot, orderBy, limit } from "firebase/firestore";
 
 const reportCategories = [
   { id: 'academic', label: "Academic", count: "12 templates", icon: GraduationCap, color: "text-blue-600", bg: "bg-blue-50" },
@@ -25,15 +28,41 @@ const templates = [
   { title: "School Overview", desc: "Complete school analytics", icon: LineChart, color: "text-orange-500", bg: "bg-orange-50" },
 ];
 
-const recentReports = [
-  { name: "Monthly Attendance - Dec 2025", type: "Attendance", date: "Jan 2, 2026", format: "PDF" },
-  { name: "Unit Test 1 Results", type: "Exams", date: "Dec 28, 2025", format: "Excel" },
-  { name: "Teacher Monthly Review", type: "Teachers", date: "Dec 15, 2025", format: "PDF" },
-];
-
 const Reports = () => {
+  const { userData } = useAuth();
   const [activeCategory, setActiveCategory] = useState('academic');
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [recentReports, setRecentReports] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userData?.schoolId) return;
+
+    const q = query(
+      collection(db, "principal_reports"),
+      where("schoolId", "==", userData.schoolId)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const reports = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // Sort client-side if needed, but here we can just trust the stream
+      const sorted = reports.sort((a: any, b: any) => 
+        (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)
+      );
+
+      setRecentReports(sorted.slice(0, 10));
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Principal Reports Sync Error:", error);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [userData?.schoolId]);
 
   if (selectedTemplate) {
     return (
@@ -130,24 +159,48 @@ const Reports = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {recentReports.map((report, i) => (
-                <tr key={i} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-10 py-6 text-sm font-bold text-[#1e293b]">{report.name}</td>
-                  <td className="px-6 py-6 text-sm font-bold text-slate-500">{report.type}</td>
-                  <td className="px-6 py-6 text-sm font-medium text-slate-400">{report.date}</td>
-                  <td className="px-6 py-6 text-sm font-black text-[#1e293b]">{report.format}</td>
-                  <td className="px-10 py-6">
-                    <div className="flex items-center justify-center gap-6">
-                      <button className="text-[11px] font-black text-[#1e293b] uppercase tracking-widest hover:text-[#1e3a8a] transition-colors">
-                        Download
-                      </button>
-                      <button className="text-[11px] font-black text-red-500 uppercase tracking-widest hover:text-red-700 transition-colors">
-                        Delete
-                      </button>
-                    </div>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="py-20 text-center">
+                    <Loader2 className="w-8 h-8 text-[#1e3a8a] animate-spin mx-auto mb-2" />
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Accessing records...</p>
                   </td>
                 </tr>
-              ))}
+              ) : recentReports.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-20 text-center">
+                    <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center mx-auto mb-4 border border-slate-100 shadow-inner">
+                       <Clock className="w-5 h-5 text-slate-300" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-400 italic px-10 leading-relaxed">No reports have been transmitted by the faculty recently.</p>
+                  </td>
+                </tr>
+              ) : (
+                recentReports.map((report, i) => (
+                  <tr key={report.id || i} className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="px-10 py-6">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-[#1e293b]">{report.title}</span>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{report.teacherName || 'System Generated'}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-6 text-sm font-bold text-slate-500 uppercase tracking-tight">{report.reportType?.replace('_', ' ') || 'GENERAL'}</td>
+                    <td className="px-6 py-6 text-sm font-medium text-slate-400 italic">
+                      {report.createdAt?.toDate?.().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) || "Recently"}
+                    </td>
+                    <td className="px-6 py-6 font-black text-[#1e293b]">
+                      <span className="px-3 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[9px]">PDF</span>
+                    </td>
+                    <td className="px-10 py-6">
+                      <div className="flex items-center justify-center gap-6">
+                        <button className="text-[11px] font-black text-[#1e3a8a] uppercase tracking-widest hover:underline transition-colors flex items-center gap-2">
+                          <Download className="w-4 h-4" /> Download
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
