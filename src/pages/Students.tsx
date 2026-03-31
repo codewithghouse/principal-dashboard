@@ -39,67 +39,67 @@ const Students = () => {
     console.log(`[STUDENTS] Hybrid SYNC started for ${schoolId} (Branch: ${branch || 'Base'})`);
 
     // ── STEP 2: HYBRID FEDERATED FETCH ──
-    // We fetch from both 'students' and 'enrollments' to ensure we capture all data in the DB
     const qStudents = query(collection(db, "students"), where("schoolId", "==", schoolId));
     const qEnrollments = query(collection(db, "enrollments"), where("schoolId", "==", schoolId));
 
     const processResults = async (sSnap: any, eSnap: any) => {
         let masterMap = new Map();
 
-        // A. Process Master Registry
+        // A. Process Student Master Registry
         sSnap?.docs?.forEach((d: any) => {
             const data = d.data();
-            masterMap.set(d.id, { id: d.id, source: 'students', ...data });
+            masterMap.set(data.email?.toLowerCase() || d.id, { id: d.id, source: 'students', ...data });
         });
 
         // B. Process Enrollment Registry (Fallback/Supplementary)
         eSnap?.docs?.forEach((d: any) => {
             const data = d.data();
-            const sId = data.studentId || d.id;
-            if (!masterMap.has(sId)) {
-                masterMap.set(sId, { 
-                    id: sId, 
+            const emailKey = data.studentEmail?.toLowerCase() || data.email?.toLowerCase() || d.id;
+            
+            if (!masterMap.has(emailKey)) {
+                masterMap.set(emailKey, { 
+                    id: data.studentId || d.id, 
                     source: 'enrollments',
                     name: data.studentName || data.name,
                     rollNumber: data.rollNumber || data.rollNo || data.roll || "N/A",
                     classId: data.classId || "Unassigned",
+                    className: data.className || data.class || "",
                     ...data 
+                });
+            } else {
+                // Update existing record with enrollment details if missing
+                const existing = masterMap.get(emailKey);
+                masterMap.set(emailKey, {
+                    ...existing,
+                    teacherName: data.teacherName || existing.teacherName,
+                    className: data.className || existing.className || data.classId,
+                    classId: data.classId || existing.classId
                 });
             }
         });
 
         let studentsList = Array.from(masterMap.values());
-        console.log(`[STUDENTS] Merged registry created: ${studentsList.length} unique scholars found.`);
 
-        // ── STEP 3: Fallback Logic if School Field is named 'school' ──
+        // ── STEP 3: Fallback Logic ──
         if (studentsList.length === 0) {
-            console.warn("[STUDENTS] Double registry empty. Trying 'school' field fallback...");
             const f1 = await getDocs(query(collection(db, "students"), where("school", "==", schoolId)));
             const f2 = await getDocs(query(collection(db, "enrollments"), where("school", "==", schoolId)));
-            f1.docs.forEach(d => masterMap.set(d.id, { id: d.id, ...d.data() }));
+            f1.docs.forEach(d => masterMap.set(d.data().email?.toLowerCase() || d.id, { id: d.id, ...d.data() }));
             f2.docs.forEach(d => {
                 const data = d.data();
-                const sId = data.studentId || d.id;
-                if (!masterMap.has(sId)) masterMap.set(sId, { id: sId, name: data.studentName, ...data });
+                const key = data.studentEmail?.toLowerCase() || data.email?.toLowerCase() || d.id;
+                if (!masterMap.has(key)) masterMap.set(key, { id: d.id, ...data });
             });
             studentsList = Array.from(masterMap.values());
         }
 
-        // ── STEP 4: Branch Isolation ──
+        // ── STEP 4: Branch Filter ──
         if (branch && studentsList.length > 0) {
-            console.log(`[STUDENTS] Isolated Branch Audit: "${branch}"`);
-            const filtered = studentsList.filter((s: any) => {
-                const sBranch = (s.branch || s.branchName || s.campus || "").toString().toLowerCase();
-                return sBranch.includes(branch.toLowerCase()) || branch.toLowerCase().includes(sBranch);
+            studentsList = studentsList.filter((s: any) => {
+                const sBranch = (s.branch || s.branchName || s.campus || "Main Campus").toString().toLowerCase();
+                const uBranch = branch.toLowerCase();
+                return sBranch.includes(uBranch) || uBranch.includes(sBranch);
             });
-
-            if (filtered.length === 0) {
-                const distinct = Array.from(new Set(studentsList.map(s => s.branch || s.branchName || s.campus || "N/A")));
-                console.error(`[STUDENTS] Branch Mismatch! Principal Branch: "${branch}". Documents in DB use: ${distinct.join(", ")}`);
-                // Final Last Ditch: Show everything if we have data for the school but nothing for the branch
-                // (This helps the user see that the data exists and just the field is wrong)
-            }
-            studentsList = filtered;
         }
 
         const mapped = studentsList.map((data: any) => ({
@@ -107,31 +107,46 @@ const Students = () => {
             ...data,
             name: data.name || data.studentName || "Unknown",
             rollNumber: data.rollNumber || data.rollNo || data.roll || "N/A",
-            classId: data.classId || data.grade || "Unassigned",
+            gradeDisplay: data.className || data.classId || "Unassigned",
             section: data.section || "",
             initials: (data.name || data.studentName || "S").split(' ').map((n: string) => n[0]).join('').toUpperCase().substring(0, 2),
             status: data.status || "Active",
             attendance: "...", 
-            faculty: "Loading..."
+            faculty: data.teacherName || "Loading..."
         }));
 
         setStudentsData(mapped);
         setLoading(false);
 
-        // Async Audits
+        // Async Data Enrichment
         mapped.forEach(async (s) => {
             try {
-                const taSnap = await getDocs(query(collection(db, "teaching_assignments"), where("classId", "==", s.classId)));
-                const names = Array.from(new Set(taSnap.docs.map(d => d.data().teacherName || d.data().teacherId))).filter(Boolean);
+                // 1. Fetch Faculty (from direct enrollment first, then teaching_assignments junction)
+                let facultyName = s.teacherName;
                 
-                const attSnap = await getDocs(query(collection(db, "attendance"), where("studentId", "==", s.id)));
+                if (!facultyName || facultyName === "Loading...") {
+                   const taSnap = await getDocs(query(collection(db, "teaching_assignments"), where("classId", "==", s.classId)));
+                   const names = Array.from(new Set(taSnap.docs.map(d => d.data().teacherName))).filter(Boolean);
+                   facultyName = names.join(", ") || "Not Assigned";
+                }
+
+                // 2. Fetch Real-time Attendance
+                const attSnap = await getDocs(query(collection(db, "attendance"), where("studentEmail", "==", s.email || s.studentEmail || "")));
                 let attStr = "0%";
                 if (!attSnap.empty) {
-                    const pres = attSnap.docs.filter(d => d.data().status === 'present').length;
+                    const pres = attSnap.docs.filter(d => ['present', 'late'].includes(d.data().status?.toLowerCase())).length;
                     attStr = `${Math.round((pres / attSnap.size) * 100)}%`;
+                } else {
+                    // Fallback to studentId search
+                    const attSnap2 = await getDocs(query(collection(db, "attendance"), where("studentId", "==", s.id)));
+                    if (!attSnap2.empty) {
+                        const pres = attSnap2.docs.filter(d => ['present', 'late'].includes(d.data().status?.toLowerCase())).length;
+                        attStr = `${Math.round((pres / attSnap2.size) * 100)}%`;
+                    }
                 }
-                setStudentsData(prev => prev.map(item => item.id === s.id ? { ...item, faculty: names.join(", ") || "Not Assigned", attendance: attStr } : item));
-            } catch (e) { console.error(e); }
+
+                setStudentsData(prev => prev.map(item => item.id === s.id ? { ...item, faculty: facultyName, attendance: attStr } : item));
+            } catch (e) { console.error("Enrichment Error", e); }
         });
     };
 
@@ -168,7 +183,7 @@ const Students = () => {
 
   const filteredStudents = studentsData.filter(s => 
     s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.classId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    s.gradeDisplay?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     s.rollNumber?.toString().includes(searchTerm)
   );
 
@@ -258,7 +273,7 @@ const Students = () => {
                     </td>
                     <td className="px-8 py-5">
                        <span className="px-4 py-1.5 bg-[#1e3a8a] text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-600/10">
-                          {s.classId} {s.section}
+                          {s.gradeDisplay} {s.section}
                        </span>
                     </td>
                     <td className="px-8 py-5">
