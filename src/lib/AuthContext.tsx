@@ -35,7 +35,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 1. Set persistence FIRST before listener starts
     //    This ensures session is restored correctly on refresh
     setPersistence(auth, browserLocalPersistence).then(() => {
-      console.log('✅ Firebase persistence set to LOCAL');
     });
 
     // 2. THE ONLY auth listener in the entire app

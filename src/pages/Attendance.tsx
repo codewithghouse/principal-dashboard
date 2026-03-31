@@ -3,28 +3,9 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { CheckCircle, XCircle, Clock, TrendingUp, Send, Edit3, Bell, FileText, AlertTriangle } from "lucide-react";
 import ClassAttendanceDetail from "@/components/ClassAttendanceDetail";
 import { db } from "@/lib/firebase";
-import { collection, query, limit, getDocs, where } from "firebase/firestore";
+import { collection, query, onSnapshot, where } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 
-const trendData = Array.from({ length: 30 }, (_, i) => ({
-  day: i + 1,
-  value: parseFloat((88 + Math.sin(i * 0.4) * 3 + Math.random() * 2).toFixed(1)),
-}));
-
-const gradeHeatmap = [
-  { grade: "Grade 6", pct: "94%", value: 94, color: "#22c55e", textColor: "white" },
-  { grade: "Grade 7", pct: "88%", value: 88, color: "#f59e0b", textColor: "white" },
-  { grade: "Grade 8", pct: "91%", value: 91, color: "#22c55e", textColor: "white" },
-  { grade: "Grade 9", pct: "82%", value: 82, color: "#ef4444", textColor: "white" },
-  { grade: "Grade 10", pct: "90%", value: 90, color: "#22c55e", textColor: "white" },
-];
-
-const absentStudents = [
-  { initials: "RS", name: "Rahul Sharma", grade: "9A", contact: "+91 98765 43211", consecutive: "5 days", monthly: "45%", status: "Chronic" },
-  { initials: "NG", name: "Neha Gupta", grade: "7A", contact: "+91 98765 43220", consecutive: "2 days", monthly: "68%", status: "Warning" },
-  { initials: "AK", name: "Ankit Kumar", grade: "10C", contact: "+91 98765 43233", consecutive: "3 days", monthly: "52%", status: "Chronic" },
-  { initials: "DM", name: "Divya Mehta", grade: "9B", contact: "+91 98765 43244", consecutive: "1 day", monthly: "89%", status: "Occasional" },
-];
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
@@ -59,14 +40,18 @@ const Attendance = () => {
     setLoading(true);
 
     // Fetch Enrollments for base student data
-    const qEnroll = query(collection(db, "enrollments"), where("schoolId", "==", userData.schoolId));
+    const enrollConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
+    if (userData.branch) enrollConstraints.push(where("branch", "==", userData.branch));
+    const qEnroll = query(collection(db, "enrollments"), ...enrollConstraints);
     const unsubEnroll = onSnapshot(qEnroll, (snap) => {
         setEnrollments(snap.docs.map(d => ({id: d.id, ...d.data()})));
     });
 
     // Fetch Global Attendance
     const today = new Date().toLocaleDateString('en-CA');
-    const qAtt = query(collection(db, "attendance"), where("schoolId", "==", userData.schoolId));
+    const attConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
+    if (userData.branch) attConstraints.push(where("branch", "==", userData.branch));
+    const qAtt = query(collection(db, "attendance"), ...attConstraints);
     const unsubAtt = onSnapshot(qAtt, (snap) => {
         const records = snap.docs.map(d => ({id: d.id, ...d.data()}));
         setAttendanceRecords(records);
@@ -120,11 +105,19 @@ const Attendance = () => {
             }));
         setAbsentStudents(absents);
 
+        // Monthly Avg: all records in last 30 days
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 30);
+        const monthlyRecords = records.filter((r: any) => r.date && r.date >= cutoff.toLocaleDateString('en-CA'));
+        const monthlyPresent = monthlyRecords.filter((r: any) => r.status === 'present').length;
+        const monthlyTotal = monthlyRecords.length;
+        const monthlyAvgVal = monthlyTotal === 0 ? 0 : Math.round((monthlyPresent / monthlyTotal) * 100);
+
         setStats({
             presentToday,
             absentToday,
             criticalAlerts: heatmap.filter(h => h.value < 80).length,
-            monthlyAvg: "91.4%"
+            monthlyAvg: `${monthlyAvgVal}%`
         });
 
         setLoading(false);

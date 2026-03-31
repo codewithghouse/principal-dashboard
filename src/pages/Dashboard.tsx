@@ -24,12 +24,8 @@ const Dashboard = () => {
     const schoolId = userData?.schoolId || userData?.school || userData?.schoolID || userData?.school_id;
     const branch = userData?.branch || userData?.branchName || "";
 
-    if (!schoolId) {
-      console.warn("[DASHBOARD] Waiting for school context. Current userData:", userData);
-      return;
-    }
+    if (!schoolId) return;
 
-    console.log(`[DASHBOARD] Synchronizing Institution: ${schoolId} | Branch: ${branch || "Institutional Base"}`);
 
     const constraints = [where("schoolId", "==", schoolId)];
     if (branch) constraints.push(where("branch", "==", branch));
@@ -153,7 +149,7 @@ const Dashboard = () => {
           <div>
             <p className="text-xs font-black uppercase tracking-[0.3em] text-white/60 mb-1">Academic Health Index</p>
             <div className="flex items-baseline gap-2">
-               <p className="text-5xl font-black">{academicHealth || "78.4"}</p>
+               <p className="text-5xl font-black">{academicHealth}</p>
                <span className="text-xl font-bold text-white/40">/100</span>
             </div>
           </div>
@@ -161,14 +157,16 @@ const Dashboard = () => {
         <div className="flex items-center gap-8 relative z-10">
           <div className="text-right">
             <div className="flex items-center gap-1 text-green-400">
-              <ArrowUp className="w-5 h-5 font-black" />
-              <span className="text-xl font-black">4.2%</span>
+              {academicHealth >= 80 ? <ArrowUp className="w-5 h-5 font-black" /> : <ArrowDown className="w-5 h-5 font-black text-red-400" />}
+              <span className="text-xl font-black">{academicHealth >= 80 ? "Good" : "Low"}</span>
             </div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-white/50">vs Last Month</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-white/50">Score Benchmark</p>
           </div>
           <div className="h-12 w-px bg-white/10"></div>
           <div className="text-right">
-            <span className="text-xl font-black text-white px-4 py-1.5 rounded-xl bg-white/10 backdrop-blur-md uppercase tracking-widest">Stable</span>
+            <span className="text-xl font-black text-white px-4 py-1.5 rounded-xl bg-white/10 backdrop-blur-md uppercase tracking-widest">
+              {academicHealth >= 85 ? "Excellent" : academicHealth >= 75 ? "Stable" : academicHealth >= 60 ? "Moderate" : "At Risk"}
+            </span>
             <p className="text-[10px] font-black uppercase tracking-widest text-white/50 mt-1">Overall Status</p>
           </div>
         </div>

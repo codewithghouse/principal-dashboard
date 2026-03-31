@@ -16,8 +16,9 @@ export default function LoginPage() {
       await loginWithGoogle();
       // onAuthStateChanged handles everything after this
     } catch (err: any) {
-      console.error(err);
-      toast.error("Login failed. Please try again.");
+      if (err.code !== 'auth/popup-closed-by-user') {
+        toast.error("Login failed. Please try again.");
+      }
     } finally {
       setIsLoggingIn(false);
     }

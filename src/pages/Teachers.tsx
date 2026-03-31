@@ -151,7 +151,6 @@ const Teachers = () => {
                 status: "active",
                 createdAt: serverTimestamp()
             });
-            console.log(`[ASSIGNMENT] Created teaching_assignment for teacher ${targetTeacherId} and class ${assignedClassId}`);
         } catch (err) {
             console.error(`[ASSIGNMENT ERROR] Failed assignment for class ${assignedClassId}:`, err);
         }
@@ -202,8 +201,7 @@ const Teachers = () => {
                   `
                 });
              } catch (emailErr) {
-                console.info("Email API bypassed locally during Reactivation.");
-             }
+                }
 
              toast.success("Legacy Teacher successfully Restored & Re-invited!");
              setIsInviteOpen(false);
@@ -255,7 +253,6 @@ const Teachers = () => {
            `
          });
       } catch (emailErr) {
-         console.info("Local Environment: Database Injection successful, but Email API bypassed (Vercel Serverless not active on Localhost).", emailErr);
       }
 
       toast.success("Teacher Database Injection Successful!");

@@ -6,7 +6,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
 import { useAuth } from "@/lib/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, query, getDocs } from "firebase/firestore";
+import { collection, query, getDocs, where } from "firebase/firestore";
 
 export default function ExamsResults() {
   const { userData } = useAuth();
@@ -18,81 +18,100 @@ export default function ExamsResults() {
   const [meritList, setMeritList] = useState<any[]>([]);
   const [passPct, setPassPct] = useState(0);
   const [failPct, setFailPct] = useState(0);
+  const [subjectSuccessData, setSubjectSuccessData] = useState<any[]>([]);
+  const [failedStudents, setFailedStudents] = useState<any[]>([]);
 
   useEffect(() => {
+    if (!userData?.schoolId) return;
     const fetchResults = async () => {
       try {
-        const snap = await getDocs(query(collection(db, "test_scores")));
+        const constraints: any[] = [where("schoolId", "==", userData.schoolId)];
+        if (userData.branch) constraints.push(where("branch", "==", userData.branch));
+        const snap = await getDocs(query(collection(db, "test_scores"), ...constraints));
         const results = snap.docs.map(d => d.data());
         setExamResults(results);
 
-        // Process global analytics automatically based on Teacher's entry
         if (results.length > 0) {
             let passedCount = 0;
             let failedCount = 0;
             const studentAverages: any = {};
+            const subjectMap: any = {};
+            const studentFailures: any = {};
 
             results.forEach(r => {
                 if (r.isAbsent) return;
-                
-                // Pass/fail metrics
-                if ((r.percentage || 0) >= 50) passedCount++;
+                const pct = r.percentage || 0;
+                const passed = pct >= 50;
+
+                if (passed) passedCount++;
                 else failedCount++;
 
                 // Merit aggregation
                 if (!studentAverages[r.studentId]) {
-                    studentAverages[r.studentId] = {
-                        name: r.studentName,
-                        totalPct: 0,
-                        count: 0
-                    };
+                    studentAverages[r.studentId] = { name: r.studentName, totalPct: 0, count: 0 };
                 }
-                studentAverages[r.studentId].totalPct += (r.percentage || 0);
+                studentAverages[r.studentId].totalPct += pct;
                 studentAverages[r.studentId].count += 1;
+
+                // Subject success mapping
+                const subj = r.subject || r.subjectName || "Unknown";
+                if (!subjectMap[subj]) subjectMap[subj] = { passed: 0, total: 0, totalScore: 0 };
+                subjectMap[subj].total += 1;
+                subjectMap[subj].totalScore += pct;
+                if (passed) subjectMap[subj].passed += 1;
+
+                // Failed student tracking
+                if (!passed) {
+                    const sid = r.studentId || r.studentName;
+                    if (!studentFailures[sid]) {
+                        studentFailures[sid] = { name: r.studentName, grade: r.className || r.grade || "N/A", failures: 0 };
+                    }
+                    studentFailures[sid].failures += 1;
+                }
             });
 
-            // Merit List Formation
-            const processedMeritList = Object.keys(studentAverages).map(k => ({
+            // Merit List
+            const rankedMeritList = Object.keys(studentAverages).map(k => ({
                 name: studentAverages[k].name,
                 avgScore: Math.round(studentAverages[k].totalPct / studentAverages[k].count),
-            })).sort((a, b) => b.avgScore - a.avgScore).slice(0, 5); // top 5
-            
-            // assign ranks logically
-            const rankedMeritList = processedMeritList.map((m, i) => ({...m, rank: i+1, grade: "Student"}));
+                rank: 0, grade: "Student"
+            })).sort((a, b) => b.avgScore - a.avgScore).slice(0, 5).map((m, i) => ({ ...m, rank: i + 1 }));
 
-            const passPercent = Math.round((passedCount / (passedCount + failedCount)) * 100);
-            const failPercent = 100 - passPercent;
+            const total = passedCount + failedCount;
+            const passPercent = total === 0 ? 0 : Math.round((passedCount / total) * 100);
 
             setPassPct(passPercent);
-            setFailPct(failPercent);
+            setFailPct(100 - passPercent);
             setPassFailData([
                 { name: 'Passed', value: passedCount, color: '#22c55e' },
                 { name: 'Failed', value: failedCount, color: '#ef4444' }
             ]);
             setMeritList(rankedMeritList);
+
+            // Subject success data
+            setSubjectSuccessData(Object.keys(subjectMap).map(s => ({
+                subject: s.length > 8 ? s.substring(0, 8) : s,
+                passRate: Math.round((subjectMap[s].passed / subjectMap[s].total) * 100),
+                avgScore: Math.round(subjectMap[s].totalScore / subjectMap[s].total)
+            })));
+
+            // Failed students risk list
+            setFailedStudents(Object.values(studentFailures).sort((a: any, b: any) => b.failures - a.failures).slice(0, 5).map((fs: any) => ({
+                ...fs,
+                riskMsg: fs.failures >= 3 ? 'Critical Risk' : 'Needs Attention',
+                color: fs.failures >= 3 ? 'text-red-600 bg-red-50 border-red-200' : 'text-amber-600 bg-amber-50 border-amber-200'
+            })));
         }
 
-      } catch (e) {
-        console.warn("Analytics error", e);
+      } catch {
+        // silently fail
       }
       setLoading(false);
     };
     fetchResults();
-  }, []);
+  }, [userData?.schoolId, userData?.branch]);
 
   const hasData = examResults.length > 0;
-
-  const subjectSuccessData = [
-    { subject: 'Math', passRate: 45, avgScore: 55 },
-    { subject: 'Science', passRate: 75, avgScore: 68 },
-    { subject: 'English', passRate: 92, avgScore: 82 },
-    { subject: 'History', passRate: 88, avgScore: 78 }
-  ];
-
-  const failedStudents = [
-    { name: 'Zaid Ali', grade: '9B', failures: 3, riskMsg: 'Critical Risk', color: 'text-red-600 bg-red-50 border-red-200' },
-    { name: 'Omer Farooq', grade: '10C', failures: 1, riskMsg: 'Needs Attention', color: 'text-amber-600 bg-amber-50 border-amber-200' },
-  ];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">

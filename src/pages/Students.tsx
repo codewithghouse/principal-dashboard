@@ -26,21 +26,24 @@ const Students = () => {
   const [newStudent, setNewStudent] = useState({ name: "", rollNumber: "", classId: "", section: "", email: "" });
 
   useEffect(() => {
-    // ── STEP 1: RESOLVE CONTEXT ──
     const schoolId = userData?.schoolId || userData?.school || userData?.schoolID || userData?.school_id;
     const branch = userData?.branch || userData?.branchName || "";
 
-    if (!schoolId) {
-      console.warn("[STUDENTS] Waiting for school context in userData...", userData);
-      return;
-    }
+    if (!schoolId) return;
 
     setLoading(true);
-    console.log(`[STUDENTS] Hybrid SYNC started for ${schoolId} (Branch: ${branch || 'Base'})`);
 
-    // ── STEP 2: HYBRID FEDERATED FETCH ──
     const qStudents = query(collection(db, "students"), where("schoolId", "==", schoolId));
     const qEnrollments = query(collection(db, "enrollments"), where("schoolId", "==", schoolId));
+
+    let sSnapCache: any = null;
+    let eSnapCache: any = null;
+
+    const runProcess = () => {
+        if (sSnapCache && eSnapCache) {
+            processResults(sSnapCache, eSnapCache);
+        }
+    };
 
     const processResults = async (sSnap: any, eSnap: any) => {
         let masterMap = new Map();
@@ -67,7 +70,6 @@ const Students = () => {
                     ...data 
                 });
             } else {
-                // Update existing record with enrollment details if missing
                 const existing = masterMap.get(emailKey);
                 masterMap.set(emailKey, {
                     ...existing,
@@ -80,20 +82,7 @@ const Students = () => {
 
         let studentsList = Array.from(masterMap.values());
 
-        // ── STEP 3: Fallback Logic ──
-        if (studentsList.length === 0) {
-            const f1 = await getDocs(query(collection(db, "students"), where("school", "==", schoolId)));
-            const f2 = await getDocs(query(collection(db, "enrollments"), where("school", "==", schoolId)));
-            f1.docs.forEach(d => masterMap.set(d.data().email?.toLowerCase() || d.id, { id: d.id, ...d.data() }));
-            f2.docs.forEach(d => {
-                const data = d.data();
-                const key = data.studentEmail?.toLowerCase() || data.email?.toLowerCase() || d.id;
-                if (!masterMap.has(key)) masterMap.set(key, { id: d.id, ...data });
-            });
-            studentsList = Array.from(masterMap.values());
-        }
-
-        // ── STEP 4: Branch Filter ──
+        // Branch Filter
         if (branch && studentsList.length > 0) {
             studentsList = studentsList.filter((s: any) => {
                 const sBranch = (s.branch || s.branchName || s.campus || "Main Campus").toString().toLowerCase();
@@ -118,31 +107,26 @@ const Students = () => {
         setStudentsData(mapped);
         setLoading(false);
 
-        // Async Data Enrichment
+        // Async Enrichment
         mapped.forEach(async (s) => {
             try {
-                // 1. Fetch Faculty (from direct enrollment first, then teaching_assignments junction)
                 let facultyName = s.teacherName;
-                
                 if (!facultyName || facultyName === "Loading...") {
                    const taSnap = await getDocs(query(collection(db, "teaching_assignments"), where("classId", "==", s.classId)));
                    const names = Array.from(new Set(taSnap.docs.map(d => d.data().teacherName))).filter(Boolean);
                    facultyName = names.join(", ") || "Not Assigned";
                 }
 
-                // 2. Fetch Real-time Attendance
-                const attSnap = await getDocs(query(collection(db, "attendance"), where("studentEmail", "==", s.email || s.studentEmail || "")));
+                const studentMail = s.email || s.studentEmail || "";
+                const qAtt = studentMail 
+                    ? query(collection(db, "attendance"), where("studentEmail", "==", studentMail))
+                    : query(collection(db, "attendance"), where("studentId", "==", s.id));
+                
+                const attSnap = await getDocs(qAtt);
                 let attStr = "0%";
                 if (!attSnap.empty) {
                     const pres = attSnap.docs.filter(d => ['present', 'late'].includes(d.data().status?.toLowerCase())).length;
                     attStr = `${Math.round((pres / attSnap.size) * 100)}%`;
-                } else {
-                    // Fallback to studentId search
-                    const attSnap2 = await getDocs(query(collection(db, "attendance"), where("studentId", "==", s.id)));
-                    if (!attSnap2.empty) {
-                        const pres = attSnap2.docs.filter(d => ['present', 'late'].includes(d.data().status?.toLowerCase())).length;
-                        attStr = `${Math.round((pres / attSnap2.size) * 100)}%`;
-                    }
                 }
 
                 setStudentsData(prev => prev.map(item => item.id === s.id ? { ...item, faculty: facultyName, attendance: attStr } : item));
@@ -150,12 +134,10 @@ const Students = () => {
         });
     };
 
-    // ── STEP 5: Live Listeners ──
-    const unsubStudents = onSnapshot(qStudents, (sSnap) => {
-        getDocs(qEnrollments).then(eSnap => processResults(sSnap, eSnap));
-    });
+    const unsub1 = onSnapshot(qStudents, (snap) => { sSnapCache = snap; runProcess(); });
+    const unsub2 = onSnapshot(qEnrollments, (snap) => { eSnapCache = snap; runProcess(); });
 
-    return () => unsubStudents();
+    return () => { unsub1(); unsub2(); };
   }, [userData]);
 
   const handleAddStudent = async () => {

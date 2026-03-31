@@ -87,7 +87,6 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
       const schoolId = userData?.schoolId || userData?.id;
       if (!schoolId) return;
 
-      console.info(`%c 📊 [UI] Fetching Marks Distribution for: ${subject.name} `, 'color: #8b5cf6; font-weight: bold;');
       setLoadingChart(true);
       try {
         const result = await aiEngine.getInsights({
@@ -117,7 +116,6 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
       const schoolId = userData?.schoolId || userData?.id;
       if (!schoolId) return;
 
-      console.info(`%c 📈 [UI] Fetching Section Performance for: ${subject.name} `, 'color: #3b82f6; font-weight: bold;');
       setLoadingSections(true);
       try {
         // Step 1: Fetch real students to calculate actual section averages

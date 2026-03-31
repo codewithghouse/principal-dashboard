@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { AlertTriangle, AlertCircle, Activity, Loader2, UserX, TrendingDown, Clock, ShieldAlert, ChevronRight } from "lucide-react";
+import { AlertTriangle, AlertCircle, Activity, Loader2, UserX, TrendingDown, Clock, ShieldAlert, ChevronRight, BellRing } from "lucide-react";
 import { AIController } from "@/ai/controller/ai-controller";
 import { db } from "@/lib/firebase";
-import { collection, query, getDocs, limit, where, onSnapshot } from "firebase/firestore";
+import { collection, query, getDocs, where, addDoc, serverTimestamp } from "firebase/firestore";
 import RiskIntervention from "@/components/RiskIntervention";
 import { useAuth } from "@/lib/AuthContext";
+import { toast } from "sonner";
 
 interface RiskInsights {
   chronic_absentees: { student: string; reason: string }[];
@@ -19,6 +20,30 @@ const RiskStudents = () => {
   const [loading, setLoading] = useState(true);
   const [placeholderMessage, setPlaceholderMessage] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
+  const [escalatingId, setEscalatingId] = useState<string | null>(null);
+
+  const handleEscalate = async (student: any) => {
+    setEscalatingId(student.student);
+    try {
+      await addDoc(collection(db, "escalations"), {
+        studentName: student.student,
+        studentId: student.id || null,
+        riskLevel: student.risk_level,
+        factors: student.factors,
+        schoolId: userData?.schoolId,
+        branch: userData?.branch || "",
+        escalatedBy: userData?.name || "Principal",
+        escalatedAt: serverTimestamp(),
+        status: "open",
+        note: `Auto-escalated due to ${student.risk_level} risk level. Factors: ${student.factors?.join(", ")}.`
+      });
+      toast.success(`Escalation raised for ${student.student}. Counselor will be notified.`);
+    } catch {
+      toast.error("Failed to raise escalation. Try again.");
+    } finally {
+      setEscalatingId(null);
+    }
+  };
 
   useEffect(() => {
     if (!userData?.schoolId) return;
@@ -160,20 +185,32 @@ const RiskStudents = () => {
                         </div>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => setSelectedStudent({
-                        initials: student.student.substring(0, 2).toUpperCase(),
-                        name: student.student,
-                        grade: "Unknown", // Would be fetched from student doc in real app
-                        roll: "N/A",
-                        level: student.risk_level,
-                        days: "Auto",
-                        id: student.id
-                      })}
-                      className="text-[10px] font-black uppercase tracking-widest bg-[#1e3a8a] text-white px-8 py-4 rounded-2xl hover:bg-[#1e4fc0] shadow-xl shadow-indigo-100 transition-all flex items-center gap-2 group-hover:translate-x-1"
-                    >
-                      Intervene <ChevronRight className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {student.risk_level?.toLowerCase() === 'critical' && (
+                        <button
+                          onClick={() => handleEscalate(student)}
+                          disabled={escalatingId === student.student}
+                          className="text-[10px] font-black uppercase tracking-widest bg-red-500 text-white px-6 py-4 rounded-2xl hover:bg-red-600 shadow-xl shadow-red-100 transition-all flex items-center gap-2 disabled:opacity-60"
+                        >
+                          {escalatingId === student.student ? <Loader2 className="w-4 h-4 animate-spin" /> : <BellRing className="w-4 h-4" />}
+                          Escalate
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setSelectedStudent({
+                          initials: student.student.substring(0, 2).toUpperCase(),
+                          name: student.student,
+                          grade: "Unknown",
+                          roll: "N/A",
+                          level: student.risk_level,
+                          days: "Auto",
+                          id: student.id
+                        })}
+                        className="text-[10px] font-black uppercase tracking-widest bg-[#1e3a8a] text-white px-8 py-4 rounded-2xl hover:bg-[#1e4fc0] shadow-xl shadow-indigo-100 transition-all flex items-center gap-2 group-hover:translate-x-1"
+                      >
+                        Intervene <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))
               ) : (

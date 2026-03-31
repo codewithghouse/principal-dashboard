@@ -2,17 +2,11 @@ import { useState, useEffect } from "react";
 import { ShieldAlert, Clock, AlertTriangle, AlertCircle, Plus, LayoutGrid, FileText, Calendar, Pin, PinOff } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { db } from "@/lib/firebase";
-import { collection, query, limit, getDocs, where } from "firebase/firestore";
+import { collection, query, limit, onSnapshot, where } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import IncidentDetail from "@/components/IncidentDetail";
 import DisciplineIntelligence from "@/components/DisciplineIntelligence";
 
-const pieData = [
-  { name: "Behavioral", value: 55, color: "#f59e0b" },
-  { name: "Academic", value: 25, color: "#1e3a8a" },
-  { name: "Safety", value: 12, color: "#ef4444" },
-  { name: "Property", value: 8, color: "#94a3b8" },
-];
 
 const RADIAN = Math.PI / 180;
 const renderLabel = ({ cx, cy, midAngle, outerRadius, name }: any) => {
@@ -35,36 +29,62 @@ const getSeverityBadge = (severity: string) => {
   return <span className="px-3 py-1 bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-black uppercase tracking-wider rounded-md">Low (Note)</span>;
 };
 
+const PIE_COLORS: Record<string, string> = {
+  Behavioral: "#f59e0b", Academic: "#1e3a8a", Safety: "#ef4444",
+  Property: "#94a3b8", Other: "#64748b"
+};
+
 const Discipline = () => {
   const { userData } = useAuth();
   const [selectedIncident, setSelectedIncident] = useState<any | null>(null);
   const [incidents, setIncidents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pieData, setPieData] = useState<any[]>([]);
+  const [stats, setStats] = useState({ todayCount: 0, pendingCount: 0, weekCount: 0, criticalCount: 0 });
 
-  // FEATURE 7: Critical Case Pinning state (locally mocked for demonstration if Firebase lacks 'pinned' fields)
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!userData?.schoolId) return;
 
-    const fetchIncidents = async () => {
-      try {
-        const constraints = [where("schoolId", "==", userData.schoolId)];
-        if (userData.branch) constraints.push(where("branch", "==", userData.branch));
+    const constraints: any[] = [where("schoolId", "==", userData.schoolId)];
+    if (userData.branch) constraints.push(where("branch", "==", userData.branch));
 
-        const q = query(collection(db, "incidents"), ...constraints, limit(50));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          setIncidents(data);
-        }
-      } catch (e) {
-        console.warn("Incidents fetch error", e);
-      }
+    const q = query(collection(db, "incidents"), ...constraints, limit(50));
+    const unsub = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setIncidents(data);
+
+      const today = new Date().toLocaleDateString('en-CA');
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const weekAgoStr = weekAgo.toLocaleDateString('en-CA');
+
+      setStats({
+        todayCount: data.filter(i => i.date === today).length,
+        pendingCount: data.filter(i => i.status !== 'Resolved').length,
+        weekCount: data.filter(i => i.date && i.date >= weekAgoStr).length,
+        criticalCount: data.filter(i => ['HIGH', 'CRITICAL'].includes((i.severity || '').toUpperCase())).length
+      });
+
+      // Compute pieData from incident types
+      const typeMap: Record<string, number> = {};
+      data.forEach(i => {
+        const t = i.type || i.incidentType || 'Other';
+        typeMap[t] = (typeMap[t] || 0) + 1;
+      });
+      const total = data.length || 1;
+      setPieData(Object.entries(typeMap).map(([name, count]) => ({
+        name,
+        value: Math.round((count / total) * 100),
+        color: PIE_COLORS[name] || '#94a3b8'
+      })));
+
       setLoading(false);
-    };
-    fetchIncidents();
-  }, [userData?.schoolId]);
+    });
+
+    return () => unsub();
+  }, [userData?.schoolId, userData?.branch]);
 
   const togglePin = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -106,7 +126,7 @@ const Discipline = () => {
                   <AlertCircle className="w-4 h-4 text-red-500" />
                 </div>
               </div>
-              <p className="text-4xl font-black text-foreground mb-1">2</p>
+              <p className="text-4xl font-black text-foreground mb-1">{stats.todayCount}</p>
               <p className="text-xs text-muted-foreground font-medium">Logged today</p>
             </div>
 
@@ -118,7 +138,7 @@ const Discipline = () => {
                   <Clock className="w-4 h-4 text-amber-500" />
                 </div>
               </div>
-              <p className="text-4xl font-black text-red-500 mb-1">3</p>
+              <p className="text-4xl font-black text-red-500 mb-1">{stats.pendingCount}</p>
               <p className="text-xs text-muted-foreground font-medium">Require follow-up</p>
             </div>
 
@@ -130,7 +150,7 @@ const Discipline = () => {
                   <Calendar className="w-4 h-4 text-blue-600" />
                 </div>
               </div>
-              <p className="text-4xl font-black text-foreground mb-1">8</p>
+              <p className="text-4xl font-black text-foreground mb-1">{stats.weekCount}</p>
               <p className="text-xs text-muted-foreground font-medium">Total incidents</p>
             </div>
 
@@ -142,7 +162,7 @@ const Discipline = () => {
                   <AlertTriangle className="w-4 h-4 text-red-600" />
                 </div>
               </div>
-              <p className="text-4xl font-black text-red-500 mb-1">1</p>
+              <p className="text-4xl font-black text-red-500 mb-1">{stats.criticalCount}</p>
               <p className="text-xs text-muted-foreground font-medium">High priority</p>
             </div>
           </div>
