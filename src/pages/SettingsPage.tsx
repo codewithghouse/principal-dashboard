@@ -8,6 +8,7 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
+import MigrationEngine from "@/components/MigrationEngine";
 
 const tabs = [
   { id: 'profile', label: "School Profile" },
@@ -145,6 +146,9 @@ const SettingsPage = () => {
         ))}
       </div>
 
+      {activeTab === 'data' ? (
+        <MigrationEngine />
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         {/* Left Column: School Information */}
         <div className="lg:col-span-12 xl:col-span-8 space-y-10">
@@ -267,6 +271,7 @@ const SettingsPage = () => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

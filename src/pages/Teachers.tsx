@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, getDocs, deleteDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, getDocs, getDoc, deleteDoc } from "firebase/firestore";
 import { sendEmail } from "@/lib/resend";
 import { useAuth } from "@/lib/AuthContext";
 import * as XLSX from "xlsx";
@@ -61,7 +61,8 @@ const Teachers = () => {
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [bulkDone, setBulkDone]               = useState(false);
 
-  const [inviteForm, setInviteForm] = useState({ name: "", email: "", subject: "" });
+  const [inviteForm, setInviteForm] = useState({ name: "", email: "", subject: "", assignClassId: "" });
+  const [availableClasses, setAvailableClasses] = useState<any[]>([]);
 
   // ── Real-time Teachers Fetch ───────────────────────────────────────────────
   useEffect(() => {
@@ -89,27 +90,72 @@ const Teachers = () => {
           experience: data.experience || "N/A",
           rating: data.rating || "5.0",
           status: data.status || "Active",
+          subject: data.subject || "Faculty",
           actualClasses: "Fetching..."
         };
       });
       setTeachersData(teachers);
       
       teachers.forEach(async (t) => {
-          const classQ = query(collection(db, "classes"), where("teacherId", "==", t.id));
-          const classSnap = await getDocs(classQ);
-          const classNames = classSnap.docs.map(doc => doc.data().name).join(", ") || "No Classes";
-          
-          setTeachersData(prev => prev.map(item => item.id === t.id ? {...item, actualClasses: classNames} : item));
+          try {
+            const assignQ = query(collection(db, "teaching_assignments"), where("teacherId", "==", t.id));
+            const assignSnap = await getDocs(assignQ);
+            
+            if (assignSnap.empty) {
+                setTeachersData(prev => prev.map(item => item.id === t.id ? {...item, actualClasses: "Unassigned"} : item));
+                return;
+            }
+
+            // Map Class Names from assignments
+            const classIds = Array.from(new Set(assignSnap.docs.map(d => d.data().classId)));
+            const classNames: string[] = [];
+            for (const cId of classIds) {
+                const cDoc = await getDoc(doc(db, "classes", cId));
+                if (cDoc.exists()) classNames.push(cDoc.data().name);
+            }
+            
+            setTeachersData(prev => prev.map(item => item.id === t.id ? {
+                ...item, 
+                actualClasses: classNames.join(", ") || "No Classes",
+                subject: t.subject || assignSnap.docs[0].data().subjectId || "Faculty"
+            } : item));
+          } catch (e) {
+            console.error("Assignment audit failed for teacher:", t.id, e);
+          }
       });
     });
 
-    return () => unsub();
+    const classQ = query(collection(db, "classes"));
+    const unsubClasses = onSnapshot(classQ, (snap) => {
+        setAvailableClasses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsub(); unsubClasses(); };
   }, [userData]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteForm.name || !inviteForm.email) return;
+
+    const assignToClass = async (targetTeacherId: string, assignedClassId: string) => {
+        if (!assignedClassId) return;
+        
+        try {
+            await addDoc(collection(db, "teaching_assignments"), {
+                teacherId: targetTeacherId,
+                classId: assignedClassId,
+                // Assuming subject isn't strictly selected together with class in this exact dropdown,
+                // but we can pass the teacher's primary subject if applicable.
+                subjectId: inviteForm.subject || "",
+                status: "active",
+                createdAt: serverTimestamp()
+            });
+            console.log(`[ASSIGNMENT] Created teaching_assignment for teacher ${targetTeacherId} and class ${assignedClassId}`);
+        } catch (err) {
+            console.error(`[ASSIGNMENT ERROR] Failed assignment for class ${assignedClassId}:`, err);
+        }
+    };
 
     setIsSending(true);
     try {
@@ -129,16 +175,31 @@ const Teachers = () => {
              // Rescue the teacher and restore original ID links!
              await updateDoc(doc(db, "teachers", existingDoc.id), {
                  status: "Invited",
+                 isActive: true,
                  name: inviteForm.name,
                  subject: inviteForm.subject || existingData.subject,
                  reactivatedAt: serverTimestamp()
              });
 
+             await assignToClass(existingDoc.id, inviteForm.assignClassId);
+
              try {
                 await sendEmail({
                   to: emailObj,
                   subject: `Welcome Back to ${userData?.schoolName || "EduIntellect"}`,
-                  html: `<p>Hello ${inviteForm.name},</p><p>Your teacher account has been successfully restored. Your historical classes and student rosters remain intact.</p>`
+                  html: `
+                    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                      <h2 style="color: #1e3a8a;">Welcome Back, ${inviteForm.name}!</h2>
+                      <p>Your teacher account at <strong>${userData?.schoolName || "the institution"}</strong> has been successfully restored.</p>
+                      <p>Your historical classes and student rosters remain completely intact. You can now access your portal normally.</p>
+                      <div style="margin: 30px 0; text-align: center;">
+                        <a href="https://teacher-dashboard-ochre.vercel.app" 
+                           style="background: #1e3a8a; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+                          Open Teacher Dashboard
+                        </a>
+                      </div>
+                    </div>
+                  `
                 });
              } catch (emailErr) {
                 console.info("Email API bypassed locally during Reactivation.");
@@ -146,7 +207,7 @@ const Teachers = () => {
 
              toast.success("Legacy Teacher successfully Restored & Re-invited!");
              setIsInviteOpen(false);
-             setInviteForm({ name: "", email: "", subject: "" });
+             setInviteForm({ name: "", email: "", subject: "", assignClassId: "" });
              setIsSending(false);
              return;
          } else {
@@ -158,23 +219,40 @@ const Teachers = () => {
       }
       
       // 2. Add New Teacher if completely fresh
-      await addDoc(collection(db, "teachers"), {
-        ...inviteForm,
+      const newTeacherRef = await addDoc(collection(db, "teachers"), {
+        name: inviteForm.name,
+        subject: inviteForm.subject,
         email: emailObj,
         schoolId,
         branch,
         status: "Invited",
+        isActive: true,
         createdAt: serverTimestamp(),
         rating: 5.0,
         experience: "N/A"
       });
 
-      // Localhost environment fallback
+      await assignToClass(newTeacherRef.id, inviteForm.assignClassId);
+
+      // Final Email Dispatch
       try {
          await sendEmail({
            to: emailObj,
            subject: `Invitation to join ${userData?.schoolName || "EduIntellect"}`,
-           html: `<p>Hello ${inviteForm.name},</p><p>You have been invited as a teacher. Please login to the Teacher Portal.</p>`
+           html: `
+             <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+               <h2 style="color: #1e3a8a;">Welcome, ${inviteForm.name}!</h2>
+               <p>You have been officially invited as a Teacher at <strong>${userData?.schoolName || "the institution"}</strong>.</p>
+               <p>Your institutional dashboard is fully configured and ready for your arrival. Please sign in using this email address.</p>
+               <div style="margin: 30px 0; text-align: center;">
+                 <a href="https://teacher-dashboard-ochre.vercel.app" 
+                    style="background: #1e3a8a; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px;">
+                   Login to Teacher Portal
+                 </a>
+               </div>
+               <p style="color: #888; font-size: 12px; margin-top: 20px;">If the button doesn't work, copy and paste this link manually: https://teacher-dashboard-ochre.vercel.app</p>
+             </div>
+           `
          });
       } catch (emailErr) {
          console.info("Local Environment: Database Injection successful, but Email API bypassed (Vercel Serverless not active on Localhost).", emailErr);
@@ -182,7 +260,7 @@ const Teachers = () => {
 
       toast.success("Teacher Database Injection Successful!");
       setIsInviteOpen(false);
-      setInviteForm({ name: "", email: "", subject: "" });
+      setInviteForm({ name: "", email: "", subject: "", assignClassId: "" });
     } catch (err) {
       console.error(err);
       toast.error("Database connection failed.");
@@ -192,15 +270,27 @@ const Teachers = () => {
   };
 
   const handleDeleteTeacher = async (id: string, name: string) => {
-      if (!confirm(`Are you sure you want to de-board ${name}? All their institutional records will be archived.`)) return;
+      if (!confirm(`Are you sure you want to de-board ${name}? All their institutional records will stay intact, but they will be unassigned.`)) return;
       try {
-          // Soft-Delete: We archive the teacher instead of destroying the record.
-          // This allows them to be seamlessly restored if re-invited using the same email.
+          // Soft-Delete: Archive and set isActive to false
           await updateDoc(doc(db, "teachers", id), { 
               status: "Archived",
+              isActive: false,
               archivedAt: serverTimestamp() 
           });
-          toast.success("Faculty record archived successfully.");
+
+          // Unassign from teaching_assignments
+          const q = query(collection(db, "teaching_assignments"), where("teacherId", "==", id));
+          const snapshot = await getDocs(q);
+          const updatePromises = snapshot.docs.map(assignmentDoc => 
+              updateDoc(assignmentDoc.ref, { 
+                  teacherId: null,
+                  updatedAt: serverTimestamp() 
+              })
+          );
+          await Promise.all(updatePromises);
+
+          toast.success("Faculty record securely archived & unassigned.");
       } catch (e) {
           toast.error("Failed to archive faculty record.");
       }
@@ -472,6 +562,19 @@ const Teachers = () => {
               <Label className="uppercase text-[10px] font-black text-slate-400 ml-1">Primary Subject</Label>
               <Input placeholder="e.g. Mathematics" className="h-12 rounded-xl font-bold bg-slate-50 border-none"
                 value={inviteForm.subject} onChange={e => setInviteForm({ ...inviteForm, subject: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+               <Label className="uppercase text-[10px] font-black text-slate-400 ml-1">Class Designation (Optional)</Label>
+               <select 
+                 value={inviteForm.assignClassId} 
+                 onChange={e => setInviteForm({...inviteForm, assignClassId: e.target.value})}
+                 className="w-full h-12 px-4 rounded-xl font-bold bg-slate-50 border-none focus:outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all text-sm text-slate-700"
+               >
+                 <option value="" className="text-slate-400">Not Assigned / General Faculty</option>
+                 {availableClasses.map(cls => (
+                     <option key={cls.id} value={cls.id} className="font-bold">{cls.name} {cls.teacherName ? `(Reassign from ${cls.teacherName})` : ''}</option>
+                 ))}
+               </select>
             </div>
             <button type="submit" disabled={isSending}
               className="w-full h-14 mt-4 rounded-2xl bg-[#1e3a8a] text-white font-black uppercase tracking-widest hover:opacity-90 transition flex items-center justify-center gap-3">

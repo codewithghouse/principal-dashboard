@@ -36,19 +36,66 @@ const AcademicAnalytics = () => {
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
-        const snap = await getDocs(query(collection(db, "exam_results"), limit(5)));
-        const dataExists = !snap.empty;
+        // Fetch all results for the school/branch (Principal context)
+        const snap = await getDocs(collection(db, "results"));
+        if (snap.empty) {
+           setPlaceholderMessage("No academic records found for this institution.");
+           setLoading(false);
+           return;
+        }
 
-        // Structured academic dataset Example input JSON exactly as specified in the prompt
-        const academicDataset = dataExists ? {
-           grade: "10",
-           subjects: [
-             { name: "Mathematics", average_score: 61, pass_rate: 72, trend: "declining" },
-             { name: "English", average_score: 74, pass_rate: 88, trend: "stable" }
-           ],
-           monthly_average: [63, 65, 68, 70],
-           previous_year_average: 69
-        } : null;
+        const rawResults = snap.docs.map(d => d.data());
+        
+        // 1. Calculate Score Distribution Mapping
+        const ranges = [
+           { range: "90-100", count: 0, min: 90, max: 100 },
+           { range: "75-89", count: 0, min: 75, max: 89 },
+           { range: "60-74", count: 0, min: 60, max: 74 },
+           { range: "40-59", count: 0, min: 40, max: 59 },
+           { range: "<40", count: 0, min: 0, max: 39 },
+        ];
+
+        rawResults.forEach(r => {
+           const score = parseFloat(r.score) || 0;
+           const range = ranges.find(rg => score >= rg.min && score <= rg.max);
+           if (range) range.count++;
+        });
+
+        // 2. Calculate Monthly Average Trend
+        const monthlyScores: Record<string, { total: number, count: number }> = {};
+        rawResults.forEach(r => {
+           if (!r.timestamp) return;
+           const date = r.timestamp.toDate();
+           const month = date.toLocaleString('default', { month: 'short' });
+           if (!monthlyScores[month]) monthlyScores[month] = { total: 0, count: 0 };
+           monthlyScores[month].total += (parseFloat(r.score) || 0);
+           monthlyScores[month].count++;
+        });
+
+        const sortedMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const trendData = Object.entries(monthlyScores)
+           .sort((a, b) => sortedMonths.indexOf(a[0]) - sortedMonths.indexOf(b[0]))
+           .map(([month, stats]) => ({
+              month,
+              avg: parseFloat((stats.total / stats.count).toFixed(1))
+           }))
+           .slice(-5); // Show last 5 months
+
+        // 3. Prepare AI Dataset
+        const academicDataset = {
+           total_records: rawResults.length,
+           average_performance: (rawResults.reduce((acc, r) => acc + (parseFloat(r.score) || 0), 0) / rawResults.length).toFixed(1),
+           subjects: Array.from(new Set(rawResults.map(r => r.subject || "General"))).map(sub => {
+              const subResults = rawResults.filter(r => (r.subject || "General") === sub);
+              const avg = subResults.reduce((acc, r) => acc + (parseFloat(r.score) || 0), 0) / subResults.length;
+              return { 
+                 name: sub, 
+                 average_score: Math.round(avg),
+                 pass_rate: Math.round((subResults.filter(r => parseFloat(r.score) > 40).length / subResults.length) * 100)
+              };
+           }),
+           monthly_average: trendData.map(t => t.avg)
+        };
 
         // Implementation of AI Controller layer calling
         const result = await AIController.getAcademicAnalytics(academicDataset);
@@ -58,8 +105,6 @@ const AcademicAnalytics = () => {
         } else if (result.status === "success" && result.data) {
            setData(result.data);
            setPlaceholderMessage(null);
-        } else {
-           setPlaceholderMessage(result.message || "An error occurred.");
         }
       } catch (err) {
         console.error("Failed to load academic analytics via controller:", err);

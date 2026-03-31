@@ -12,57 +12,57 @@ export default defineConfig(({ mode }) => {
       port: 8081,
       hmr: { overlay: false },
 
-      // ── EMAIL API Middleware (Local Dev) ────────────────────────────────────
-      // This mimics the Vercel /api/send-email serverless function locally
-      // so real emails are sent via Resend even during `npm run dev`
-      configureServer: (server: any) => {
-        server.middlewares.use(async (req: any, res: any, next: any) => {
-          if (req.url === "/api/send-email" && req.method === "POST") {
-            try {
-              let body = "";
-              req.on("data", (chunk: any) => { body += chunk.toString(); });
-              req.on("end", async () => {
-                const { to, subject, html } = JSON.parse(body);
-                const apiKey = env.VITE_RESEND_API_KEY;
-
-                if (!apiKey) {
-                  res.statusCode = 500;
-                  res.end(JSON.stringify({ error: "VITE_RESEND_API_KEY is missing in .env" }));
-                  return;
-                }
-
-                const response = await fetch("https://api.resend.com/emails", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${apiKey}`,
-                  },
-                  body: JSON.stringify({
-                    from: "EduIntellect <invite@edulent.dgion.com>",
-                    to: Array.isArray(to) ? to : [to],
-                    subject,
-                    html,
-                  }),
-                });
-
-                const result = await response.json();
-                res.setHeader("Content-Type", "application/json");
-                res.statusCode = response.status || 200;
-                res.end(JSON.stringify(result));
-              });
-            } catch (err: any) {
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: err.message }));
-            }
-          } else {
-            next();
-          }
-        });
-      },
     },
     plugins: [
       react(),
-      mode === "development" && componentTagger()
+      mode === "development" && componentTagger(),
+      {
+        name: 'local-email-middleware',
+        configureServer: (server: any) => {
+          server.middlewares.use(async (req: any, res: any, next: any) => {
+            if (req.url?.startsWith("/api/send-email") && req.method === "POST") {
+              try {
+                let body = "";
+                req.on("data", (chunk: any) => { body += chunk.toString(); });
+                req.on("end", async () => {
+                  const { to, subject, html } = JSON.parse(body);
+                  const apiKey = env.VITE_RESEND_API_KEY;
+
+                  if (!apiKey) {
+                    res.statusCode = 500;
+                    res.end(JSON.stringify({ error: "VITE_RESEND_API_KEY is missing in .env" }));
+                    return;
+                  }
+
+                  const response = await fetch("https://api.resend.com/emails", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${apiKey}`,
+                    },
+                    body: JSON.stringify({
+                      from: "EduIntellect <invite@edulent.dgion.com>",
+                      to: Array.isArray(to) ? to : [to],
+                      subject,
+                      html,
+                    }),
+                  });
+
+                  const result = await response.json();
+                  res.setHeader("Content-Type", "application/json");
+                  res.statusCode = response.status || 200;
+                  res.end(JSON.stringify(result));
+                });
+              } catch (err: any) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: err.message }));
+              }
+            } else {
+              next();
+            }
+          });
+        }
+      }
     ].filter(Boolean),
     resolve: {
       alias: {
