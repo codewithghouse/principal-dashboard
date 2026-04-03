@@ -1,137 +1,173 @@
 import { useState, useEffect } from "react";
-import { 
-  FileText, Download, GraduationCap, Calendar, Shield, IndianRupee, 
-  Settings, UserCheck, Layout, CalendarCheck, AlertTriangle, Trophy, 
-  Users2, MessageSquare, LineChart, Trash2, ArrowRight, Plus, Loader2, Clock
+import {
+  FileText, Download, GraduationCap, Calendar, Shield, IndianRupee,
+  Settings, UserCheck, Layout, CalendarCheck, AlertTriangle, Trophy,
+  Users2, MessageSquare, LineChart, Trash2, ArrowRight, Plus, Loader2, Clock,
+  BarChart3
 } from "lucide-react";
 import GenerateReport from "@/components/GenerateReport";
 import { useAuth } from "@/lib/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, orderBy, limit } from "firebase/firestore";
+import {
+  collection, query, where, onSnapshot,
+  deleteDoc, doc
+} from "firebase/firestore";
+import { toast } from "sonner";
 
 const reportCategories = [
-  { id: 'academic', label: "Academic", count: "12 templates", icon: GraduationCap, color: "text-blue-600", bg: "bg-blue-50" },
-  { id: 'attendance', label: "Attendance", count: "8 templates", icon: CalendarCheck, color: "text-green-600", bg: "bg-green-50" },
-  { id: 'discipline', label: "Discipline", count: "5 templates", icon: Shield, color: "text-red-600", bg: "bg-red-50" },
-  { id: 'financial', label: "Financial", count: "6 templates", icon: IndianRupee, color: "text-orange-600", bg: "bg-orange-50" },
-  { id: 'custom', label: "Custom", count: "Build your own", icon: Settings, color: "text-indigo-600", bg: "bg-indigo-50" },
+  { id: "academic",    label: "Academic",    count: "12 templates", icon: GraduationCap, color: "text-blue-600",   bg: "bg-blue-50"   },
+  { id: "attendance",  label: "Attendance",  count: "8 templates",  icon: CalendarCheck, color: "text-green-600",  bg: "bg-green-50"  },
+  { id: "discipline",  label: "Discipline",  count: "5 templates",  icon: Shield,        color: "text-red-600",    bg: "bg-red-50"    },
+  { id: "financial",   label: "Financial",   count: "6 templates",  icon: IndianRupee,   color: "text-orange-600", bg: "bg-orange-50" },
+  { id: "custom",      label: "Custom",      count: "Build your own",icon: Settings,      color: "text-indigo-600", bg: "bg-indigo-50" },
 ];
 
 const templates = [
-  { title: "Student Progress", desc: "Individual student performance", icon: UserCheck, color: "text-blue-600", bg: "bg-blue-50" },
-  { title: "Class Performance", desc: "Section-wise analysis", icon: Layout, color: "text-blue-900", bg: "bg-blue-50" },
-  { title: "Monthly Attendance", desc: "Attendance summary report", icon: CalendarCheck, color: "text-green-600", bg: "bg-green-50" },
-  { title: "Risk Students", desc: "At-risk student list", icon: AlertTriangle, color: "text-red-500", bg: "bg-red-50" },
-  { title: "Exam Results", desc: "Comprehensive exam report", icon: Trophy, color: "text-yellow-600", bg: "bg-yellow-50" },
-  { title: "Teacher Performance", desc: "Staff evaluation report", icon: Users2, color: "text-blue-800", bg: "bg-blue-50" },
-  { title: "Parent Communication", desc: "Communication log", icon: MessageSquare, color: "text-green-500", bg: "bg-green-50" },
-  { title: "School Overview", desc: "Complete school analytics", icon: LineChart, color: "text-orange-500", bg: "bg-orange-50" },
+  { title: "Student Progress",     desc: "Individual student performance",  icon: UserCheck,     color: "text-blue-600",   bg: "bg-blue-50"   },
+  { title: "Class Performance",    desc: "Section-wise analysis",           icon: Layout,        color: "text-blue-900",   bg: "bg-blue-50"   },
+  { title: "Monthly Attendance",   desc: "Attendance summary report",       icon: CalendarCheck, color: "text-green-600",  bg: "bg-green-50"  },
+  { title: "Risk Students",        desc: "At-risk student list",            icon: AlertTriangle, color: "text-red-500",    bg: "bg-red-50"    },
+  { title: "Exam Results",         desc: "Comprehensive exam report",       icon: Trophy,        color: "text-yellow-600", bg: "bg-yellow-50" },
+  { title: "Teacher Performance",  desc: "Staff evaluation report",         icon: Users2,        color: "text-blue-800",   bg: "bg-blue-50"   },
+  { title: "Parent Communication", desc: "Communication log",               icon: MessageSquare, color: "text-green-500",  bg: "bg-green-50"  },
+  { title: "School Overview",      desc: "Complete school analytics",       icon: LineChart,     color: "text-orange-500", bg: "bg-orange-50" },
 ];
 
 const Reports = () => {
   const { userData } = useAuth();
-  const [activeCategory, setActiveCategory] = useState('academic');
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
-  const [recentReports, setRecentReports] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [activeCategory,    setActiveCategory]    = useState("academic");
+  const [selectedTemplate,  setSelectedTemplate]  = useState<string | null>(null);
+  const [recentReports,     setRecentReports]     = useState<any[]>([]);
+  const [isLoading,         setIsLoading]         = useState(true);
+  const [deletingId,        setDeletingId]        = useState<string | null>(null);
 
+  /* ── listen for principal's generated reports ── */
   useEffect(() => {
     if (!userData?.schoolId) return;
-
     const q = query(
       collection(db, "principal_reports"),
       where("schoolId", "==", userData.schoolId)
     );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const reports = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Sort client-side if needed, but here we can just trust the stream
-      const sorted = reports.sort((a: any, b: any) => 
-        (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0)
-      );
-
-      setRecentReports(sorted.slice(0, 10));
+    const unsub = onSnapshot(q, snap => {
+      const docs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a: any, b: any) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+      setRecentReports(docs.slice(0, 10));
       setIsLoading(false);
-    }, (error) => {
-      console.error("Principal Reports Sync Error:", error);
+    }, err => {
+      console.error(err);
       setIsLoading(false);
     });
-
-    return () => unsubscribe();
+    return () => unsub();
   }, [userData?.schoolId]);
 
+  /* ── delete a report ── */
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await deleteDoc(doc(db, "principal_reports", id));
+      toast.success("Report deleted.");
+    } catch {
+      toast.error("Failed to delete. Try again.");
+    }
+    setDeletingId(null);
+  };
+
+  /* ── download: open print view ── */
+  const handleDownload = (report: any) => {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    const d = report.data || {};
+    win.document.write(`
+      <html><head><title>${report.title}</title>
+      <style>
+        body { font-family: sans-serif; padding: 40px; max-width: 700px; margin: 0 auto; }
+        h1 { color: #1e3a8a; margin-bottom: 4px; }
+        p  { color: #64748b; font-size: 13px; margin: 0 0 24px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
+        th { background: #f8fafc; font-weight: 700; color: #334155; }
+        .risk { color: #ef4444; font-weight: 700; }
+      </style></head><body>
+      <h1>${report.title}</h1>
+      <p>Generated by ${report.generatedBy || "Principal"} &bull; ${report.format || "PDF"}</p>
+      <table>
+        <tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>Total Students</td><td>${d.totalStudents ?? "—"}</td></tr>
+        <tr><td>Average Attendance</td><td>${d.avgAttendance ?? 0}%</td></tr>
+        <tr><td>Average Marks</td><td>${d.avgMarks ?? 0}%</td></tr>
+        <tr><td>At-Risk Students</td><td class="risk">${d.atRisk ?? "—"}</td></tr>
+        <tr><td>Discipline Incidents</td><td>${d.incidents ?? "—"}</td></tr>
+      </table>
+      <script>window.print();</script>
+      </body></html>
+    `);
+    win.document.close();
+  };
+
+  /* ── if generate view open ── */
   if (selectedTemplate) {
     return (
-      <GenerateReport 
-        templateName={selectedTemplate} 
-        onBack={() => setSelectedTemplate(null)} 
+      <GenerateReport
+        templateName={selectedTemplate}
+        onBack={() => setSelectedTemplate(null)}
       />
     );
   }
 
+  /* ── landing ── */
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-top-4 duration-500 pb-10">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[#1e293b]">Reports</h1>
-          <p className="text-sm text-slate-400 font-medium tracking-tight">Generate and manage school reports</p>
-        </div>
-        <button 
-          onClick={() => setSelectedTemplate("Custom")}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-100 hover:bg-[#1e4fc0] transition-all active:scale-95"
-        >
-          <Plus className="w-4 h-4" /> Create Custom Report
-        </button>
+    <div className="space-y-8 animate-in fade-in slide-in-from-top-4 duration-500 pb-24">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Reports</h1>
+        <p className="text-sm text-muted-foreground font-medium">Generate and manage school reports</p>
       </div>
 
-      {/* Category Selection Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        {reportCategories.map((cat) => (
-          <button 
+      {/* Category tabs */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {reportCategories.map(cat => (
+          <button
             key={cat.id}
             onClick={() => setActiveCategory(cat.id)}
-            className={`p-6 rounded-[2rem] border transition-all text-left group ${
-              activeCategory === cat.id 
-              ? 'bg-[#1e3a8a] border-blue-900 shadow-xl shadow-blue-900/10' 
-              : 'bg-white border-slate-100 hover:border-blue-200 shadow-sm'
+            className={`p-5 rounded-2xl border transition-all text-left ${
+              activeCategory === cat.id
+                ? "bg-[#1e3a8a] border-[#1e3a8a] shadow-lg shadow-blue-900/10"
+                : "bg-card border-border hover:border-blue-200 shadow-sm"
             }`}
           >
-            <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-colors ${
-              activeCategory === cat.id ? 'bg-white/10 text-white' : `${cat.bg} ${cat.color}`
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-3 ${
+              activeCategory === cat.id ? "bg-white/15 text-white" : `${cat.bg} ${cat.color}`
             }`}>
-              <cat.icon className="w-6 h-6" />
+              <cat.icon className="w-5 h-5" />
             </div>
-            <p className={`font-black text-base ${activeCategory === cat.id ? 'text-white' : 'text-[#1e293b]'}`}>
+            <p className={`font-bold text-sm ${activeCategory === cat.id ? "text-white" : "text-foreground"}`}>
               {cat.label}
             </p>
-            <p className={`text-[11px] font-bold ${activeCategory === cat.id ? 'text-blue-200' : 'text-slate-400'}`}>
+            <p className={`text-[11px] font-semibold mt-0.5 ${activeCategory === cat.id ? "text-blue-200" : "text-muted-foreground"}`}>
               {cat.count}
             </p>
           </button>
         ))}
       </div>
 
-      {/* Pre-built Templates Grid */}
-      <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
-        <h2 className="text-xl font-black text-[#1e293b] mb-8">Pre-built Report Templates</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Pre-built templates */}
+      <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+        <h2 className="text-base font-bold text-foreground mb-6">Pre-built Report Templates</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {templates.map((tpl, i) => (
-            <div 
-              key={i} 
+            <div
+              key={i}
               onClick={() => setSelectedTemplate(tpl.title)}
-              className="p-5 rounded-2xl bg-slate-50/50 border border-slate-100 hover:bg-white hover:border-blue-100 hover:shadow-md transition-all cursor-pointer group"
+              className="p-4 rounded-xl bg-muted/20 border border-border hover:bg-card hover:border-[#1e3a8a]/20 hover:shadow-md transition-all cursor-pointer group"
             >
-              <div className="flex items-start gap-4">
-                <div className={`p-2.5 rounded-xl ${tpl.bg} ${tpl.color}`}>
-                  <tpl.icon className="w-5 h-5" />
+              <div className="flex items-start gap-3">
+                <div className={`p-2 rounded-lg shrink-0 ${tpl.bg} ${tpl.color}`}>
+                  <tpl.icon className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-[#1e293b] group-hover:text-[#1e3a8a] transition-colors">{tpl.title}</h3>
-                  <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-tight">{tpl.desc}</p>
+                  <h3 className="text-sm font-bold text-foreground group-hover:text-[#1e3a8a] transition-colors">{tpl.title}</h3>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{tpl.desc}</p>
                 </div>
               </div>
             </div>
@@ -139,62 +175,93 @@ const Reports = () => {
         </div>
       </div>
 
-      {/* Recently Generated Reports Table */}
-      <div className="bg-white border border-slate-100 rounded-[2.5rem] shadow-sm overflow-hidden min-h-[400px]">
-        <div className="px-10 py-8 border-b border-slate-50 flex items-center justify-between">
-          <h2 className="text-xl font-black text-[#1e293b]">Recently Generated Reports</h2>
-          <button className="text-xs font-black text-[#1e3a8a] flex items-center gap-1 hover:underline tracking-widest uppercase">
+      {/* Recently generated reports */}
+      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+          <h2 className="text-base font-bold text-foreground">Recently Generated Reports</h2>
+          <button className="text-xs font-bold text-[#1e3a8a] flex items-center gap-1 hover:underline">
             View All <ArrowRight className="w-3 h-3" />
           </button>
         </div>
+
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-slate-50/50">
-                <th className="px-10 py-5 text-left text-[11px] font-black text-slate-400 uppercase tracking-widest">Report Name</th>
-                <th className="px-6 py-5 text-left text-[11px] font-black text-slate-400 uppercase tracking-widest">Type</th>
-                <th className="px-6 py-5 text-left text-[11px] font-black text-slate-400 uppercase tracking-widest">Generated On</th>
-                <th className="px-6 py-5 text-left text-[11px] font-black text-slate-400 uppercase tracking-widest">Format</th>
-                <th className="px-10 py-5 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
+              <tr className="bg-muted/20 border-b border-border">
+                {["Report Name", "Type", "Generated On", "Format", "Actions"].map(h => (
+                  <th key={h} className="px-6 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-border">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="py-20 text-center">
-                    <Loader2 className="w-8 h-8 text-[#1e3a8a] animate-spin mx-auto mb-2" />
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Accessing records...</p>
+                  <td colSpan={5} className="py-16 text-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-[#1e3a8a] mx-auto mb-2" />
+                    <p className="text-xs font-semibold text-muted-foreground">Loading reports…</p>
                   </td>
                 </tr>
               ) : recentReports.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-20 text-center">
-                    <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center mx-auto mb-4 border border-slate-100 shadow-inner">
-                       <Clock className="w-5 h-5 text-slate-300" />
-                    </div>
-                    <p className="text-sm font-bold text-slate-400 italic px-10 leading-relaxed">No reports have been transmitted by the faculty recently.</p>
+                  <td colSpan={5} className="py-16 text-center">
+                    <Clock className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+                    <p className="text-sm font-semibold text-muted-foreground">No reports generated yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Click "+ Generate New Report" below to create one</p>
                   </td>
                 </tr>
               ) : (
-                recentReports.map((report, i) => (
-                  <tr key={report.id || i} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-10 py-6">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-[#1e293b]">{report.title}</span>
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{report.teacherName || 'System Generated'}</span>
+                recentReports.map(report => (
+                  <tr key={report.id} className="hover:bg-muted/10 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-[#1e3a8a]/10 flex items-center justify-center shrink-0">
+                          <FileText className="w-3.5 h-3.5 text-[#1e3a8a]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-foreground">{report.title}</p>
+                          <p className="text-[11px] text-muted-foreground">{report.generatedBy || "System Generated"}</p>
+                        </div>
                       </div>
                     </td>
-                    <td className="px-6 py-6 text-sm font-bold text-slate-500 uppercase tracking-tight">{report.reportType?.replace('_', ' ') || 'GENERAL'}</td>
-                    <td className="px-6 py-6 text-sm font-medium text-slate-400 italic">
-                      {report.createdAt?.toDate?.().toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) || "Recently"}
+                    <td className="px-6 py-4">
+                      <span className="text-xs font-semibold text-muted-foreground bg-muted/40 px-2.5 py-1 rounded-full">
+                        {report.reportType || "General"}
+                      </span>
                     </td>
-                    <td className="px-6 py-6 font-black text-[#1e293b]">
-                      <span className="px-3 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[9px]">PDF</span>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {report.createdAt?.toDate?.().toLocaleDateString("en-IN", {
+                        day: "numeric", month: "short", year: "numeric"
+                      }) || "—"}
                     </td>
-                    <td className="px-10 py-6">
-                      <div className="flex items-center justify-center gap-6">
-                        <button className="text-[11px] font-black text-[#1e3a8a] uppercase tracking-widest hover:underline transition-colors flex items-center gap-2">
-                          <Download className="w-4 h-4" /> Download
+                    <td className="px-6 py-4">
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
+                        report.format === "Excel" ? "bg-green-50 text-green-700" :
+                        report.format === "CSV"   ? "bg-blue-50 text-blue-700"   :
+                                                    "bg-red-50 text-red-700"
+                      }`}>
+                        {report.format || "PDF"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => handleDownload(report)}
+                          className="text-xs font-bold text-[#1e3a8a] hover:underline flex items-center gap-1"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Download
+                        </button>
+                        <button
+                          onClick={() => handleDelete(report.id)}
+                          disabled={deletingId === report.id}
+                          className="text-xs font-bold text-red-500 hover:underline flex items-center gap-1 disabled:opacity-50"
+                        >
+                          {deletingId === report.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Trash2 className="w-3.5 h-3.5" />
+                          }
+                          Delete
                         </button>
                       </div>
                     </td>
@@ -204,6 +271,22 @@ const Reports = () => {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ── Sticky bottom action bar ── */}
+      <div className="fixed bottom-0 left-64 right-0 z-30 bg-card border-t border-border px-8 py-3 flex items-center gap-4 shadow-lg">
+        <button
+          onClick={() => setSelectedTemplate("Custom")}
+          className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a8a] text-white text-sm font-bold rounded-xl hover:bg-[#1e4fc0] transition-colors shadow-sm"
+        >
+          <Plus className="w-4 h-4" /> Generate New Report
+        </button>
+        <button className="flex items-center gap-2 px-5 py-2.5 bg-card border border-border text-sm font-bold text-foreground rounded-xl hover:bg-muted/20 transition-colors">
+          <Calendar className="w-4 h-4 text-muted-foreground" /> Schedule Automated Reports
+        </button>
+        <button className="flex items-center gap-2 px-5 py-2.5 bg-card border border-border text-sm font-bold text-foreground rounded-xl hover:bg-muted/20 transition-colors">
+          <BarChart3 className="w-4 h-4 text-muted-foreground" /> Export Data
+        </button>
       </div>
     </div>
   );

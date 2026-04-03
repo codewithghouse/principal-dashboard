@@ -1,294 +1,372 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  FileText, Calendar, FileSpreadsheet, FileJson, Settings, 
-  BarChart2, Loader2, Download, Send, Clock, PieChart as PieChartIcon, 
-  ListOrdered, Mail
-} from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts";
+import { useState, useEffect } from "react";
+import {
+  FileText, FileSpreadsheet, BarChart2, Loader2, Download,
+  ChevronLeft, Users, CalendarCheck, TrendingUp, AlertTriangle, Shield
+} from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, limit, getDocs, where } from "firebase/firestore";
+import { collection, query, getDocs, where, addDoc, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
+import { toast } from "sonner";
 
-interface GenerateReportProps {
+interface Props {
   templateName: string;
   onBack: () => void;
 }
 
-const GenerateReport = ({ templateName, onBack }: GenerateReportProps) => {
+const REPORT_TYPES = [
+  "Student Progress",
+  "Class Performance",
+  "Monthly Attendance",
+  "Risk Students",
+  "Exam Results",
+  "Teacher Performance",
+  "Parent Communication",
+  "School Overview",
+];
+
+/* ── real stats from Firestore ──────────────────────────────── */
+interface SchoolStats {
+  totalStudents: number;
+  avgAttendance: number;
+  avgMarks: number;
+  atRisk: number;
+  incidents: number;
+}
+
+const GenerateReport = ({ templateName, onBack }: Props) => {
   const { userData } = useAuth();
-  const [outputFormat, setOutputFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
-  const [reportType, setReportType] = useState('Academic Performance');
-  const [grade, setGrade] = useState('All Grades');
-  const [metric, setMetric] = useState('Pass Rate %');
-  
-  const [systemData, setSystemData] = useState<any[]>([]);
-  const [scheduledReports, setScheduledReports] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  // Dynamic state changes
-  const [hasGenerated, setHasGenerated] = useState(false);
+  /* config state */
+  const [reportType, setReportType] = useState(
+    templateName && templateName !== "Custom" ? templateName : "Student Progress"
+  );
+  const [dateFrom,  setDateFrom]  = useState("");
+  const [dateTo,    setDateTo]    = useState("");
+  const [grade,     setGrade]     = useState("");
+  const [section,   setSection]   = useState("");
+  const [subject,   setSubject]   = useState("");
+  const [format,    setFormat]    = useState<"PDF" | "Excel" | "CSV">("PDF");
+  const [frequency, setFrequency] = useState("");
+  const [emailTo,   setEmailTo]   = useState("");
 
-  // 1. Fetch data
+  /* data state */
+  const [stats,      setStats]      = useState<SchoolStats | null>(null);
+  const [loading,    setLoading]    = useState(true);
+  const [generating, setGenerating] = useState(false);
+
+  /* ── fetch real school-wide stats ── */
   useEffect(() => {
     if (!userData?.schoolId) return;
-
-    const fetchData = async () => {
+    const go = async () => {
       try {
-        const constraints = [where("schoolId", "==", userData.schoolId)];
-        if (userData.branch) constraints.push(where("branchId", "==", userData.branchId));
+        const sid = userData.schoolId;
 
-        const sysSnap = await getDocs(query(collection(db, "results"), ...constraints, limit(5)));
-        setSystemData(sysSnap.docs.map(d => d.data()));
-        
-        const scheduleSnap = await getDocs(query(collection(db, "scheduled_reports"), ...constraints, limit(5)));
-        setScheduledReports(scheduleSnap.docs.map(d => d.data()));
-      } catch {
-        // silently handle fetch errors
+        /* total students enrolled */
+        const enrollSnap = await getDocs(
+          query(collection(db, "enrollments"), where("schoolId", "==", sid))
+        );
+        const totalStudents = enrollSnap.size;
+
+        /* avg marks from test_scores */
+        const scoresSnap = await getDocs(
+          query(collection(db, "test_scores"), where("schoolId", "==", sid))
+        );
+        const allPct = scoresSnap.docs
+          .map(d => parseFloat(d.data().percentage ?? d.data().score ?? ""))
+          .filter(n => !isNaN(n));
+        const avgMarks = allPct.length
+          ? Math.round(allPct.reduce((a, b) => a + b, 0) / allPct.length)
+          : 0;
+
+        /* at-risk: unique students whose avg score < 50 */
+        const studentScoreMap = new Map<string, number[]>();
+        scoresSnap.docs.forEach(d => {
+          const data  = d.data();
+          const sid2  = data.studentId || data.studentEmail || d.id;
+          const pct   = parseFloat(data.percentage ?? data.score ?? "");
+          if (!isNaN(pct)) {
+            if (!studentScoreMap.has(sid2)) studentScoreMap.set(sid2, []);
+            studentScoreMap.get(sid2)!.push(pct);
+          }
+        });
+        let atRisk = 0;
+        studentScoreMap.forEach(vals => {
+          const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+          if (avg < 50) atRisk++;
+        });
+
+        /* discipline incidents */
+        const discSnap = await getDocs(
+          query(collection(db, "discipline"), where("schoolId", "==", sid))
+        );
+
+        /* attendance avg — count records marked "Present" */
+        const attSnap = await getDocs(
+          query(collection(db, "attendance"), where("schoolId", "==", sid))
+        );
+        const presentCount = attSnap.docs.filter(
+          d => (d.data().status || "").toLowerCase() === "present"
+        ).length;
+        const avgAttendance = attSnap.size
+          ? Math.round((presentCount / attSnap.size) * 100)
+          : 0;
+
+        setStats({ totalStudents, avgMarks, atRisk, incidents: discSnap.size, avgAttendance });
+      } catch (e) {
+        console.error(e);
       }
       setLoading(false);
     };
-    fetchData();
+    go();
   }, [userData?.schoolId]);
 
-  const hasData = systemData.length > 0;
+  /* ── generate & publish report ── */
+  const handleGenerate = async () => {
+    if (!userData?.schoolId || !stats) return;
+    setGenerating(true);
+    try {
+      const now       = new Date();
+      const monthLabel = now.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+      const title     = `${reportType} — ${monthLabel}`;
 
-  // Chart data for preview
-  const livePreviewData = [
-     { name: 'Grade 6', value: 85 },
-     { name: 'Grade 7', value: 78 },
-     { name: 'Grade 8', value: 92 },
-     { name: 'Grade 9', value: 88 },
-     { name: 'Grade 10', value: 95 }
-  ];
+      const payload = {
+        schoolId:          userData.schoolId,
+        title,
+        reportType,
+        format,
+        grade:             grade   || "All",
+        section:           section || "All",
+        subject:           subject || "",
+        dateFrom,
+        dateTo,
+        generatedBy:       userData.name || "Principal",
+        status:            "Sent",
+        publishedToParent: true,
+        publishedToTeacher: true,
+        studentId:         "all",          // so parent dashboard shows it to everyone
+        data: {
+          totalStudents:   stats.totalStudents,
+          avgAttendance:   stats.avgAttendance,
+          avgMarks:        stats.avgMarks,
+          atRisk:          stats.atRisk,
+          incidents:       stats.incidents,
+        },
+        createdAt: serverTimestamp(),
+      };
 
+      /* save to principal's own history */
+      await addDoc(collection(db, "principal_reports"), payload);
+
+      /* save to shared `reports` collection — visible to teachers + parents */
+      await addDoc(collection(db, "reports"), payload);
+
+      /* optional schedule */
+      if (frequency && emailTo) {
+        await addDoc(collection(db, "scheduled_reports"), {
+          ...payload,
+          frequency,
+          recipients: emailTo,
+        });
+      }
+
+      toast.success("Report generated and published to teachers & parents!");
+      onBack();
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to generate report. Please try again.");
+    }
+    setGenerating(false);
+  };
+
+  /* ── UI ── */
   return (
-    <div className="animate-in fade-in duration-500 pb-12">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-        <span className="hover:underline cursor-pointer" onClick={onBack}>Reports directory</span>
+    <div className="animate-in fade-in duration-300 pb-12">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+        <button onClick={onBack} className="hover:text-foreground transition-colors flex items-center gap-1">
+          <ChevronLeft className="w-3.5 h-3.5" /> Reports
+        </button>
         <span>/</span>
-        <span className="text-foreground font-semibold">Custom Report Builder</span>
+        <span className="text-foreground font-semibold">Generate Report</span>
       </div>
+      <h1 className="text-2xl font-bold text-foreground mb-6">Generate Report</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* LEFT COLUMN: Configuration */}
-        <div className="lg:col-span-4 space-y-6">
-          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
-            <h2 className="text-base font-bold text-foreground mb-6 flex items-center gap-2"><Settings className="w-5 h-5 text-blue-600"/> Report Configuration</h2>
-            
-            {!loading && !hasData ? (
-               <div className="py-12 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center px-4">
-                  <BarChart2 className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                  <p className="text-sm font-bold text-slate-500 line-clamp-2">No data available to generate reports yet.</p>
-               </div>
-            ) : (
-               <div className="space-y-5">
-                 <div className="space-y-1.5">
-                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider pl-1">Report Category</label>
-                   <select 
-                     value={reportType}
-                     onChange={(e) => setReportType(e.target.value)}
-                     className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium text-foreground outline-none focus:ring-2 focus:ring-[#1e3a8a]/10"
-                   >
-                     <option>Academic Performance</option>
-                     <option>Attendance Records</option>
-                     <option>Discipline Logs</option>
-                     <option>Communication Activity</option>
-                   </select>
-                 </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-                 <div className="space-y-1.5">
-                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider pl-1">Target Audience (Grade)</label>
-                   <select 
-                     value={grade}
-                     onChange={(e) => setGrade(e.target.value)}
-                     className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium text-foreground outline-none focus:ring-2 focus:ring-[#1e3a8a]/10"
-                   >
-                      <option>All Grades</option>
-                      <option>Grade 6</option>
-                      <option>Grade 9</option>
-                      <option>Grade 10</option>
-                   </select>
-                 </div>
+        {/* ── LEFT: Configuration ── */}
+        <div className="space-y-5">
 
-                 <div className="space-y-1.5">
-                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider pl-1">Target Metric</label>
-                   <select 
-                     value={metric}
-                     onChange={(e) => setMetric(e.target.value)}
-                     className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium text-foreground outline-none focus:ring-2 focus:ring-[#1e3a8a]/10"
-                   >
-                      <option>Pass Rate %</option>
-                      <option>Attendance Rate %</option>
-                      <option>Incident Count</option>
-                   </select>
-                 </div>
+          {/* Report Configuration card */}
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+            <h2 className="text-base font-bold text-foreground mb-5">Report Configuration</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Report Type</label>
+                <select
+                  value={reportType}
+                  onChange={e => setReportType(e.target.value)}
+                  className="w-full border border-border rounded-xl px-4 py-2.5 text-sm font-medium bg-background outline-none focus:ring-2 focus:ring-[#1e3a8a]/10"
+                >
+                  {REPORT_TYPES.map(t => <option key={t}>{t}</option>)}
+                </select>
+              </div>
 
-                 <button 
-                   onClick={() => setHasGenerated(true)}
-                   className="w-full flex items-center justify-center gap-2 py-3.5 mt-2 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold shadow-md hover:bg-[#1e4fc0] transition-colors"
-                 >
-                    <BarChart2 className="w-4 h-4" /> Generate Report Data
-                 </button>
-               </div>
-            )}
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Date Range</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                    className="flex-1 border border-border rounded-xl px-4 py-2.5 text-sm bg-background outline-none"
+                  />
+                  <span className="text-sm text-muted-foreground shrink-0">to</span>
+                  <input
+                    type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                    className="flex-1 border border-border rounded-xl px-4 py-2.5 text-sm bg-background outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Grade</label>
+                <input
+                  value={grade} onChange={e => setGrade(e.target.value)}
+                  placeholder="e.g. Grade 6 or All"
+                  className="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-background outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Section</label>
+                <input
+                  value={section} onChange={e => setSection(e.target.value)}
+                  placeholder="e.g. A or All"
+                  className="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-background outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Subject (Optional)</label>
+                <input
+                  value={subject} onChange={e => setSubject(e.target.value)}
+                  placeholder="e.g. Mathematics"
+                  className="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-background outline-none"
+                />
+              </div>
+            </div>
           </div>
 
-          {/* FEATURE 4: Multi-Format Export Logic */}
-          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
-            <h2 className="text-base font-bold text-foreground mb-6 flex items-center gap-2"><Download className="w-5 h-5 text-green-600"/> Export Configuration</h2>
-            
-            {!hasGenerated ? (
-               <div className="py-8 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center px-4">
-                  <p className="text-sm font-bold text-slate-500">Report exports will be available once reports are generated.</p>
-               </div>
-            ) : (
-               <div className="space-y-5 animate-in slide-in-from-top-4 duration-300">
-                 <div className="grid grid-cols-3 gap-3">
-                   <button 
-                     onClick={() => setOutputFormat('pdf')}
-                     className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border transition-all ${
-                       outputFormat === 'pdf' ? 'bg-red-50 border-red-200 shadow-sm text-red-700' : 'bg-background border-border text-slate-500 hover:bg-slate-50'
-                     }`}
-                   >
-                     <FileText className="w-6 h-6" />
-                     <span className="text-[10px] font-bold uppercase tracking-widest">PDF</span>
-                   </button>
-                   <button 
-                     onClick={() => setOutputFormat('excel')}
-                     className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border transition-all ${
-                       outputFormat === 'excel' ? 'bg-green-50 border-green-200 shadow-sm text-green-700' : 'bg-background border-border text-slate-500 hover:bg-slate-50'
-                     }`}
-                   >
-                     <FileSpreadsheet className="w-6 h-6" />
-                     <span className="text-[10px] font-bold uppercase tracking-widest">Excel</span>
-                   </button>
-                   <button 
-                     onClick={() => setOutputFormat('csv')}
-                     className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border transition-all ${
-                       outputFormat === 'csv' ? 'bg-blue-50 border-blue-200 shadow-sm text-blue-700' : 'bg-background border-border text-slate-500 hover:bg-slate-50'
-                     }`}
-                   >
-                     <FileJson className="w-6 h-6" />
-                     <span className="text-[10px] font-bold uppercase tracking-widest">CSV</span>
-                   </button>
-                 </div>
-                 <button className="w-full flex items-center justify-center gap-2 py-3.5 bg-green-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-green-700 transition-colors">
-                    <Download className="w-4 h-4"/> Download Report
-                 </button>
-               </div>
-            )}
+          {/* Output Format */}
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+            <h2 className="text-base font-bold text-foreground mb-4">Output Format</h2>
+            <div className="grid grid-cols-3 gap-3">
+              {(["PDF", "Excel", "CSV"] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFormat(f)}
+                  className={`flex flex-col items-center gap-2 py-4 rounded-xl border text-sm font-bold transition-all ${
+                    format === f
+                      ? f === "PDF"
+                        ? "bg-red-50 border-red-300 text-red-600"
+                        : f === "Excel"
+                        ? "bg-green-50 border-green-300 text-green-600"
+                        : "bg-blue-50 border-blue-300 text-blue-600"
+                      : "bg-background border-border text-muted-foreground hover:bg-muted/20"
+                  }`}
+                >
+                  {f === "PDF" ? <FileText className="w-5 h-5" /> :
+                   f === "Excel" ? <FileSpreadsheet className="w-5 h-5" /> :
+                   <BarChart2 className="w-5 h-5" />}
+                  {f}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Preview & Schedule */}
-        <div className="lg:col-span-8 space-y-6">
-          
-          {/* FEATURE 2: Live Report Preview */}
-          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
-            <h2 className="text-base font-bold text-foreground mb-6 flex items-center gap-2"><PieChartIcon className="w-5 h-5 text-indigo-500"/> Live Report Preview</h2>
-            
-            {!hasGenerated ? (
-               <div className="py-24 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center px-4 transition-all duration-300">
-                  <ListOrdered className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                  <p className="text-sm font-bold text-slate-500">Preview will appear once report data becomes available.</p>
-               </div>
+        {/* ── RIGHT: Preview + Schedule ── */}
+        <div className="space-y-5">
+
+          {/* Report Preview */}
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+            <h2 className="text-base font-bold text-foreground mb-5">Report Preview</h2>
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <Loader2 className="w-6 h-6 animate-spin text-[#1e3a8a]" />
+                <p className="text-xs text-muted-foreground font-semibold">Loading school data...</p>
+              </div>
             ) : (
-               <div className="bg-secondary/20 border border-border p-8 rounded-2xl animate-in fade-in zoom-in-95 duration-500 shadow-inner">
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-8 gap-4">
-                     <div>
-                        <h3 className="text-xl font-bold text-foreground">{reportType} Overview</h3>
-                        <p className="text-sm font-medium text-muted-foreground mt-1">Filtered by: {grade} <span className="mx-2">•</span> Target: {metric}</p>
-                     </div>
-                     <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-full shadow-sm whitespace-nowrap">
-                        Generated Preview
-                     </span>
-                  </div>
-
-                  <div className="h-56 mb-8">
-                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={livePreviewData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b', fontWeight: 'bold' }} dy={10} />
-                           <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dx={-10} domain={[0, 100]} />
-                           <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                           <Bar dataKey="value" name={metric} radius={[4, 4, 0, 0]} maxBarSize={40}>
-                              {livePreviewData.map((entry, index) => (
-                                 <Cell key={`cell-${index}`} fill={entry.value > 90 ? '#22c55e' : entry.value > 80 ? '#1e3a8a' : '#f59e0b'} />
-                              ))}
-                           </Bar>
-                        </BarChart>
-                     </ResponsiveContainer>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-border pt-6">
-                     <div className="text-center pb-4 sm:pb-0">
-                        <p className="text-3xl font-black text-indigo-600">88.4%</p>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Average {metric}</p>
-                     </div>
-                     <div className="text-center sm:border-l sm:border-r border-border pb-4 sm:pb-0">
-                        <p className="text-3xl font-black text-green-500">Grade 10</p>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Top Performer</p>
-                     </div>
-                     <div className="text-center">
-                        <p className="text-3xl font-black text-slate-800">420</p>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Entities Analyzed</p>
-                     </div>
-                  </div>
-               </div>
+              <div className="border border-border rounded-xl overflow-hidden">
+                {/* Preview header */}
+                <div className="bg-[#1e3a8a] px-5 py-4 text-center">
+                  <h3 className="text-base font-bold text-white">{reportType} Report</h3>
+                  <p className="text-xs text-blue-200 mt-0.5">
+                    {new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
+                  </p>
+                </div>
+                {/* Stats rows */}
+                <div className="divide-y divide-border">
+                  {[
+                    { label: "Total Students",      val: stats?.totalStudents ?? "—",       icon: Users,          color: "text-foreground"  },
+                    { label: "Average Attendance",  val: `${stats?.avgAttendance ?? 0}%`,   icon: CalendarCheck,  color: "text-foreground"  },
+                    { label: "Average Marks",       val: `${stats?.avgMarks ?? 0}%`,        icon: TrendingUp,     color: "text-foreground"  },
+                    { label: "At-Risk Students",    val: stats?.atRisk ?? "—",              icon: AlertTriangle,  color: "text-red-500 font-black" },
+                    { label: "Discipline Incidents",val: stats?.incidents ?? "—",           icon: Shield,         color: "text-foreground"  },
+                  ].map(row => (
+                    <div key={row.label} className="flex items-center justify-between px-5 py-3 hover:bg-muted/10">
+                      <div className="flex items-center gap-2.5">
+                        <row.icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-sm text-muted-foreground">{row.label}</span>
+                      </div>
+                      <span className={`text-sm font-bold ${row.color}`}>{row.val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
-          {/* FEATURE 3: Automated Delivery Engine */}
-          <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
-            <h2 className="text-base font-bold text-foreground mb-6 flex items-center justify-between">
-               <span className="flex items-center gap-2"><Send className="w-5 h-5 text-orange-500"/> Automated Delivery Engine</span>
-            </h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-               <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-muted-foreground uppercase pl-1">Frequency Setting</label>
-                  <select className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium outline-none focus:ring-2 focus:ring-[#1e3a8a]/10">
-                     <option>Weekly on Friday 5:00 PM</option>
-                     <option>Monthly (1st of month)</option>
-                     <option>Daily at 8:00 AM</option>
-                  </select>
-               </div>
-               <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-muted-foreground uppercase pl-1">Target Recipients</label>
-                  <input type="text" placeholder="board@school.edu, management@..." className="w-full bg-background border border-border rounded-xl p-3.5 text-sm font-medium outline-none focus:ring-2 focus:ring-[#1e3a8a]/10" />
-               </div>
-               <div className="md:col-span-2 mt-2">
-                  <button className="px-6 py-3.5 w-full md:w-auto bg-slate-800 text-white rounded-xl text-sm font-bold shadow-md hover:bg-slate-900 transition-colors">
-                     Schedule Automated Delivery
-                  </button>
-               </div>
+          {/* Schedule Delivery (Optional) */}
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+            <h2 className="text-base font-bold text-foreground mb-1">Schedule Delivery</h2>
+            <p className="text-xs text-muted-foreground mb-4">Optional — auto-send this report on a schedule</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Frequency</label>
+                <select
+                  value={frequency}
+                  onChange={e => setFrequency(e.target.value)}
+                  className="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-background outline-none"
+                >
+                  <option value="">— Select —</option>
+                  <option>Daily</option>
+                  <option>Weekly</option>
+                  <option>Monthly</option>
+                  <option>Term-wise</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Email To</label>
+                <input
+                  value={emailTo}
+                  onChange={e => setEmailTo(e.target.value)}
+                  placeholder="email@school.edu"
+                  className="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-background outline-none"
+                />
+              </div>
             </div>
-
-            <div className="border-t border-border pt-6">
-               <h3 className="text-sm font-bold text-foreground mb-4">Active Schedules Log</h3>
-               {!loading && scheduledReports.length === 0 ? (
-                  <div className="py-8 bg-slate-50 rounded-xl text-center px-4">
-                     <Clock className="w-8 h-8 text-slate-300 mx-auto mb-3" />
-                     <p className="text-sm font-bold text-slate-600">No automated report deliveries scheduled yet.</p>
-                  </div>
-               ) : (
-                  <div className="space-y-3">
-                     {scheduledReports.map((r, i) => (
-                        <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-slate-100 rounded-xl bg-white shadow-sm hover:border-slate-300 transition-colors">
-                           <div className="mb-2 sm:mb-0">
-                              <p className="text-sm font-bold text-slate-800">{r.title}</p>
-                              <p className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 uppercase mt-1.5 inline-block">Every {r.frequency}</p>
-                           </div>
-                           <span className="text-xs font-medium text-slate-500 flex items-center gap-1.5"><Mail className="w-3 h-3"/> {r.recipients}</span>
-                        </div>
-                     ))}
-                  </div>
-               )}
-            </div>
-
           </div>
 
+          {/* Generate button */}
+          <button
+            onClick={handleGenerate}
+            disabled={generating || loading}
+            className="w-full py-3.5 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold shadow-md hover:bg-[#1e4fc0] transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            {generating
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating…</>
+              : <><Download className="w-4 h-4" /> Generate &amp; Publish Report</>
+            }
+          </button>
         </div>
       </div>
     </div>
