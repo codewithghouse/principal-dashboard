@@ -1,260 +1,547 @@
-import { useState, useEffect } from "react";
-import { 
-  FileText, Calendar, Users, Percent, Trophy, AlertTriangle, 
-  Plus, Upload, BookOpen, BarChart2, Star, Sparkles, Loader2, User, ChevronRight, TrendingDown, PieChart as PieChartIcon 
+import { useState, useEffect, useMemo } from "react";
+import {
+  FileText, Users, Percent, Trophy, AlertTriangle,
+  ChevronRight, Loader2, Calendar, TrendingDown, TrendingUp
 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip as RechartsTip, ResponsiveContainer, Cell,
+  PieChart, Pie, Legend
+} from "recharts";
 import { useAuth } from "@/lib/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, getDocs, where } from "firebase/firestore";
+import ExamDetail from "@/components/ExamDetail";
+
+/* ══════════════════════════════════════════════════════════════
+   Shared types  (imported by ExamDetail)
+══════════════════════════════════════════════════════════════ */
+export interface ClassRow {
+  section: string; appeared: number; passed: number; failed: number;
+  passRate: number; topper: string; topperPct: number; avgPct: number;
+}
+export interface MeritEntry { rank: number; name: string; className: string; avgPct: number; }
+export interface FailEntry  { name: string; className: string; avgPct: number; initials: string; }
+export interface ExamGroup {
+  name: string; dateLabel: string; totalStudents: number;
+  passRate: number; avgPct: number; scores: any[];
+  classSummary: ClassRow[]; meritList: MeritEntry[]; failList: FailEntry[];
+}
+
+/* ──────────────────────────────────────────────────────────── */
+function chunk<T>(arr: T[], n: number) {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+function fmtDate(str: string) {
+  if (!str) return "";
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? str
+    : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+export function buildExamGroup(name: string, scores: any[]): ExamGroup {
+  const appeared = scores.filter(s => !s.isAbsent && s.score !== null && s.score !== undefined);
+
+  const classMap = new Map<string, any[]>();
+  appeared.forEach(s => {
+    const cls = s.className || s.classId || "Unknown";
+    if (!classMap.has(cls)) classMap.set(cls, []);
+    classMap.get(cls)!.push(s);
+  });
+
+  const classSummary: ClassRow[] = Array.from(classMap.entries()).map(([cls, rows]) => {
+    const passed = rows.filter(r => r.percentage >= 50);
+    const avg    = rows.reduce((a, r) => a + r.percentage, 0) / rows.length;
+    const top    = [...rows].sort((a, b) => b.percentage - a.percentage)[0];
+    return {
+      section: cls, appeared: rows.length,
+      passed: passed.length, failed: rows.length - passed.length,
+      passRate: Math.round(passed.length / rows.length * 100),
+      topper: top ? `${top.studentName} (${Math.round(top.percentage)}%)` : "—",
+      topperPct: top?.percentage || 0, avgPct: Math.round(avg),
+    };
+  }).sort((a, b) => a.section.localeCompare(b.section));
+
+  const stMap = new Map<string, { name: string; className: string; total: number; count: number }>();
+  appeared.forEach(s => {
+    if (!stMap.has(s.studentId))
+      stMap.set(s.studentId, { name: s.studentName, className: s.className || s.classId || "", total: 0, count: 0 });
+    const e = stMap.get(s.studentId)!; e.total += s.percentage; e.count++;
+  });
+  const meritList: MeritEntry[] = Array.from(stMap.values())
+    .map(v => ({ name: v.name, className: v.className, avgPct: Math.round(v.total / v.count) }))
+    .sort((a, b) => b.avgPct - a.avgPct).slice(0, 5)
+    .map((m, i) => ({ ...m, rank: i + 1 }));
+
+  const fMap = new Map<string, { name: string; className: string; total: number; count: number }>();
+  appeared.filter(s => s.percentage < 50).forEach(s => {
+    if (!fMap.has(s.studentId))
+      fMap.set(s.studentId, { name: s.studentName, className: s.className || s.classId || "", total: 0, count: 0 });
+    const e = fMap.get(s.studentId)!; e.total += s.percentage; e.count++;
+  });
+  const failList: FailEntry[] = Array.from(fMap.values())
+    .map(v => ({ name: v.name, className: v.className, avgPct: Math.round(v.total / v.count), initials: v.name?.substring(0, 2).toUpperCase() || "??" }))
+    .sort((a, b) => a.avgPct - b.avgPct).slice(0, 8);
+
+  const dates = [...new Set(scores.map(s => s.testDate || s.date || "").filter(Boolean))].sort();
+  const dateLabel = dates.length === 0 ? "—"
+    : dates.length === 1 ? fmtDate(dates[0])
+    : `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length - 1])}`;
+
+  const totalPassed = appeared.filter(s => s.percentage >= 50).length;
+  const totalAvg    = appeared.length ? appeared.reduce((a, s) => a + s.percentage, 0) / appeared.length : 0;
+
+  return { name, dateLabel, totalStudents: appeared.length,
+    passRate: appeared.length ? Math.round(totalPassed / appeared.length * 100) : 0,
+    avgPct: Math.round(totalAvg), scores, classSummary, meritList, failList };
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Main Component
+══════════════════════════════════════════════════════════════ */
+const BORDER_COLORS = ["#1e3a8a", "#d97706", "#16a34a"];
+const GRADE_COLORS  = ["#16a34a", "#1d4ed8", "#d97706", "#ef4444"];
 
 export default function ExamsResults() {
   const { userData } = useAuth();
-  const [examResults, setExamResults] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  // Dynamic Metrics states
-  const [passFailData, setPassFailData] = useState<any[]>([]);
-  const [meritList, setMeritList] = useState<any[]>([]);
-  const [passPct, setPassPct] = useState(0);
-  const [failPct, setFailPct] = useState(0);
-  const [subjectSuccessData, setSubjectSuccessData] = useState<any[]>([]);
-  const [failedStudents, setFailedStudents] = useState<any[]>([]);
+  const [allScores,      setAllScores]      = useState<any[]>([]);
+  const [upcomingExams,  setUpcomingExams]  = useState<any[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [selectedExam,   setSelectedExam]   = useState<ExamGroup | null>(null);
 
+  /* ── fetch data ── */
   useEffect(() => {
     if (!userData?.schoolId) return;
-    const fetchResults = async () => {
+    const go = async () => {
       try {
-        const constraints: any[] = [where("schoolId", "==", userData.schoolId)];
-        if (userData.branch) constraints.push(where("branch", "==", userData.branch));
-        const snap = await getDocs(query(collection(db, "test_scores"), ...constraints));
-        const results = snap.docs.map(d => d.data());
-        setExamResults(results);
+        /* 1. test_scores by schoolId */
+        const scoresSnap = await getDocs(
+          query(collection(db, "test_scores"), where("schoolId", "==", userData.schoolId))
+        );
+        const rawScores = scoresSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
 
-        if (results.length > 0) {
-            let passedCount = 0;
-            let failedCount = 0;
-            const studentAverages: any = {};
-            const subjectMap: any = {};
-            const studentFailures: any = {};
-
-            results.forEach(r => {
-                if (r.isAbsent) return;
-                const pct = r.percentage || 0;
-                const passed = pct >= 50;
-
-                if (passed) passedCount++;
-                else failedCount++;
-
-                // Merit aggregation
-                if (!studentAverages[r.studentId]) {
-                    studentAverages[r.studentId] = { name: r.studentName, totalPct: 0, count: 0 };
-                }
-                studentAverages[r.studentId].totalPct += pct;
-                studentAverages[r.studentId].count += 1;
-
-                // Subject success mapping
-                const subj = r.subject || r.subjectName || "Unknown";
-                if (!subjectMap[subj]) subjectMap[subj] = { passed: 0, total: 0, totalScore: 0 };
-                subjectMap[subj].total += 1;
-                subjectMap[subj].totalScore += pct;
-                if (passed) subjectMap[subj].passed += 1;
-
-                // Failed student tracking
-                if (!passed) {
-                    const sid = r.studentId || r.studentName;
-                    if (!studentFailures[sid]) {
-                        studentFailures[sid] = { name: r.studentName, grade: r.className || r.grade || "N/A", failures: 0 };
-                    }
-                    studentFailures[sid].failures += 1;
-                }
-            });
-
-            // Merit List
-            const rankedMeritList = Object.keys(studentAverages).map(k => ({
-                name: studentAverages[k].name,
-                avgScore: Math.round(studentAverages[k].totalPct / studentAverages[k].count),
-                rank: 0, grade: "Student"
-            })).sort((a, b) => b.avgScore - a.avgScore).slice(0, 5).map((m, i) => ({ ...m, rank: i + 1 }));
-
-            const total = passedCount + failedCount;
-            const passPercent = total === 0 ? 0 : Math.round((passedCount / total) * 100);
-
-            setPassPct(passPercent);
-            setFailPct(100 - passPercent);
-            setPassFailData([
-                { name: 'Passed', value: passedCount, color: '#22c55e' },
-                { name: 'Failed', value: failedCount, color: '#ef4444' }
-            ]);
-            setMeritList(rankedMeritList);
-
-            // Subject success data
-            setSubjectSuccessData(Object.keys(subjectMap).map(s => ({
-                subject: s.length > 8 ? s.substring(0, 8) : s,
-                passRate: Math.round((subjectMap[s].passed / subjectMap[s].total) * 100),
-                avgScore: Math.round(subjectMap[s].totalScore / subjectMap[s].total)
-            })));
-
-            // Failed students risk list
-            setFailedStudents(Object.values(studentFailures).sort((a: any, b: any) => b.failures - a.failures).slice(0, 5).map((fs: any) => ({
-                ...fs,
-                riskMsg: fs.failures >= 3 ? 'Critical Risk' : 'Needs Attention',
-                color: fs.failures >= 3 ? 'text-red-600 bg-red-50 border-red-200' : 'text-amber-600 bg-amber-50 border-amber-200'
-            })));
+        /* 2. enrich with className from tests */
+        const testIds = [...new Set(rawScores.map(s => s.testId).filter(Boolean))] as string[];
+        const testsMap = new Map<string, any>();
+        for (const ids of chunk(testIds, 30)) {
+          const tSnap = await getDocs(query(collection(db, "tests"), where("__name__", "in", ids)));
+          tSnap.docs.forEach(d => testsMap.set(d.id, { id: d.id, ...d.data() }));
         }
+        const enriched = rawScores.map(s => {
+          const t = testsMap.get(s.testId);
+          return { ...s, className: s.className || t?.className || "", testDate: s.testDate || t?.testDate || t?.date || "" };
+        });
+        setAllScores(enriched);
 
-      } catch {
-        // silently fail
-      }
+        /* 3. upcoming tests via teachers */
+        const tSnap = await getDocs(
+          query(collection(db, "teachers"), where("schoolId", "==", userData.schoolId))
+        );
+        const tIds = tSnap.docs.map(d => d.id);
+        const upcoming: any[] = [];
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        for (const ids of chunk(tIds, 10)) {
+          if (!ids.length) continue;
+          const uSnap = await getDocs(
+            query(collection(db, "tests"), where("teacherId", "in", ids))
+          );
+          uSnap.docs.forEach(d => {
+            const data = { id: d.id, ...d.data() } as any;
+            const examDate = new Date(data.testDate || data.date || 0);
+            if (examDate >= today && data.status !== "Completed")
+              upcoming.push(data);
+          });
+        }
+        upcoming.sort((a, b) =>
+          new Date(a.testDate || a.date || 0).getTime() - new Date(b.testDate || b.date || 0).getTime()
+        );
+        setUpcomingExams(upcoming);
+      } catch (e) { console.error(e); }
       setLoading(false);
     };
-    fetchResults();
-  }, [userData?.schoolId, userData?.branch]);
+    go();
+  }, [userData?.schoolId]);
 
-  const hasData = examResults.length > 0;
+  /* ── derived: exam groups ── */
+  const examGroups = useMemo<ExamGroup[]>(() => {
+    const map = new Map<string, any[]>();
+    allScores.forEach(s => {
+      const key = s.testName || s.testId || "Unnamed Exam";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(s);
+    });
+    return Array.from(map.entries())
+      .map(([name, scores]) => buildExamGroup(name, scores))
+      .sort((a, b) => b.dateLabel.localeCompare(a.dateLabel));
+  }, [allScores]);
 
+  /* ── derived: latest exam ── */
+  const latestExam = examGroups[0] || null;
+  const prevExam   = examGroups[1] || null;
+
+  /* ── derived: subject pass rates ── */
+  const subjectData = useMemo(() => {
+    const map = new Map<string, { passed: number; total: number }>();
+    allScores.filter(s => !s.isAbsent && s.score !== null).forEach(s => {
+      const subj = (s.subject || s.subjectName || "Unknown").trim();
+      if (!map.has(subj)) map.set(subj, { passed: 0, total: 0 });
+      const e = map.get(subj)!; e.total++;
+      if (s.percentage >= 50) e.passed++;
+    });
+    return Array.from(map.entries())
+      .map(([name, { passed, total }]) => ({ name: name.length > 8 ? name.slice(0, 8) : name, passRate: Math.round(passed / total * 100) }))
+      .sort((a, b) => a.passRate - b.passRate);
+  }, [allScores]);
+
+  /* ── derived: grade distribution ── */
+  const gradeData = useMemo(() => {
+    const counts = { A: 0, B: 0, C: 0, Failed: 0 };
+    (latestExam?.scores || []).filter(s => !s.isAbsent && s.score !== null).forEach(s => {
+      const g = s.grade || "";
+      if (g === "A") counts.A++;
+      else if (g === "B") counts.B++;
+      else if (g === "C") counts.C++;
+      else counts.Failed++;
+    });
+    return [
+      { name: "A Grade", value: counts.A,      color: GRADE_COLORS[0] },
+      { name: "B Grade", value: counts.B,      color: GRADE_COLORS[1] },
+      { name: "C Grade", value: counts.C,      color: GRADE_COLORS[2] },
+      { name: "Failed",  value: counts.Failed, color: GRADE_COLORS[3] },
+    ].filter(d => d.value > 0);
+  }, [latestExam]);
+
+  /* ── derived: failed students by subject ── */
+  const failedBySubject = useMemo(() => {
+    const map = new Map<string, any[]>();
+    (latestExam?.scores || []).filter(s => !s.isAbsent && s.percentage < 50).forEach(s => {
+      const subj = (s.subject || s.subjectName || "Unknown").trim();
+      if (!map.has(subj)) map.set(subj, []);
+      map.get(subj)!.push(s);
+    });
+    return Array.from(map.entries())
+      .map(([subject, students]) => ({ subject, students: students.sort((a, b) => a.percentage - b.percentage) }))
+      .sort((a, b) => b.students.length - a.students.length);
+  }, [latestExam]);
+
+  /* ── derived: pass rate trend ── */
+  const passRateDiff = latestExam && prevExam
+    ? latestExam.passRate - prevExam.passRate : null;
+
+  /* ── school topper ── */
+  const topper = latestExam?.meritList[0] || null;
+
+  /* ── detail view ── */
+  if (selectedExam) {
+    return <ExamDetail exam={selectedExam} allExams={examGroups} onBack={() => setSelectedExam(null)} userData={userData} />;
+  }
+
+  /* ══ MAIN RENDER ══════════════════════════════════════════════ */
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Academic Intelligence System</h1>
-          <p className="text-sm text-muted-foreground">Automated exam performance analytics and insights, synced instantly.</p>
-        </div>
-        <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-card border border-border rounded-xl text-sm font-bold text-foreground hover:bg-secondary transition-all shadow-sm">
-            <Upload className="w-4 h-4 text-[#1e3a8a]" /> Export Report
-          </button>
-        </div>
+
+      {/* Header */}
+      <div>
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
+          RESULT OF CLICK: "EXAMS &amp; RESULTS"
+        </p>
+        <p className="text-sm text-muted-foreground">Manage exams and view student results</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-         <div className="bg-card border border-border rounded-2xl p-7 shadow-sm flex flex-col hover:shadow-md transition-shadow">
-            <h3 className="text-base font-bold text-foreground mb-4 flex items-center gap-2"><PieChartIcon className="w-5 h-5 text-blue-500"/> Pass/Fail Ratio Analytics</h3>
-            {!loading && !hasData ? (
-               <div className="flex-1 flex flex-col items-center justify-center py-10 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center px-4">
-                  <Percent className="w-10 h-10 text-slate-300 mb-3" />
-                  <p className="text-sm font-bold text-slate-500">Awaiting Teacher Dashboard data...</p>
-               </div>
-            ) : (
-               <div className="flex-1 flex flex-col items-center justify-center">
-                  <div className="h-44 w-full">
-                     <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                           <Pie data={passFailData} cx="50%" cy="50%" innerRadius={55} outerRadius={75} paddingAngle={5} dataKey="value" stroke="none">
-                              {passFailData.map((entry, index) => (
-                                 <Cell key={`cell-${index}`} fill={entry.color} />
-                              ))}
-                           </Pie>
-                           <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                        </PieChart>
-                     </ResponsiveContainer>
-                  </div>
-                  <div className="flex items-center justify-between w-full px-4 mt-2">
-                     <div className="text-center">
-                        <p className="text-2xl font-black text-green-500">{passPct}%</p>
-                        <p className="text-[10px] font-bold uppercase text-slate-400">Total Passed</p>
-                     </div>
-                     <div className="text-center">
-                        <p className="text-2xl font-black text-red-500">{failPct}%</p>
-                        <p className="text-[10px] font-bold uppercase text-slate-400">Total Failed</p>
-                     </div>
-                  </div>
-               </div>
-            )}
-         </div>
-
-         <div className="lg:col-span-2 bg-gradient-to-br from-blue-900 to-indigo-900 border border-blue-800 rounded-2xl p-7 shadow-lg flex flex-col relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-10 -mt-20 group-hover:bg-white/10 transition-colors"></div>
-            <h3 className="text-base font-bold text-white mb-6 flex items-center gap-2 relative z-10"><Sparkles className="w-5 h-5 text-yellow-400"/> Auto-Detected Top Performers</h3>
-            
-            {!loading && !hasData ? (
-               <div className="flex-1 flex flex-col items-center justify-center py-10 bg-white/5 border border-dashed border-white/20 rounded-xl text-center px-4 relative z-10">
-                  <Trophy className="w-10 h-10 text-white/30 mb-3" />
-                  <p className="text-sm font-bold text-white/50">Merit list will dynamically appear once assessments are scored.</p>
-               </div>
-            ) : (
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
-                  {meritList.map((t, i) => (
-                     <div key={i} className="bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-xl flex items-center gap-3">
-                        <div className="w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center text-yellow-900 font-black shadow-inner">
-                           {t.rank}
-                        </div>
-                        <div>
-                           <p className="text-sm font-bold text-white">{t.name}</p>
-                           <p className="text-xs font-semibold text-blue-200">{t.avgScore}% Avg • {t.grade}</p>
-                        </div>
-                     </div>
-                  ))}
-               </div>
-            )}
-         </div>
+      {/* ── Upcoming Exams ── */}
+      <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+        <h2 className="text-base font-bold text-foreground mb-5">Upcoming Exams</h2>
+        {loading ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+        ) : upcomingExams.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">
+            No upcoming exams scheduled. Teachers can create exams from the Teacher Dashboard.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {upcomingExams.slice(0, 3).map((exam, i) => {
+              const color = BORDER_COLORS[i % BORDER_COLORS.length];
+              const dateStr = fmtDate(exam.testDate || exam.date || "");
+              return (
+                <div key={exam.id} className="p-4 rounded-xl border border-border bg-muted/10 hover:bg-muted/20 transition-colors"
+                  style={{ borderLeftWidth: "4px", borderLeftColor: color }}>
+                  <p className="text-sm font-bold text-foreground mb-1">{exam.title || exam.testName}</p>
+                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                    <Calendar className="w-3 h-3" /> {dateStr || "Date TBD"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {exam.className ? `Class: ${exam.className}` : exam.subject || ""}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-         <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-7 shadow-sm hover:shadow-md transition-shadow">
-            <h3 className="text-base font-bold text-foreground mb-6 flex items-center gap-2"><BarChart2 className="w-5 h-5 text-purple-500"/> Subject Success Mapping</h3>
-            {!loading && !hasData ? (
-               <div className="flex flex-col items-center justify-center py-12 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center px-4">
-                  <BookOpen className="w-10 h-10 text-slate-300 mb-3" />
-                  <p className="text-sm font-bold text-slate-500">Subject performance insights will generate once exam data is recorded.</p>
-               </div>
-            ) : (
-               <div className="h-64 mt-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                     <BarChart data={subjectSuccessData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                        <XAxis dataKey="subject" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b', fontWeight: 'bold' }} dy={10} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dx={-10} domain={[0, 100]} />
-                        <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                        <Bar dataKey="passRate" name="Pass Rate %" radius={[4, 4, 0, 0]} maxBarSize={50}>
-                           {subjectSuccessData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.passRate < 50 ? '#ef4444' : entry.passRate < 70 ? '#f59e0b' : '#22c55e'} />
-                           ))}
-                        </Bar>
-                     </BarChart>
-                  </ResponsiveContainer>
-               </div>
-            )}
-         </div>
-
-         <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
-            <div className="px-7 py-5 border-b border-border bg-red-50/50 flex items-center justify-between">
-               <h3 className="text-base font-bold text-red-900 flex items-center gap-2"><TrendingDown className="w-5 h-5 text-red-500"/> Failed Students Risk</h3>
+      {/* ── 4 Stat Cards ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Latest Exam */}
+        <div
+          className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+          onClick={() => latestExam && setSelectedExam(latestExam)}
+        >
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-xs font-semibold text-muted-foreground">Latest Exam</p>
+            <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+              <FileText className="w-4 h-4 text-blue-600" />
             </div>
-            {!loading && !hasData ? (
-               <div className="flex-1 flex flex-col items-center justify-center py-10 bg-white text-center px-4">
-                  <AlertTriangle className="w-10 h-10 text-slate-200 mb-3" />
-                  <p className="text-sm font-bold text-slate-600 max-w-[200px]">Failed student insights will appear once exam records are available.</p>
-               </div>
-            ) : (
-               <div className="divide-y divide-border">
-                  {failedStudents.map((fs, i) => (
-                     <div key={i} className="px-7 py-5 hover:bg-slate-50 transition-colors">
-                        <div className="flex items-center justify-between mb-2">
-                           <div>
-                              <p className="text-sm font-bold text-slate-800">{fs.name}</p>
-                              <p className="text-xs font-semibold text-slate-500">{fs.grade}</p>
-                           </div>
-                           <div className="text-right">
-                              <span className="text-xl font-black text-red-500">{fs.failures}</span>
-                              <p className="text-[10px] font-bold uppercase text-slate-400 mt-0.5">Failed Subjs</p>
-                           </div>
-                        </div>
-                        <span className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold border ${fs.color}`}>
-                           {fs.riskMsg}
-                        </span>
-                     </div>
-                  ))}
-               </div>
-            )}
-            {hasData && (
-              <div className="p-4 border-t border-border bg-slate-50 text-center mt-auto">
-                 <button className="text-xs font-bold text-[#1e3a8a] py-1 px-3 border border-[#1e3a8a]/20 rounded-md hover:bg-blue-50 transition-colors">View All At-Risk</button>
-              </div>
-            )}
-         </div>
+          </div>
+          <p className="text-lg font-black text-foreground leading-tight mb-1">
+            {loading ? "…" : latestExam?.name || "No data"}
+          </p>
+          <p className="text-xs text-muted-foreground">{loading ? "" : latestExam?.dateLabel || ""}</p>
+          {latestExam && (
+            <p className="text-[10px] text-blue-600 font-semibold mt-2 group-hover:underline">View Results →</p>
+          )}
+        </div>
+
+        {/* Students Appeared */}
+        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-xs font-semibold text-muted-foreground">Students Appeared</p>
+            <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
+              <Users className="w-4 h-4 text-green-600" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-foreground mb-1">
+            {loading ? "…" : latestExam?.totalStudents ?? "—"}
+          </p>
+          {latestExam && (
+            <p className="text-xs text-muted-foreground">
+              {latestExam.scores.filter(s => !s.isAbsent).length} of {latestExam.scores.length} total
+            </p>
+          )}
+        </div>
+
+        {/* Pass Rate */}
+        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-xs font-semibold text-muted-foreground">Pass Rate</p>
+            <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+              <Percent className="w-4 h-4 text-amber-500" />
+            </div>
+          </div>
+          <p className={`text-3xl font-black mb-1 ${
+            loading ? "text-foreground"
+              : (latestExam?.passRate ?? 0) >= 75 ? "text-green-600"
+              : (latestExam?.passRate ?? 0) >= 50 ? "text-amber-500"
+              : "text-red-500"
+          }`}>
+            {loading ? "…" : latestExam ? `${latestExam.passRate}%` : "—"}
+          </p>
+          {passRateDiff !== null && (
+            <p className={`text-xs flex items-center gap-1 ${passRateDiff >= 0 ? "text-green-600" : "text-red-500"}`}>
+              {passRateDiff >= 0
+                ? <TrendingUp className="w-3 h-3" />
+                : <TrendingDown className="w-3 h-3" />}
+              {Math.abs(passRateDiff)}% vs last exam
+            </p>
+          )}
+        </div>
+
+        {/* School Topper */}
+        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-xs font-semibold text-muted-foreground">School Topper</p>
+            <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+              <Trophy className="w-4 h-4 text-emerald-600" />
+            </div>
+          </div>
+          <p className="text-lg font-black text-foreground leading-tight mb-1">
+            {loading ? "…" : topper?.name || "—"}
+          </p>
+          {topper && (
+            <p className="text-xs text-muted-foreground">
+              {topper.className && `${topper.className} • `}{topper.avgPct}%
+            </p>
+          )}
+        </div>
       </div>
 
+      {/* ── Charts Row ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Subject-wise Pass Rates */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <h3 className="text-base font-bold text-foreground mb-4">Subject-wise Pass Rates</h3>
+          {loading ? (
+            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          ) : subjectData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <FileText className="w-8 h-8 text-muted-foreground/30 mb-2" />
+              <p className="text-xs text-muted-foreground">No subject data yet</p>
+            </div>
+          ) : (
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={subjectData} margin={{ top: 16, right: 8, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false}
+                    tick={{ fontSize: 11, fill: "#64748b", fontWeight: 600 }} dy={8} />
+                  <YAxis axisLine={false} tickLine={false}
+                    tick={{ fontSize: 11, fill: "#94a3b8" }} domain={[0, 100]} />
+                  <RechartsTip
+                    formatter={(v: any) => [`${v}%`, "Pass Rate"]}
+                    contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: 12 }}
+                  />
+                  <Bar dataKey="passRate" radius={[4, 4, 0, 0]} maxBarSize={52} label={{ position: "top", fontSize: 11, fontWeight: 700, fill: "#475569", formatter: (v: any) => `${v}%` }}>
+                    {subjectData.map((d, i) => (
+                      <Cell key={i} fill={d.passRate >= 80 ? "#16a34a" : d.passRate >= 60 ? "#d97706" : "#ef4444"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* Grade Distribution */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <h3 className="text-base font-bold text-foreground mb-4">Grade Distribution</h3>
+          {loading ? (
+            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          ) : gradeData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <FileText className="w-8 h-8 text-muted-foreground/30 mb-2" />
+              <p className="text-xs text-muted-foreground">No grade data yet</p>
+            </div>
+          ) : (
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={gradeData} cx="45%" cy="50%" innerRadius={60} outerRadius={90}
+                    paddingAngle={3} dataKey="value" stroke="none" label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                    labelLine={false}>
+                    {gradeData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Pie>
+                  <Legend
+                    iconType="circle" iconSize={10}
+                    formatter={(value) => <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>{value}</span>}
+                  />
+                  <RechartsTip
+                    formatter={(v: any, name) => [`${v} students`, name]}
+                    contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: 12 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Failed Students by Subject ── */}
+      {!loading && failedBySubject.length > 0 && (
+        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-border flex items-center gap-2 bg-red-50/40">
+            <AlertTriangle className="w-4 h-4 text-red-500" />
+            <h3 className="text-base font-bold text-red-900">Failed Students by Subject</h3>
+            {latestExam && <span className="text-xs text-muted-foreground ml-1">— {latestExam.name}</span>}
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {failedBySubject.slice(0, 4).map(({ subject, students }) => (
+                <div key={subject} className="border border-red-100 rounded-xl overflow-hidden">
+                  <div className="bg-red-50 px-4 py-2.5 flex items-center justify-between">
+                    <p className="text-xs font-bold text-red-700 uppercase tracking-wide">{subject}</p>
+                    <span className="text-xs font-black text-red-500">{students.length} failed</span>
+                  </div>
+                  <div className="divide-y divide-red-50">
+                    {students.slice(0, 4).map((s: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between px-4 py-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-red-500 flex items-center justify-center text-white text-[9px] font-bold shrink-0">
+                            {s.studentName?.substring(0, 2).toUpperCase()}
+                          </div>
+                          <p className="text-xs font-semibold text-foreground truncate">{s.studentName}</p>
+                        </div>
+                        <span className="text-xs font-bold text-red-500 shrink-0 ml-2">{Math.round(s.percentage)}%</span>
+                      </div>
+                    ))}
+                    {students.length > 4 && (
+                      <p className="px-4 py-2 text-[10px] text-muted-foreground font-semibold">+{students.length - 4} more</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── All Exams table ── */}
+      {!loading && examGroups.length > 0 && (
+        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+            <h3 className="text-base font-bold text-foreground">All Exams</h3>
+            <span className="text-xs text-muted-foreground font-semibold">{examGroups.length} exams</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-muted/20">
+                  {["Exam Name", "Date", "Students", "Pass Rate", "Avg %", ""].map(h => (
+                    <th key={h} className="px-6 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {examGroups.map((exam, i) => (
+                  <tr key={i} className="hover:bg-muted/10 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-[#1e3a8a]/10 flex items-center justify-center shrink-0">
+                          <FileText className="w-3.5 h-3.5 text-[#1e3a8a]" />
+                        </div>
+                        <span className="text-sm font-bold text-foreground">{exam.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">{exam.dateLabel || "—"}</td>
+                    <td className="px-6 py-4 text-sm font-semibold text-foreground">{exam.totalStudents}</td>
+                    <td className="px-6 py-4">
+                      <span className={`text-sm font-bold ${exam.passRate >= 75 ? "text-green-600" : exam.passRate >= 50 ? "text-amber-500" : "text-red-500"}`}>
+                        {exam.passRate}%
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`text-sm font-bold ${exam.avgPct >= 70 ? "text-green-600" : exam.avgPct >= 50 ? "text-amber-500" : "text-red-500"}`}>
+                        {exam.avgPct}%
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <button
+                        onClick={() => setSelectedExam(exam)}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-[#1e3a8a] text-white text-xs font-bold rounded-lg hover:bg-[#1e3a8a]/90 transition-colors whitespace-nowrap"
+                      >
+                        View Exam Results <ChevronRight className="w-3 h-3" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && examGroups.length === 0 && (
+        <div className="bg-card border border-border rounded-2xl p-12 text-center shadow-sm">
+          <FileText className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+          <p className="text-sm font-bold text-muted-foreground">No exam results yet</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Teachers submit scores via Teacher Dashboard → Tests &amp; Exams.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

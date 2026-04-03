@@ -18,7 +18,9 @@ import Academics from "./pages/Academics";
 import Attendance from "./pages/Attendance";
 import Discipline from "./pages/Discipline";
 import ParentCommunication from "./pages/ParentCommunication";
+import TeacherNotes from "./pages/TeacherNotes";
 import ExamsResults from "./pages/ExamsResults";
+import AssignmentMarks from "./pages/AssignmentMarks";
 import Reports from "./pages/Reports";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
@@ -65,7 +67,9 @@ const AppRoutes = () => {
         <Route path="/attendance"           element={<Attendance />} />
         <Route path="/discipline"           element={<Discipline />} />
         <Route path="/parent-communication" element={<ParentCommunication />} />
+        <Route path="/teacher-notes"        element={<TeacherNotes />} />
         <Route path="/exams"                element={<ExamsResults />} />
+        <Route path="/assignments"          element={<AssignmentMarks />} />
         <Route path="/reports"              element={<Reports />} />
         <Route path="/settings"             element={<SettingsPage />} />
         <Route path="*"                     element={<NotFound />} />

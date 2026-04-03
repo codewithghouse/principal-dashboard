@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { CheckCircle, XCircle, Clock, TrendingUp, Send, Edit3, Bell, FileText, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, Clock, TrendingUp, Send, Edit3, Bell, FileText } from "lucide-react";
 import ClassAttendanceDetail from "@/components/ClassAttendanceDetail";
 import { db } from "@/lib/firebase";
 import { collection, query, onSnapshot, where } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
-
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
@@ -22,109 +21,163 @@ const Attendance = () => {
   const { userData } = useAuth();
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
-  const [enrollments, setEnrollments] = useState<any[]>([]);
-  const [stats, setStats] = useState({
-    presentToday: 0,
-    absentToday: 0,
-    criticalAlerts: 0,
-    monthlyAvg: "0%"
-  });
+  const [stats, setStats] = useState({ presentToday: 0, absentToday: 0, lateToday: 0, monthlyAvg: "0%", totalToday: 0 });
   const [trendData, setTrendData] = useState<any[]>([]);
   const [gradeHeatmap, setGradeHeatmap] = useState<any[]>([]);
   const [absentStudents, setAbsentStudents] = useState<any[]>([]);
 
   useEffect(() => {
     if (!userData?.schoolId) return;
-
     setLoading(true);
 
-    // Fetch Enrollments for base student data
-    const enrollConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
-    if (userData.branch) enrollConstraints.push(where("branch", "==", userData.branch));
-    const qEnroll = query(collection(db, "enrollments"), ...enrollConstraints);
-    const unsubEnroll = onSnapshot(qEnroll, (snap) => {
-        setEnrollments(snap.docs.map(d => ({id: d.id, ...d.data()})));
-    });
-
-    // Fetch Global Attendance
-    const today = new Date().toLocaleDateString('en-CA');
     const attConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
-    if (userData.branch) attConstraints.push(where("branch", "==", userData.branch));
-    const qAtt = query(collection(db, "attendance"), ...attConstraints);
-    const unsubAtt = onSnapshot(qAtt, (snap) => {
-        const records = snap.docs.map(d => ({id: d.id, ...d.data()}));
-        setAttendanceRecords(records);
+    if (userData.branchId) attConstraints.push(where("branchId", "==", userData.branchId));
 
-        // ── STATS CALCULATION ──
-        const todayRecords = records.filter((r: any) => r.date === today);
-        const presentToday = todayRecords.filter((r: any) => r.status === 'present').length;
-        const absentToday = todayRecords.filter((r: any) => r.status === 'absent').length;
+    const unsub = onSnapshot(query(collection(db, "attendance"), ...attConstraints), (snap) => {
+      const records: any[] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const today = new Date().toLocaleDateString('en-CA');
 
-        // Grade Heatmap Calculation
-        const grades = ["Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10"];
-        const heatmap = grades.map(g => {
-            const gradeRecords = records.filter((r: any) => r.gradeLevel === g || r.className?.includes(g));
-            const p = gradeRecords.filter(r => r.status === 'present').length;
-            const total = gradeRecords.length;
-            const pct = total === 0 ? 100 : Math.round((p / total) * 100);
-            return {
-                grade: g,
-                pct: `${pct}%`,
-                value: pct,
-                color: pct >= 90 ? "#22c55e" : pct >= 80 ? "#f59e0b" : "#ef4444"
-            };
-        });
-        setGradeHeatmap(heatmap);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      const cutoffStr = cutoff.toLocaleDateString('en-CA');
 
-        // Trend Calculation (Last 30 days)
-        const trend: any[] = [];
-        for (let i = 29; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            const dStr = d.toLocaleDateString('en-CA');
-            const dRecords = records.filter((r: any) => r.date === dStr);
-            const p = dRecords.filter(r => r.status === 'present').length;
-            const total = dRecords.length;
-            const pct = total === 0 ? 90 + Math.random() * 5 : (p / total) * 100;
-            trend.push({ day: d.getDate(), value: parseFloat(pct.toFixed(1)) });
+      // ── Today's counts ──
+      const todayRecs = records.filter(r => r.date === today);
+      const presentToday = todayRecs.filter(r => r.status === 'present').length;
+      const absentToday  = todayRecs.filter(r => r.status === 'absent').length;
+      const lateToday    = todayRecs.filter(r => r.status === 'late').length;
+      const totalToday   = presentToday + absentToday + lateToday;
+
+      // ── Monthly avg ──
+      const monthlyRecs    = records.filter(r => r.date && r.date >= cutoffStr);
+      const monthlyPresent = monthlyRecs.filter(r => r.status === 'present').length;
+      const monthlyAvgVal  = monthlyRecs.length === 0 ? 0 : Math.round((monthlyPresent / monthlyRecs.length) * 100);
+
+      // ── Grade heatmap – group by gradeLevel or className ──
+      const gradeGroups: Record<string, { present: number; total: number }> = {};
+      records.forEach(r => {
+        const g = r.gradeLevel || r.className || null;
+        if (!g) return;
+        if (!gradeGroups[g]) gradeGroups[g] = { present: 0, total: 0 };
+        gradeGroups[g].total++;
+        if (r.status === 'present') gradeGroups[g].present++;
+      });
+
+      const heatmap = Object.entries(gradeGroups)
+        .map(([grade, { present, total }]) => {
+          const pct = Math.round((present / total) * 100);
+          return {
+            grade,
+            pct: `${pct}%`,
+            value: pct,
+            color: pct >= 90 ? "#22c55e" : pct >= 80 ? "#f59e0b" : "#ef4444"
+          };
+        })
+        .sort((a, b) => a.grade.localeCompare(b.grade))
+        .slice(0, 8);
+
+      // ── 30-Day trend ──
+      const trend: any[] = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dStr  = d.toLocaleDateString('en-CA');
+        const dRecs = records.filter(r => r.date === dStr);
+        if (dRecs.length > 0) {
+          const p = dRecs.filter(r => r.status === 'present').length;
+          trend.push({ day: d.getDate(), value: parseFloat(((p / dRecs.length) * 100).toFixed(1)) });
         }
-        setTrendData(trend);
+      }
 
-        // Absent Students Today
-        const absents = todayRecords
-            .filter((r: any) => r.status === 'absent')
-            .map(r => ({
-                initials: r.studentName?.substring(0, 2).toUpperCase() || "ST",
-                name: r.studentName,
-                grade: r.className || "N/A",
-                contact: r.parentPhone || "No Contact",
-                consecutive: "Checking...", // Logic can be added to count back
-                monthly: "88%",
-                status: "Active"
-            }));
-        setAbsentStudents(absents);
+      // ── Per-student records for consecutive / monthly % ──
+      const studentMap: Record<string, any[]> = {};
+      records.forEach(r => {
+        const sid = r.studentId || r.studentName || null;
+        if (!sid) return;
+        if (!studentMap[sid]) studentMap[sid] = [];
+        studentMap[sid].push(r);
+      });
 
-        // Monthly Avg: all records in last 30 days
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - 30);
-        const monthlyRecords = records.filter((r: any) => r.date && r.date >= cutoff.toLocaleDateString('en-CA'));
-        const monthlyPresent = monthlyRecords.filter((r: any) => r.status === 'present').length;
-        const monthlyTotal = monthlyRecords.length;
-        const monthlyAvgVal = monthlyTotal === 0 ? 0 : Math.round((monthlyPresent / monthlyTotal) * 100);
+      const absents = todayRecs
+        .filter(r => r.status === 'absent')
+        .map(r => {
+          const sid  = r.studentId || r.studentName || null;
+          const sRec = (sid ? studentMap[sid] || [] : [])
+            .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-        setStats({
-            presentToday,
-            absentToday,
-            criticalAlerts: heatmap.filter(h => h.value < 80).length,
-            monthlyAvg: `${monthlyAvgVal}%`
+          // Consecutive absents counting back from today
+          let consecutive = 0;
+          for (const rec of sRec) {
+            if (rec.status === 'absent') consecutive++;
+            else break;
+          }
+
+          // Monthly % for this student
+          const sMonthly  = sRec.filter(rec => rec.date && rec.date >= cutoffStr);
+          const sPresent  = sMonthly.filter(rec => rec.status === 'present').length;
+          const monthlyPct = sMonthly.length === 0 ? 0 : Math.round((sPresent / sMonthly.length) * 100);
+          const statusLabel = monthlyPct < 60 ? 'Chronic' : monthlyPct < 75 ? 'Warning' : 'Active';
+
+          return {
+            initials:    (r.studentName || "ST").substring(0, 2).toUpperCase(),
+            name:        r.studentName || "Unknown",
+            grade:       r.className || r.gradeLevel || "N/A",
+            contact:     r.parentPhone || "—",
+            consecutive: `${consecutive} day${consecutive !== 1 ? 's' : ''}`,
+            consecutiveNum: consecutive,
+            monthly:     `${monthlyPct}%`,
+            monthlyVal:  monthlyPct,
+            status:      statusLabel
+          };
         });
 
-        setLoading(false);
+      setStats({ presentToday, absentToday, lateToday, monthlyAvg: `${monthlyAvgVal}%`, totalToday });
+      setGradeHeatmap(heatmap);
+      setTrendData(trend);
+      setAbsentStudents(absents);
+      setLoading(false);
     });
 
-    return () => { unsubEnroll(); unsubAtt(); };
-  }, [userData?.schoolId]);
+    return () => unsub();
+  }, [userData?.schoolId, userData?.branchId]);
+
+  const pct = (n: number) => stats.totalToday > 0 ? `${Math.round((n / stats.totalToday) * 100)}%` : "—";
+
+  const generateReport = () => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+    const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    w.document.write(`<html><head><title>Monthly Attendance Report</title><style>
+      body{font-family:Arial,sans-serif;padding:40px;color:#1e293b}
+      h1{color:#1e3a8a}h2{color:#334155;margin-top:32px}
+      table{width:100%;border-collapse:collapse;margin-top:16px}
+      th{background:#1e3a8a;color:#fff;padding:10px 14px;text-align:left;font-size:12px}
+      td{padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:13px}
+      .stats{display:flex;gap:40px;margin:24px 0}
+      .stat-box{text-align:center}
+      .stat-val{font-size:32px;font-weight:900;color:#1e3a8a}
+      .stat-label{font-size:12px;color:#64748b;font-weight:600}
+    </style></head><body>
+      <h1>Monthly Attendance Report</h1>
+      <p style="color:#64748b">Generated: ${dateStr}</p>
+      <div class="stats">
+        <div class="stat-box"><div class="stat-val">${stats.presentToday}</div><div class="stat-label">Present Today</div></div>
+        <div class="stat-box"><div class="stat-val">${stats.absentToday}</div><div class="stat-label">Absent Today</div></div>
+        <div class="stat-box"><div class="stat-val">${stats.lateToday}</div><div class="stat-label">Late Today</div></div>
+        <div class="stat-box"><div class="stat-val">${stats.monthlyAvg}</div><div class="stat-label">Monthly Avg</div></div>
+      </div>
+      <h2>Grade-wise Summary</h2>
+      <table><thead><tr><th>Grade/Class</th><th>Attendance %</th><th>Status</th></tr></thead><tbody>
+        ${gradeHeatmap.map(g => `<tr><td>${g.grade}</td><td>${g.pct}</td><td>${g.value >= 90 ? 'Good' : g.value >= 80 ? 'Average' : 'Critical'}</td></tr>`).join('')}
+      </tbody></table>
+      <h2>Absent Students Today</h2>
+      <table><thead><tr><th>Student</th><th>Class</th><th>Contact</th><th>Consecutive</th><th>Monthly %</th><th>Status</th></tr></thead><tbody>
+        ${absentStudents.map(s => `<tr><td>${s.name}</td><td>${s.grade}</td><td>${s.contact}</td><td>${s.consecutive}</td><td>${s.monthly}</td><td>${s.status}</td></tr>`).join('')}
+      </tbody></table>
+    </body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+  };
 
   if (selectedClass) {
     return <ClassAttendanceDetail className={selectedClass} onBack={() => setSelectedClass(null)} />;
@@ -134,17 +187,13 @@ const Attendance = () => {
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Real-time Attendance Engine</h1>
+        <h1 className="text-2xl font-bold text-foreground">Attendance</h1>
         <p className="text-sm text-muted-foreground">Monitor student attendance patterns and trends</p>
       </div>
 
-      {!loading && attendanceRecords.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-card border border-dashed border-border rounded-3xl mt-10">
-          <Clock className="w-16 h-16 text-slate-300 mb-6" />
-          <h2 className="text-xl font-bold text-slate-700 mb-2">No Attendance Data Found</h2>
-          <p className="text-sm text-slate-500 font-medium max-w-md text-center">
-            Attendance insights will appear once teachers begin marking attendance in their dashboard.
-          </p>
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="animate-spin w-8 h-8 border-4 border-[#1e3a8a] border-t-transparent rounded-full" />
         </div>
       ) : (
         <>
@@ -157,7 +206,9 @@ const Attendance = () => {
                 <CheckCircle className="w-5 h-5 text-green-500" />
               </div>
               <p className="text-4xl font-black text-[#1e3a8a] mb-1">{stats.presentToday}</p>
-              <p className="text-xs text-muted-foreground font-medium">Verified in registry</p>
+              <p className="text-xs text-muted-foreground font-medium">
+                {stats.totalToday > 0 ? `${pct(stats.presentToday)} attendance` : "No records today"}
+              </p>
             </div>
 
             {/* Absent Today */}
@@ -167,18 +218,21 @@ const Attendance = () => {
                 <XCircle className="w-5 h-5 text-red-500" />
               </div>
               <p className="text-4xl font-black text-red-500 mb-1">{stats.absentToday}</p>
-              <p className="text-xs text-muted-foreground font-bold">Requires Attention</p>
+              <p className="text-xs text-muted-foreground font-bold">
+                {stats.totalToday > 0 ? `${pct(stats.absentToday)} of total` : "Requires attention"}
+              </p>
             </div>
 
-            {/* Low Attendance Alert */}
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-6 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-16 h-16 bg-red-500 rounded-bl-full opacity-10" />
+            {/* Late Arrivals */}
+            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-bold text-red-700">Critical Alerts</span>
-                <AlertTriangle className="w-5 h-5 text-red-600 animate-pulse" />
+                <span className="text-sm font-medium text-muted-foreground">Late Arrivals</span>
+                <Clock className="w-5 h-5 text-amber-500" />
               </div>
-              <p className="text-4xl font-black text-red-600 mb-1">{stats.criticalAlerts}</p>
-              <p className="text-xs text-red-500 font-bold">Grades under 80%</p>
+              <p className="text-4xl font-black text-amber-500 mb-1">{stats.lateToday}</p>
+              <p className="text-xs text-muted-foreground font-medium">
+                {stats.totalToday > 0 ? `${pct(stats.lateToday)} of total` : "No late arrivals"}
+              </p>
             </div>
 
             {/* Monthly Avg */}
@@ -194,23 +248,30 @@ const Attendance = () => {
 
           {/* ===== HEATMAP + TREND ===== */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Grade-wise Attendance Heatmap */}
+            {/* Grade-wise Heatmap */}
             <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
               <h2 className="text-base font-bold text-foreground mb-6">Grade-wise Attendance Heatmap</h2>
-              <div className="flex items-end justify-between gap-3 mb-6">
-                {gradeHeatmap.map((g, i) => (
-                  <div key={i} className="flex-1 text-center cursor-pointer" onClick={() => setSelectedClass(g.grade)}>
-                    <p className="text-xs font-bold text-muted-foreground mb-2">{g.grade}</p>
+              {gradeHeatmap.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No attendance data available</p>
+              ) : (
+                <div className="flex items-end justify-between gap-3 mb-6 flex-wrap">
+                  {gradeHeatmap.map((g, i) => (
                     <div
-                      className="rounded-xl py-4 px-2 hover:scale-105 transition-transform shadow-sm"
-                      style={{ backgroundColor: g.color }}
+                      key={i}
+                      className="flex-1 min-w-[70px] text-center cursor-pointer"
+                      onClick={() => setSelectedClass(g.grade)}
                     >
-                      <p className="text-lg font-black text-white">{g.pct}</p>
+                      <p className="text-xs font-bold text-muted-foreground mb-2">{g.grade}</p>
+                      <div
+                        className="rounded-xl py-4 px-2 hover:scale-105 transition-transform shadow-sm"
+                        style={{ backgroundColor: g.color }}
+                      >
+                        <p className="text-lg font-black text-white">{g.pct}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-              {/* Legend */}
+                  ))}
+                </div>
+              )}
               <div className="flex items-center gap-6 pt-4 border-t border-border">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-[#22c55e]" />
@@ -227,45 +288,49 @@ const Attendance = () => {
               </div>
             </div>
 
-            {/* 30-Day Attendance Trend */}
+            {/* 30-Day Trend */}
             <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
               <h2 className="text-base font-bold text-foreground mb-2">30-Day Attendance Trend</h2>
-              <ResponsiveContainer width="100%" height={250}>
-                <AreaChart data={trendData}>
-                  <defs>
-                    <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#64748b" stopOpacity={0.1} />
-                      <stop offset="95%" stopColor="#64748b" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis
-                    dataKey="day"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
-                    interval={4}
-                  />
-                  <YAxis
-                    domain={[85, 95]}
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
-                    tickFormatter={(v) => `${v}%`}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#475569"
-                    strokeWidth={2}
-                    fill="url(#trendGradient)"
-                    dot={{ r: 3, fill: '#ffffff', stroke: '#475569', strokeWidth: 2 }}
-                    activeDot={{ r: 6, fill: '#475569', stroke: '#ffffff', strokeWidth: 2 }}
-                    animationDuration={1500}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              {trendData.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-20">No trend data available</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={250}>
+                  <AreaChart data={trendData}>
+                    <defs>
+                      <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#64748b" stopOpacity={0.1} />
+                        <stop offset="95%" stopColor="#64748b" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis
+                      dataKey="day"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
+                      interval={4}
+                    />
+                    <YAxis
+                      domain={['auto', 'auto']}
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
+                      tickFormatter={(v) => `${v}%`}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#475569"
+                      strokeWidth={2}
+                      fill="url(#trendGradient)"
+                      dot={{ r: 3, fill: '#ffffff', stroke: '#475569', strokeWidth: 2 }}
+                      activeDot={{ r: 6, fill: '#475569', stroke: '#ffffff', strokeWidth: 2 }}
+                      animationDuration={1500}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
 
@@ -277,49 +342,59 @@ const Attendance = () => {
                 <Send className="w-4 h-4" /> Alert Parents
               </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Student</th>
-                    <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Grade-Section</th>
-                    <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Parent Contact</th>
-                    <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Consecutive Absent</th>
-                    <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Monthly %</th>
-                    <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {absentStudents.map((s) => (
-                    <tr key={s.name} className="hover:bg-secondary/30 transition-colors">
-                      <td className="px-7 py-5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-[10px] font-bold text-muted-foreground">
-                            {s.initials}
-                          </div>
-                          <span className="font-bold text-foreground text-sm">{s.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-7 py-5 font-bold text-foreground text-sm">{s.grade}</td>
-                      <td className="px-7 py-5 text-muted-foreground text-sm font-medium">{s.contact}</td>
-                      <td className="px-7 py-5">
-                        <span className="text-red-500 font-bold text-sm">{s.consecutive}</span>
-                      </td>
-                      <td className="px-7 py-5">
-                        <span className={`font-bold text-sm ${
-                          parseFloat(s.monthly) < 60 ? 'text-red-500' :
-                          parseFloat(s.monthly) < 80 ? 'text-amber-500' :
-                          'text-green-500'
-                        }`}>{s.monthly}</span>
-                      </td>
-                      <td className="px-7 py-5">
-                        <span className="text-sm font-bold text-foreground">{s.status}</span>
-                      </td>
+
+            {absentStudents.length === 0 ? (
+              <div className="py-12 text-center">
+                <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
+                <p className="text-sm font-bold text-muted-foreground">No absent students today</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Student</th>
+                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Grade-Section</th>
+                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Parent Contact</th>
+                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Consecutive Absent</th>
+                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Monthly %</th>
+                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {absentStudents.map((s, i) => (
+                      <tr key={i} className="hover:bg-secondary/30 transition-colors">
+                        <td className="px-7 py-5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-[10px] font-bold text-muted-foreground">
+                              {s.initials}
+                            </div>
+                            <span className="font-bold text-foreground text-sm">{s.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-7 py-5 font-bold text-foreground text-sm">{s.grade}</td>
+                        <td className="px-7 py-5 text-muted-foreground text-sm font-medium">{s.contact}</td>
+                        <td className="px-7 py-5">
+                          <span className={`font-bold text-sm ${s.consecutiveNum >= 3 ? 'text-red-500' : s.consecutiveNum >= 2 ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                            {s.consecutive}
+                          </span>
+                        </td>
+                        <td className="px-7 py-5">
+                          <span className={`font-bold text-sm ${s.monthlyVal < 60 ? 'text-red-500' : s.monthlyVal < 80 ? 'text-amber-500' : 'text-green-500'}`}>
+                            {s.monthly}
+                          </span>
+                        </td>
+                        <td className="px-7 py-5">
+                          <span className={`text-sm font-bold ${s.status === 'Chronic' ? 'text-red-500' : s.status === 'Warning' ? 'text-amber-500' : 'text-foreground'}`}>
+                            {s.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* ===== ACTION BUTTONS ===== */}
@@ -330,7 +405,10 @@ const Attendance = () => {
             <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors">
               <Bell className="w-4 h-4 text-muted-foreground" /> Send Absence Alerts
             </button>
-            <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors">
+            <button
+              onClick={generateReport}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors"
+            >
               <FileText className="w-4 h-4 text-muted-foreground" /> Generate Monthly Report
             </button>
           </div>

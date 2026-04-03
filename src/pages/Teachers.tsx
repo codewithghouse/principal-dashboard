@@ -1,21 +1,23 @@
 import { useState, useEffect, useRef } from "react";
-import { BarChart2, CalendarCheck, Star, Users, Search, List, Plus, Upload, Download, FileSpreadsheet, X, CheckCircle, AlertCircle, Loader2, GraduationCap, Eye, Trash2, Edit3, Save } from "lucide-react";
-import StatCard from "@/components/dashboard/StatCard";
-import TeacherProfile from "@/components/TeacherProfile";
-import Recommendations from "@/components/Recommendations";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter
+  BarChart2, CalendarCheck, Star, Users, Search, List,
+  Plus, Upload, Download, FileSpreadsheet, X, CheckCircle,
+  Loader2, GraduationCap, Eye, Trash2, Edit3, Save,
+  TrendingUp, UserCheck, MessageSquare, LayoutGrid
+} from "lucide-react";
+import TeacherProfile from "@/components/TeacherProfile";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, getDocs, getDoc, deleteDoc } from "firebase/firestore";
+import {
+  collection, addDoc, serverTimestamp, query, where,
+  onSnapshot, doc, updateDoc, getDocs, getDoc
+} from "firebase/firestore";
 import { sendEmail } from "@/lib/resend";
 import { useAuth } from "@/lib/AuthContext";
 import * as XLSX from "xlsx";
@@ -33,280 +35,308 @@ interface BulkTeacher {
 
 const TEMPLATE_DATA = [
   { Name: "Mrs. Kavita Sharma", Email: "kavita@example.com", Subject: "Mathematics", Phone: "9876543210", Experience: "5 years" },
-  { Name: "Dr. Rajesh Kumar", Email: "rajesh@example.com", Subject: "Physics", Phone: "9876543211", Experience: "8 years" },
+  { Name: "Dr. Rajesh Kumar",   Email: "rajesh@example.com", Subject: "Physics",     Phone: "9876543211", Experience: "8 years" },
 ];
 
+// ─── Stat Card (custom, matches mockup) ─────────────────────────────────────
+const StatCard = ({
+  title, value, subtitle, subtitleGreen = false, subtitleOrange = false, icon: Icon, iconBg
+}: {
+  title: string; value: string | number; subtitle?: string;
+  subtitleGreen?: boolean; subtitleOrange?: boolean;
+  icon: any; iconBg: string;
+}) => (
+  <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+    <div className="flex items-center justify-between mb-3">
+      <span className="text-sm text-slate-500 font-medium">{title}</span>
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${iconBg}`}>
+        <Icon className="w-4.5 h-4.5" />
+      </div>
+    </div>
+    <div className="text-2xl font-bold text-slate-800 mb-1">{value}</div>
+    {subtitle && (
+      <span className={`text-xs font-semibold ${
+        subtitleGreen ? "text-green-600" : subtitleOrange ? "text-amber-600" : "text-slate-400"
+      }`}>
+        {subtitle}
+      </span>
+    )}
+  </div>
+);
+
+// ─── Component ────────────────────────────────────────────────────────────────
 const Teachers = () => {
   const { userData } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── State ──────────────────────────────────────────────────────────────────
-  const [teachersData, setTeachersData]       = useState<any[]>([]);
-  const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
-  const [searchQuery, setSearchQuery]         = useState("");
-  const [isInviteOpen, setIsInviteOpen]       = useState(false);
-  const [isBulkOpen, setIsBulkOpen]           = useState(false);
-  const [isRosterOpen, setIsRosterOpen]       = useState(false);
-  const [teacherToAssign, setTeacherToAssign] = useState<any | null>(null);
-  const [teacherRoster, setTeacherRoster]     = useState<any[]>([]);
-  const [loadingRoster, setLoadingRoster]     = useState(false);
-  const [isSending, setIsSending]             = useState(false);
-  
-  // Edit State
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
+  // ── UI State ─────────────────────────────────────────────────────────────
+  const [teachersData,     setTeachersData]     = useState<any[]>([]);
+  const [selectedTeacher,  setSelectedTeacher]  = useState<any | null>(null);
+  const [searchQuery,      setSearchQuery]      = useState("");
+  const [subjectFilter,    setSubjectFilter]    = useState("");
+  const [statusFilter,     setStatusFilter]     = useState("");
+  const [viewMode,         setViewMode]         = useState<"grid" | "list">("grid");
 
-  // Bulk state
-  const [bulkData, setBulkData]               = useState<BulkTeacher[]>([]);
+  // ── Dialog State ──────────────────────────────────────────────────────────
+  const [isInviteOpen,       setIsInviteOpen]       = useState(false);
+  const [isBulkOpen,         setIsBulkOpen]         = useState(false);
+  const [isRosterOpen,       setIsRosterOpen]       = useState(false);
+  const [teacherToAssign,    setTeacherToAssign]    = useState<any | null>(null);
+  const [teacherRoster,      setTeacherRoster]      = useState<any[]>([]);
+  const [loadingRoster,      setLoadingRoster]      = useState(false);
+  const [isSending,          setIsSending]          = useState(false);
+
+  // ── Edit State ────────────────────────────────────────────────────────────
+  const [editingId,  setEditingId]  = useState<string | null>(null);
+  const [editName,   setEditName]   = useState("");
+
+  // ── Bulk State ────────────────────────────────────────────────────────────
+  const [bulkData,         setBulkData]         = useState<BulkTeacher[]>([]);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
-  const [bulkDone, setBulkDone]               = useState(false);
+  const [bulkDone,         setBulkDone]         = useState(false);
 
-  const [inviteForm, setInviteForm] = useState({ name: "", email: "", subject: "", assignClassId: "" });
+  const [inviteForm,       setInviteForm]       = useState({ name: "", email: "", subject: "", assignClassId: "" });
   const [availableClasses, setAvailableClasses] = useState<any[]>([]);
 
-  // ── Real-time Teachers Fetch ───────────────────────────────────────────────
+  // ── Aggregated Stats State ────────────────────────────────────────────────
+  const [avgRating,       setAvgRating]       = useState<number | null>(null);
+  const [reviewCount,     setReviewCount]     = useState(0);
+  const [avgClassPerf,    setAvgClassPerf]    = useState<number | null>(null);
+  const [teacherAttPct,   setTeacherAttPct]   = useState<number | null>(null);
+
+  // ── Teacher Real-time Fetch ───────────────────────────────────────────────
   useEffect(() => {
     if (!userData) return;
-    
     const schoolId = userData?.schoolId || userData?.school || userData?.schoolID;
-    const branch   = userData?.branch   || userData?.branchName;
-    
+    const branchId = userData?.branchId || "";
     if (!schoolId) return;
-    
+
     const constraints: any[] = [where("schoolId", "==", schoolId)];
-    if (branch) constraints.push(where("branch", "==", branch));
+    if (branchId) constraints.push(where("branchId", "==", branchId));
 
     const q = query(collection(db, "teachers"), ...constraints);
     const unsub = onSnapshot(q, (snap) => {
-      const colors = ["bg-indigo-600", "bg-emerald-600", "bg-amber-600", "bg-rose-600", "bg-[#1e3a8a]"];
-      
+      const COLORS = [
+        "bg-[#1e3a8a]", "bg-emerald-600", "bg-amber-500",
+        "bg-rose-500",  "bg-indigo-600",  "bg-teal-600",
+      ];
       const teachers = snap.docs.map((d, i) => {
         const data = d.data();
         return {
-          id: d.id,
+          id:          d.id,
           ...data,
-          initials: data.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || "T",
-          color: colors[i % colors.length],
-          experience: data.experience || "N/A",
-          rating: data.rating || "5.0",
-          status: data.status || "Active",
-          subject: data.subject || "Faculty",
-          actualClasses: "Fetching..."
+          initials:    data.name?.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "T",
+          color:       COLORS[i % COLORS.length],
+          experience:  data.experience  || "N/A",
+          rating:      data.rating      || "5.0",
+          status:      data.status      || "Active",
+          subject:     data.subject     || "Faculty",
+          classCount:  null as number | null,   // filled async below
+          classNames:  "Fetching…",
         };
       });
       setTeachersData(teachers);
-      
-      teachers.forEach(async (t) => {
-          try {
-            const assignQ = query(collection(db, "teaching_assignments"), where("teacherId", "==", t.id));
-            const assignSnap = await getDocs(assignQ);
-            
-            if (assignSnap.empty) {
-                setTeachersData(prev => prev.map(item => item.id === t.id ? {...item, actualClasses: "Unassigned"} : item));
-                return;
-            }
 
-            // Map Class Names from assignments
-            const classIds = Array.from(new Set(assignSnap.docs.map(d => d.data().classId)));
-            const classNames: string[] = [];
-            for (const cId of classIds) {
-                const cDoc = await getDoc(doc(db, "classes", cId));
-                if (cDoc.exists()) classNames.push(cDoc.data().name);
-            }
-            
-            setTeachersData(prev => prev.map(item => item.id === t.id ? {
-                ...item, 
-                actualClasses: classNames.join(", ") || "No Classes",
-                subject: t.subject || assignSnap.docs[0].data().subjectId || "Faculty"
-            } : item));
-          } catch (e) {
-            console.error("Assignment audit failed for teacher:", t.id, e);
+      // Per-teacher class count (async, fills in after render)
+      teachers.forEach(async (t) => {
+        try {
+          const aSnap = await getDocs(
+            query(collection(db, "teaching_assignments"), where("teacherId", "==", t.id))
+          );
+          if (aSnap.empty) {
+            setTeachersData(prev =>
+              prev.map(item => item.id === t.id
+                ? { ...item, classCount: 0, classNames: "Unassigned" }
+                : item
+              )
+            );
+            return;
           }
+          const classIds = [...new Set(aSnap.docs.map(d => d.data().classId).filter(Boolean))];
+          const names: string[] = [];
+          for (const cId of classIds) {
+            const cDoc = await getDoc(doc(db, "classes", cId as string));
+            if (cDoc.exists()) names.push(cDoc.data().name);
+          }
+          setTeachersData(prev =>
+            prev.map(item => item.id === t.id
+              ? {
+                  ...item,
+                  classCount: classIds.length,
+                  classNames: names.join(", ") || "No Classes",
+                  subject:    t.subject || aSnap.docs[0].data().subjectId || "Faculty",
+                }
+              : item
+            )
+          );
+        } catch { /* silent */ }
       });
     });
 
-    const classQ = query(collection(db, "classes"));
+    const classQ = query(collection(db, "classes"), where("schoolId", "==", schoolId));
     const unsubClasses = onSnapshot(classQ, (snap) => {
-        setAvailableClasses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setAvailableClasses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
     return () => { unsub(); unsubClasses(); };
   }, [userData]);
 
-  // ── Actions ────────────────────────────────────────────────────────────────
+  // ── Avg Class Performance (from results) ─────────────────────────────────
+  useEffect(() => {
+    if (!userData) return;
+    const schoolId = userData?.schoolId || userData?.school || userData?.schoolID;
+    if (!schoolId) return;
+    const unsub = onSnapshot(
+      query(collection(db, "results"), where("schoolId", "==", schoolId)),
+      (snap) => {
+        const docs = snap.docs.map(d => d.data());
+        if (docs.length === 0) { setAvgClassPerf(null); return; }
+        const avg = docs.reduce((s, d) => {
+          const pct = d.totalMarks > 0 ? (d.marksObtained / d.totalMarks) * 100 : 0;
+          return s + pct;
+        }, 0) / docs.length;
+        setAvgClassPerf(Math.round(avg * 10) / 10);
+      }
+    );
+    return () => unsub();
+  }, [userData]);
+
+  // ── Teacher Attendance % ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!userData) return;
+    const schoolId = userData?.schoolId || userData?.school || userData?.schoolID;
+    if (!schoolId) return;
+    const unsub = onSnapshot(
+      query(collection(db, "teacher_attendance"), where("schoolId", "==", schoolId)),
+      (snap) => {
+        const docs = snap.docs.map(d => d.data());
+        if (docs.length === 0) { setTeacherAttPct(null); return; }
+        const present = docs.filter(d => d.status === "present").length;
+        setTeacherAttPct(Math.round((present / docs.length) * 100));
+      }
+    );
+    return () => unsub();
+  }, [userData]);
+
+  // ── Parent Reviews Aggregate ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!userData) return;
+    const schoolId = userData?.schoolId || userData?.school || userData?.schoolID;
+    if (!schoolId) return;
+    const unsub = onSnapshot(
+      query(collection(db, "teacher_reviews"), where("schoolId", "==", schoolId)),
+      (snap) => {
+        const docs = snap.docs.map(d => d.data());
+        setReviewCount(docs.length);
+        if (docs.length > 0) {
+          const avg = docs.reduce((s, d) => s + (d.rating || 0), 0) / docs.length;
+          setAvgRating(Math.round(avg * 10) / 10);
+        }
+      }
+    );
+    return () => unsub();
+  }, [userData]);
+
+  // ── Actions ───────────────────────────────────────────────────────────────
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteForm.name || !inviteForm.email) return;
 
-    const assignToClass = async (targetTeacherId: string, assignedClassId: string) => {
-        if (!assignedClassId) return;
-        
-        try {
-            await addDoc(collection(db, "teaching_assignments"), {
-                teacherId: targetTeacherId,
-                classId: assignedClassId,
-                // Assuming subject isn't strictly selected together with class in this exact dropdown,
-                // but we can pass the teacher's primary subject if applicable.
-                subjectId: inviteForm.subject || "",
-                status: "active",
-                createdAt: serverTimestamp()
-            });
-        } catch (err) {
-            console.error(`[ASSIGNMENT ERROR] Failed assignment for class ${assignedClassId}:`, err);
-        }
+    const assignToClass = async (teacherId: string, classId: string) => {
+      if (!classId) return;
+      await addDoc(collection(db, "teaching_assignments"), {
+        teacherId, classId,
+        subjectId: inviteForm.subject || "",
+        status: "active",
+        createdAt: serverTimestamp(),
+      });
     };
 
     setIsSending(true);
     try {
       const emailObj = inviteForm.email.toLowerCase().trim();
       const schoolId = userData?.schoolId || userData?.school || "";
-      const branch   = userData?.branch || "";
+      const branchId = userData?.branchId || "";
 
-      // 1. Check for accidental deletions (Archived Faculty)
-      const qCheck = query(collection(db, "teachers"), where("email", "==", emailObj), where("schoolId", "==", schoolId));
+      const qCheck = query(collection(db, "teachers"),
+        where("email", "==", emailObj), where("schoolId", "==", schoolId));
       const snap = await getDocs(qCheck);
 
       if (!snap.empty) {
-         const existingDoc = snap.docs[0];
-         const existingData = existingDoc.data();
-
-         if (existingData.status === "Archived") {
-             // Rescue the teacher and restore original ID links!
-             await updateDoc(doc(db, "teachers", existingDoc.id), {
-                 status: "Invited",
-                 isActive: true,
-                 name: inviteForm.name,
-                 subject: inviteForm.subject || existingData.subject,
-                 reactivatedAt: serverTimestamp()
-             });
-
-             await assignToClass(existingDoc.id, inviteForm.assignClassId);
-
-             try {
-                await sendEmail({
-                  to: emailObj,
-                  subject: `Welcome Back to ${userData?.schoolName || "EduIntellect"}`,
-                  html: `
-                    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-                      <h2 style="color: #1e3a8a;">Welcome Back, ${inviteForm.name}!</h2>
-                      <p>Your teacher account at <strong>${userData?.schoolName || "the institution"}</strong> has been successfully restored.</p>
-                      <p>Your historical classes and student rosters remain completely intact. You can now access your portal normally.</p>
-                      <div style="margin: 30px 0; text-align: center;">
-                        <a href="https://teacher-dashboard-ochre.vercel.app" 
-                           style="background: #1e3a8a; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
-                          Open Teacher Dashboard
-                        </a>
-                      </div>
-                    </div>
-                  `
-                });
-             } catch (emailErr) {
-                }
-
-             toast.success("Legacy Teacher successfully Restored & Re-invited!");
-             setIsInviteOpen(false);
-             setInviteForm({ name: "", email: "", subject: "", assignClassId: "" });
-             setIsSending(false);
-             return;
-         } else {
-             // Active or already invited
-             toast.error("Faculty member with this email is already active.");
-             setIsSending(false);
-             return;
-         }
+        const existing = snap.docs[0];
+        if (existing.data().status === "Archived") {
+          await updateDoc(doc(db, "teachers", existing.id), {
+            status: "Invited", isActive: true,
+            name: inviteForm.name,
+            subject: inviteForm.subject || existing.data().subject,
+            reactivatedAt: serverTimestamp(),
+          });
+          await assignToClass(existing.id, inviteForm.assignClassId);
+          try {
+            await sendEmail({
+              to: emailObj,
+              subject: `Welcome Back to ${userData?.schoolName || "EduIntellect"}`,
+              html: `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#1e3a8a">Welcome Back, ${inviteForm.name}!</h2><p>Your account has been restored at <strong>${userData?.schoolName || "the institution"}</strong>.</p><div style="margin:24px 0"><a href="https://teacher-dashboard-ochre.vercel.app" style="background:#1e3a8a;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold">Open Teacher Dashboard</a></div></div>`,
+            });
+          } catch { /* silent */ }
+          toast.success("Teacher restored & re-invited!");
+        } else {
+          toast.error("A teacher with this email is already active.");
+        }
+        setIsInviteOpen(false);
+        setInviteForm({ name: "", email: "", subject: "", assignClassId: "" });
+        setIsSending(false);
+        return;
       }
-      
-      // 2. Add New Teacher if completely fresh
-      const newTeacherRef = await addDoc(collection(db, "teachers"), {
-        name: inviteForm.name,
-        subject: inviteForm.subject,
-        email: emailObj,
-        schoolId,
-        branch,
-        status: "Invited",
-        isActive: true,
-        createdAt: serverTimestamp(),
-        rating: 5.0,
-        experience: "N/A"
+
+      const ref = await addDoc(collection(db, "teachers"), {
+        name: inviteForm.name, subject: inviteForm.subject,
+        email: emailObj, schoolId, branchId,
+        status: "Invited", isActive: true,
+        createdAt: serverTimestamp(), rating: 5.0, experience: "N/A",
       });
-
-      await assignToClass(newTeacherRef.id, inviteForm.assignClassId);
-
-      // Final Email Dispatch
+      await assignToClass(ref.id, inviteForm.assignClassId);
       try {
-         await sendEmail({
-           to: emailObj,
-           subject: `Invitation to join ${userData?.schoolName || "EduIntellect"}`,
-           html: `
-             <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-               <h2 style="color: #1e3a8a;">Welcome, ${inviteForm.name}!</h2>
-               <p>You have been officially invited as a Teacher at <strong>${userData?.schoolName || "the institution"}</strong>.</p>
-               <p>Your institutional dashboard is fully configured and ready for your arrival. Please sign in using this email address.</p>
-               <div style="margin: 30px 0; text-align: center;">
-                 <a href="https://teacher-dashboard-ochre.vercel.app" 
-                    style="background: #1e3a8a; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px;">
-                   Login to Teacher Portal
-                 </a>
-               </div>
-               <p style="color: #888; font-size: 12px; margin-top: 20px;">If the button doesn't work, copy and paste this link manually: https://teacher-dashboard-ochre.vercel.app</p>
-             </div>
-           `
-         });
-      } catch (emailErr) {
-      }
-
-      toast.success("Teacher Database Injection Successful!");
+        await sendEmail({
+          to: emailObj,
+          subject: `Invitation to join ${userData?.schoolName || "EduIntellect"}`,
+          html: `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#1e3a8a">Welcome, ${inviteForm.name}!</h2><p>You have been invited to <strong>${userData?.schoolName || "the institution"}</strong>.</p><div style="margin:24px 0"><a href="https://teacher-dashboard-ochre.vercel.app" style="background:#1e3a8a;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold">Login to Teacher Portal</a></div></div>`,
+        });
+      } catch { /* silent */ }
+      toast.success("Teacher invited successfully!");
       setIsInviteOpen(false);
       setInviteForm({ name: "", email: "", subject: "", assignClassId: "" });
     } catch (err) {
-      console.error(err);
-      toast.error("Database connection failed.");
+      toast.error("Failed to invite teacher.");
     } finally {
       setIsSending(false);
     }
   };
 
   const handleDeleteTeacher = async (id: string, name: string) => {
-      if (!confirm(`Are you sure you want to de-board ${name}? All their institutional records will stay intact, but they will be unassigned.`)) return;
-      try {
-          // Soft-Delete: Archive and set isActive to false
-          await updateDoc(doc(db, "teachers", id), { 
-              status: "Archived",
-              isActive: false,
-              archivedAt: serverTimestamp() 
-          });
-
-          // Unassign from teaching_assignments
-          const q = query(collection(db, "teaching_assignments"), where("teacherId", "==", id));
-          const snapshot = await getDocs(q);
-          const updatePromises = snapshot.docs.map(assignmentDoc => 
-              updateDoc(assignmentDoc.ref, { 
-                  teacherId: null,
-                  updatedAt: serverTimestamp() 
-              })
-          );
-          await Promise.all(updatePromises);
-
-          toast.success("Faculty record securely archived & unassigned.");
-      } catch (e) {
-          toast.error("Failed to archive faculty record.");
-      }
+    if (!confirm(`Remove ${name} from the system? Their records stay intact.`)) return;
+    try {
+      await updateDoc(doc(db, "teachers", id), {
+        status: "Archived", isActive: false, archivedAt: serverTimestamp(),
+      });
+      const aSnap = await getDocs(
+        query(collection(db, "teaching_assignments"), where("teacherId", "==", id))
+      );
+      await Promise.all(aSnap.docs.map(d => updateDoc(d.ref, { teacherId: null })));
+      toast.success("Teacher archived successfully.");
+    } catch {
+      toast.error("Failed to archive teacher.");
+    }
   };
 
-  const handleStartEdit = (t: any) => {
-      setEditingId(t.id);
-      setEditName(t.name);
-  };
-
-  const handleSaveName = async (id: string) => {
-      if (!editName.trim()) return setEditingId(null);
-      try {
-          await updateDoc(doc(db, "teachers", id), { name: editName.trim() });
-          toast.success("Identity updated.");
-          setEditingId(null);
-      } catch (e) {
-          toast.error("Failed to update identity.");
-      }
+  const handleStartEdit = (t: any) => { setEditingId(t.id); setEditName(t.name); };
+  const handleSaveName  = async (id: string) => {
+    if (!editName.trim()) return setEditingId(null);
+    try {
+      await updateDoc(doc(db, "teachers", id), { name: editName.trim() });
+      toast.success("Name updated.");
+      setEditingId(null);
+    } catch { toast.error("Failed to update name."); }
   };
 
   const handleOpenRoster = async (teacher: any) => {
@@ -314,83 +344,65 @@ const Teachers = () => {
     setIsRosterOpen(true);
     setLoadingRoster(true);
     try {
-      const q = query(collection(db, "enrollments"), where("teacherId", "==", teacher.id));
-      const snap = await getDocs(q);
-      const students = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setTeacherRoster(students);
-    } catch (err) {
-      toast.error("Failed to fetch roster.");
-    } finally {
-      setLoadingRoster(false);
-    }
+      const snap = await getDocs(
+        query(collection(db, "enrollments"), where("teacherId", "==", teacher.id))
+      );
+      setTeacherRoster(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch { toast.error("Failed to fetch roster."); }
+    finally { setLoadingRoster(false); }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (evt) => {
       const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: "binary" });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
+      const wb   = XLSX.read(bstr, { type: "binary" });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
       const data = XLSX.utils.sheet_to_json(ws) as any[];
-
-      const formatted: BulkTeacher[] = data.map(item => ({
-        name: item.Name || item.name || "",
-        email: (item.Email || item.email || "").toString().toLowerCase().trim(),
-        subject: item.Subject || item.subject || "",
-        phone: item.Phone || item.phone || "",
-        experience: item.Experience || item.experience || "",
-        _status: "pending" as const
-      })).filter(t => !!t.email);
-
-      setBulkData(formatted);
+      setBulkData(
+        data.map(item => ({
+          name:       item.Name       || item.name       || "",
+          email:      (item.Email     || item.email      || "").toString().toLowerCase().trim(),
+          subject:    item.Subject    || item.subject    || "",
+          phone:      item.Phone      || item.phone      || "",
+          experience: item.Experience || item.experience || "",
+          _status:    "pending" as const,
+        })).filter(t => !!t.email)
+      );
     };
     reader.readAsBinaryString(file);
   };
 
   const handleBulkImport = async () => {
     setIsBulkProcessing(true);
-    const results = [...bulkData];
+    const rows = [...bulkData];
     const schoolId = userData?.schoolId || "";
-    const branch = userData?.branch || "";
-
-    for (let i = 0; i < results.length; i++) {
+    const branchId = userData?.branchId || "";
+    for (let i = 0; i < rows.length; i++) {
       try {
-        const t = results[i];
-        const q = query(collection(db, "teachers"), where("email", "==", t.email), where("schoolId", "==", schoolId));
-        const existing = await getDocs(q);
-
-        if (!existing.empty) {
-          results[i]._status = "duplicate" as const;
-          continue;
-        }
-
+        const t = rows[i];
+        const existing = await getDocs(
+          query(collection(db, "teachers"), where("email", "==", t.email), where("schoolId", "==", schoolId))
+        );
+        if (!existing.empty) { rows[i]._status = "duplicate"; continue; }
         await addDoc(collection(db, "teachers"), {
-          name: t.name,
-          email: t.email.toLowerCase(),
-          subject: t.subject,
-          phone: t.phone,
-          experience: t.experience,
-          schoolId,
-          branch,
-          status: "Invited",
-          createdAt: serverTimestamp(),
-          rating: 5.0
+          name: t.name, email: t.email, subject: t.subject,
+          phone: t.phone, experience: t.experience,
+          schoolId, branchId, status: "Invited",
+          createdAt: serverTimestamp(), rating: 5.0,
         });
-
-        results[i]._status = "success" as const;
+        rows[i]._status = "success";
       } catch (err) {
-        results[i]._status = "error" as const;
-        results[i]._error = String(err);
+        rows[i]._status = "error";
+        rows[i]._error  = String(err);
       }
-      setBulkData([...results]);
+      setBulkData([...rows]);
     }
     setIsBulkProcessing(false);
     setBulkDone(true);
-    toast.success("Bulk import process complete");
+    toast.success("Bulk import complete");
   };
 
   const downloadTemplate = () => {
@@ -400,219 +412,302 @@ const Teachers = () => {
     XLSX.writeFile(wb, "Teacher_Import_Template.xlsx");
   };
 
-  const filtered = teachersData.filter(t => 
-    t.status !== "Archived" && (
-      t.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.email?.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const allSubjects = [...new Set(teachersData.map(t => t.subject).filter(Boolean))];
+  const filtered = teachersData.filter(t =>
+    t.status !== "Archived" &&
+    (t.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+     t.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+     t.email?.toLowerCase().includes(searchQuery.toLowerCase())) &&
+    (!subjectFilter || t.subject === subjectFilter) &&
+    (!statusFilter  || t.status  === statusFilter)
   );
 
+  const activeCount  = teachersData.filter(t => t.status === "Active").length;
+  const totalCount   = teachersData.filter(t => t.status !== "Archived").length;
+  const onLeaveCount = teachersData.filter(t => t.status === "On Leave").length;
+
+  // ── If profile is open, render it ────────────────────────────────────────
+  if (selectedTeacher) {
+    return <TeacherProfile teacher={selectedTeacher} onBack={() => setSelectedTeacher(null)} />;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-12 text-left">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight">Faculty Registry</h1>
-          <p className="text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest flex items-center gap-2">
-            <GraduationCap className="w-4 h-4 text-[#1e3a8a]"/> Academic Command Center
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-           <button onClick={() => setIsBulkOpen(true)} className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:border-[#1e3a8a]/20 transition-all shadow-sm">
-             <FileSpreadsheet className="w-4 h-4 text-emerald-500" /> Bulk Import
-           </button>
-           <button onClick={() => setIsInviteOpen(true)} className="flex items-center gap-2 px-8 py-3 bg-[#1e3a8a] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:translate-y-[-2px] transition-all shadow-xl shadow-indigo-500/10">
-             <Plus className="w-5 h-5" /> Add Teacher
-           </button>
-        </div>
+    <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+
+      {/* ── PAGE HEADER ───────────────────────────────────────────────────── */}
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800">Teachers</h1>
+        <p className="text-sm text-slate-500 mt-0.5">Manage teaching staff and monitor performance</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
-        <StatCard title="Active Faculty" value={teachersData.filter(t => t.status === "Active").length} icon={Users} subtitleColor="success" />
-        <StatCard title="Invited" value={teachersData.filter(t => t.status === "Invited").length} icon={CalendarCheck} subtitleColor="muted" />
-        <StatCard title="Avg Rating" value="4.8" icon={Star} subtitleColor="warning" />
-        <StatCard title="Retention" value="96%" icon={BarChart2} subtitleColor="success" />
-      </div>
-
-      <div className="relative max-w-xl">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold" />
-        <input
-          type="text"
-          placeholder="Search by faculty name, subject, or email..."
-          className="w-full pl-12 pr-6 py-4 bg-white border border-slate-100 rounded-[1.5rem] text-sm font-bold focus:outline-none focus:ring-4 focus:ring-[#1e3a8a]/5 shadow-sm transition-all border-none"
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
+      {/* ── STAT CARDS (4) ────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Avg Class Performance"
+          value={avgClassPerf !== null ? `${avgClassPerf}%` : "—"}
+          subtitle={avgClassPerf !== null ? "Based on recorded results" : "No results yet"}
+          subtitleGreen={avgClassPerf !== null && avgClassPerf >= 60}
+          icon={TrendingUp}
+          iconBg="bg-blue-50 text-blue-600"
+        />
+        <StatCard
+          title="Teacher Attendance"
+          value={teacherAttPct !== null ? `${teacherAttPct}%` : "—"}
+          subtitle={teacherAttPct !== null
+            ? teacherAttPct >= 90 ? "Excellent" : teacherAttPct >= 75 ? "Good" : "Needs attention"
+            : "No records yet"}
+          subtitleGreen={teacherAttPct !== null && teacherAttPct >= 75}
+          icon={CalendarCheck}
+          iconBg="bg-green-50 text-green-600"
+        />
+        <StatCard
+          title="Parent Feedback"
+          value={avgRating !== null ? `${avgRating}/5` : "—"}
+          subtitle={reviewCount > 0 ? `Based on ${reviewCount} reviews` : "No reviews yet"}
+          icon={Star}
+          iconBg="bg-amber-50 text-amber-500"
+        />
+        <StatCard
+          title="Active Teachers"
+          value={`${activeCount}/${totalCount}`}
+          subtitle={onLeaveCount > 0 ? `${onLeaveCount} on leave` : "All present"}
+          subtitleOrange={onLeaveCount > 0}
+          subtitleGreen={onLeaveCount === 0}
+          icon={Users}
+          iconBg="bg-indigo-50 text-indigo-600"
         />
       </div>
 
-      <Dialog open={isBulkOpen} onOpenChange={setIsBulkOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto rounded-[3rem]">
-          <DialogHeader className="p-4">
-            <DialogTitle className="text-2xl font-black text-[#1e3a8a]">Institutional Bulk Import</DialogTitle>
-            <DialogDescription className="text-slate-400 font-bold italic text-left">
-              Upload an Excel (.xlsx) file with Teacher details.
-            </DialogDescription>
-          </DialogHeader>
+      {/* ── TOOLBAR ───────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        {/* Search */}
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search teachers…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+          />
+        </div>
 
-          <div className="p-4 space-y-6">
+        {/* Subject Filter */}
+        <select
+          value={subjectFilter}
+          onChange={e => setSubjectFilter(e.target.value)}
+          className="py-2.5 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+        >
+          <option value="">All Subjects</option>
+          {allSubjects.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        {/* Status Filter */}
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="py-2.5 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+        >
+          <option value="">All Status</option>
+          <option value="Active">Active</option>
+          <option value="On Leave">On Leave</option>
+          <option value="Invited">Invited</option>
+        </select>
+
+        <div className="flex-1" />
+
+        {/* View Toggle */}
+        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
+          <button
+            onClick={() => setViewMode("grid")}
+            className={`p-1.5 rounded-md transition-colors ${viewMode === "grid" ? "bg-[#1e3a8a] text-white" : "text-slate-400 hover:text-slate-600"}`}
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setViewMode("list")}
+            className={`p-1.5 rounded-md transition-colors ${viewMode === "list" ? "bg-[#1e3a8a] text-white" : "text-slate-400 hover:text-slate-600"}`}
+          >
+            <List className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Bulk Import */}
+        <button
+          onClick={() => setIsBulkOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+        >
+          <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Bulk Import
+        </button>
+
+        {/* Add Teacher */}
+        <button
+          onClick={() => setIsInviteOpen(true)}
+          className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a8a] text-white rounded-lg text-sm font-semibold hover:bg-[#1e3a8a]/90 transition-colors shadow-md"
+        >
+          <Plus className="w-4 h-4" /> Add Teacher
+        </button>
+      </div>
+
+      {/* ── BULK IMPORT DIALOG ────────────────────────────────────────────── */}
+      <Dialog open={isBulkOpen} onOpenChange={(o) => { if (!o) { setIsBulkOpen(false); setBulkDone(false); setBulkData([]); } else setIsBulkOpen(true); }}>
+        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-[#1e3a8a]">Bulk Import Teachers</DialogTitle>
+            <DialogDescription className="text-slate-500">Upload an Excel (.xlsx) file to invite multiple teachers at once.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
             {!bulkDone && (
-              <div className="space-y-4 text-center">
-                <div 
+              <div>
+                <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-4 border-dashed border-slate-100 rounded-[2.5rem] p-12 text-center hover:border-[#1e3a8a]/20 hover:bg-slate-50 transition-all cursor-pointer group"
+                  className="border-2 border-dashed border-slate-200 rounded-xl p-10 text-center cursor-pointer hover:border-[#1e3a8a]/40 hover:bg-slate-50 transition-all"
                 >
-                  <Upload className="w-12 h-12 text-slate-200 mx-auto mb-4 group-hover:text-[#1e3a8a] transition-colors" />
-                  <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Click or Drag Excel File</p>
-                  <input type="file" hidden ref={fileInputRef} accept=".xlsx, .xls" onChange={handleFileUpload} />
+                  <Upload className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-slate-500">Click to upload Excel file</p>
+                  <p className="text-xs text-slate-400 mt-1">.xlsx or .xls format</p>
+                  <input type="file" hidden ref={fileInputRef} accept=".xlsx,.xls" onChange={handleFileUpload} />
                 </div>
-                <button onClick={downloadTemplate} className="text-[10px] font-black uppercase text-[#1e3a8a] flex items-center gap-1 mx-auto hover:underline">
-                  <Download className="w-3 h-3" /> Download Official Template
+                <button onClick={downloadTemplate} className="mt-2 text-xs font-semibold text-[#1e3a8a] flex items-center gap-1.5 mx-auto hover:underline">
+                  <Download className="w-3 h-3" /> Download template
                 </button>
               </div>
             )}
-
             {bulkData.length > 0 && (
-              <div className="border border-slate-50 rounded-[2rem] overflow-hidden max-h-[300px] overflow-y-auto bg-slate-50/50">
-                <div className="p-4 space-y-2">
-                  {bulkData.map((t, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-white rounded-xl shadow-sm border border-slate-100">
-                      <div className="text-left">
-                        <p className="font-extrabold text-slate-800 text-xs">{t.name}</p>
-                        <p className="text-[9px] font-bold text-slate-400">{t.email}</p>
-                      </div>
-                      <div className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase ${
-                        t._status === "success" ? "bg-green-50 text-green-600" : 
-                        t._status === "duplicate" ? "bg-amber-50 text-amber-600" :
-                        t._status === "error" ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"
-                      }`}>
-                        {t._status}
-                      </div>
+              <div className="border border-slate-100 rounded-xl overflow-hidden max-h-[240px] overflow-y-auto">
+                {bulkData.map((t, idx) => (
+                  <div key={idx} className="flex items-center justify-between px-4 py-3 border-b border-slate-50 last:border-0 bg-white">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">{t.name}</p>
+                      <p className="text-xs text-slate-400">{t.email}</p>
                     </div>
-                  ))}
-                </div>
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${
+                      t._status === "success"   ? "bg-green-50 text-green-600"  :
+                      t._status === "duplicate" ? "bg-amber-50 text-amber-600"  :
+                      t._status === "error"     ? "bg-red-50 text-red-600"      :
+                      "bg-blue-50 text-blue-600"
+                    }`}>{t._status}</span>
+                  </div>
+                ))}
               </div>
             )}
-
             {bulkDone && (
               <div className="grid grid-cols-3 gap-3">
-                <div className="p-3 rounded-xl bg-green-50 border border-green-100 text-center">
-                  <p className="text-2xl font-black text-green-600">{bulkData.filter(t => t._status === "success").length}</p>
-                  <p className="text-[10px] font-black uppercase text-green-500">Invited</p>
-                </div>
-                <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-center">
-                  <p className="text-2xl font-black text-amber-600">{bulkData.filter(t => t._status === "duplicate").length}</p>
-                  <p className="text-[10px] font-black uppercase text-amber-500">Duplicates</p>
-                </div>
-                <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-center">
-                  <p className="text-2xl font-black text-red-600">{bulkData.filter(t => t._status === "error").length}</p>
-                  <p className="text-[10px] font-black uppercase text-red-500">Failed</p>
-                </div>
+                {[
+                  { label: "Invited",    color: "bg-green-50 text-green-600",  count: bulkData.filter(t => t._status === "success").length   },
+                  { label: "Duplicates", color: "bg-amber-50 text-amber-600",  count: bulkData.filter(t => t._status === "duplicate").length  },
+                  { label: "Failed",     color: "bg-red-50 text-red-600",      count: bulkData.filter(t => t._status === "error").length      },
+                ].map(({ label, color, count }) => (
+                  <div key={label} className={`p-4 rounded-xl border text-center ${color.replace("text-", "border-").replace("600", "100")}`}>
+                    <p className={`text-2xl font-black ${color.split(" ")[1]}`}>{count}</p>
+                    <p className={`text-[10px] font-bold uppercase ${color.split(" ")[1]}`}>{label}</p>
+                  </div>
+                ))}
               </div>
             )}
           </div>
-
-          <DialogFooter className="p-6">
+          <DialogFooter>
             {!bulkDone ? (
               <button
                 onClick={handleBulkImport}
                 disabled={bulkData.length === 0 || isBulkProcessing}
-                className="w-full h-12 rounded-xl bg-[#1e3a8a] text-white font-bold hover:opacity-90 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full h-11 rounded-xl bg-[#1e3a8a] text-white font-semibold hover:opacity-90 transition flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {isBulkProcessing ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</>
-                ) : (
-                  <><Upload className="w-4 h-4" /> Import & Invite All</>
-                )}
+                {isBulkProcessing ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing…</> : <><Upload className="w-4 h-4" /> Import & Invite All</>}
               </button>
             ) : (
               <button
                 onClick={() => { setIsBulkOpen(false); setBulkDone(false); setBulkData([]); }}
-                className="w-full h-12 rounded-xl bg-green-600 text-white font-bold hover:opacity-90 flex items-center justify-center gap-2"
+                className="w-full h-11 rounded-xl bg-green-600 text-white font-semibold hover:opacity-90 flex items-center justify-center gap-2"
               >
-                <CheckCircle className="w-4 h-4" /> Done — Close
+                <CheckCircle className="w-4 h-4" /> Done
               </button>
             )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* ── INVITE DIALOG ─────────────────────────────────────────────────── */}
       <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-        <DialogContent className="sm:max-w-[425px] rounded-[3rem]">
-          <DialogHeader className="p-4 text-left">
-            <DialogTitle className="text-xl font-black text-[#1e3a8a]">Invite Faculty</DialogTitle>
-            <DialogDescription className="text-slate-400 font-bold italic">
-              They will join {userData?.schoolName || 'the institution'}.
+        <DialogContent className="sm:max-w-[425px] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-[#1e3a8a]">Add Teacher</DialogTitle>
+            <DialogDescription className="text-slate-500">
+              They'll receive an email invitation to join {userData?.schoolName || "the school"}.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleInvite} className="space-y-4 p-4 text-left">
-            <div className="space-y-2">
-              <Label className="uppercase text-[10px] font-black text-slate-400 ml-1">Full Name</Label>
-              <Input placeholder="e.g. Mrs. Kavita" className="h-12 rounded-xl font-bold bg-slate-50 border-none"
+          <form onSubmit={handleInvite} className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Full Name</Label>
+              <Input placeholder="Mrs. Kavita Sharma" className="h-11 rounded-xl"
                 value={inviteForm.name} onChange={e => setInviteForm({ ...inviteForm, name: e.target.value })} required />
             </div>
-            <div className="space-y-2">
-              <Label className="uppercase text-[10px] font-black text-slate-400 ml-1">Email Address</Label>
-              <Input type="email" placeholder="teacher@gmail.com" className="h-12 rounded-xl font-bold bg-slate-50 border-none"
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Email Address</Label>
+              <Input type="email" placeholder="teacher@school.edu" className="h-11 rounded-xl"
                 value={inviteForm.email} onChange={e => setInviteForm({ ...inviteForm, email: e.target.value })} required />
             </div>
-            <div className="space-y-2">
-              <Label className="uppercase text-[10px] font-black text-slate-400 ml-1">Primary Subject</Label>
-              <Input placeholder="e.g. Mathematics" className="h-12 rounded-xl font-bold bg-slate-50 border-none"
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Subject</Label>
+              <Input placeholder="e.g. Mathematics" className="h-11 rounded-xl"
                 value={inviteForm.subject} onChange={e => setInviteForm({ ...inviteForm, subject: e.target.value })} />
             </div>
-            <div className="space-y-2">
-               <Label className="uppercase text-[10px] font-black text-slate-400 ml-1">Class Designation (Optional)</Label>
-               <select 
-                 value={inviteForm.assignClassId} 
-                 onChange={e => setInviteForm({...inviteForm, assignClassId: e.target.value})}
-                 className="w-full h-12 px-4 rounded-xl font-bold bg-slate-50 border-none focus:outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all text-sm text-slate-700"
-               >
-                 <option value="" className="text-slate-400">Not Assigned / General Faculty</option>
-                 {availableClasses.map(cls => (
-                     <option key={cls.id} value={cls.id} className="font-bold">{cls.name} {cls.teacherName ? `(Reassign from ${cls.teacherName})` : ''}</option>
-                 ))}
-               </select>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Assign Class (Optional)</Label>
+              <select
+                value={inviteForm.assignClassId}
+                onChange={e => setInviteForm({ ...inviteForm, assignClassId: e.target.value })}
+                className="w-full h-11 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+              >
+                <option value="">— Not assigned —</option>
+                {availableClasses.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
             </div>
             <button type="submit" disabled={isSending}
-              className="w-full h-14 mt-4 rounded-2xl bg-[#1e3a8a] text-white font-black uppercase tracking-widest hover:opacity-90 transition flex items-center justify-center gap-3">
-              {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}
-              {isSending ? "Sending Invitation..." : "Confirm Invitation"}
+              className="w-full h-11 rounded-xl bg-[#1e3a8a] text-white font-semibold hover:opacity-90 transition flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isSending ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</> : <><CheckCircle className="w-4 h-4" /> Send Invitation</>}
             </button>
           </form>
         </DialogContent>
       </Dialog>
 
+      {/* ── ROSTER DIALOG ─────────────────────────────────────────────────── */}
       <Dialog open={isRosterOpen} onOpenChange={setIsRosterOpen}>
-        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto rounded-3xl text-left">
+        <DialogContent className="sm:max-w-[640px] max-h-[80vh] overflow-y-auto rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-xl font-black text-[#1e3a8a] text-left">Class Roster: {teacherToAssign?.name}</DialogTitle>
-            <DialogDescription className="text-slate-400 font-bold italic text-left">Active institutional enrollments.</DialogDescription>
+            <DialogTitle className="text-xl font-bold text-[#1e3a8a]">Class Roster — {teacherToAssign?.name}</DialogTitle>
+            <DialogDescription className="text-slate-500">Students currently enrolled under this teacher.</DialogDescription>
           </DialogHeader>
-          <div className="py-4">
+          <div className="py-2">
             {loadingRoster ? (
-              <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-[#1e3a8a]" /></div>
+              <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-[#1e3a8a]" /></div>
             ) : teacherRoster.length > 0 ? (
-              <div className="border border-slate-50 rounded-2xl overflow-hidden shadow-sm">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-[#1e3a8a] text-white font-bold uppercase text-[9px] tracking-widest">
+              <div className="rounded-xl overflow-hidden border border-slate-100">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#1e3a8a] text-white">
                     <tr>
-                      <th className="px-6 py-5">Student</th>
-                      <th className="px-6 py-5">Class</th>
-                      <th className="px-6 py-5 text-right">Status</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide">Student</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide">Class</th>
+                      <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {teacherRoster.map(s => (
-                      <tr key={s.id} className="hover:bg-slate-50/50">
-                        <td className="px-6 py-4">
-                          <div className="font-bold text-slate-800">{s.studentName}</div>
-                          <div className="text-[10px] text-slate-400 font-medium uppercase mt-0.5">{s.studentEmail}</div>
+                      <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-5 py-3">
+                          <p className="font-semibold text-slate-800">{s.studentName}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">{s.studentEmail}</p>
                         </td>
-                        <td className="px-6 py-4 font-black text-[#1e3a8a]">{s.className || 'General'}</td>
-                        <td className="px-6 py-4 text-right">
-                          <span className={`text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest ${s.status === "Active" ? "bg-green-50 text-green-500" : "bg-blue-50 text-blue-500"}`}>
-                            {s.status}
-                          </span>
+                        <td className="px-5 py-3 font-semibold text-[#1e3a8a]">{s.className || "General"}</td>
+                        <td className="px-5 py-3 text-right">
+                          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase ${
+                            s.status === "Active" ? "bg-green-50 text-green-600" : "bg-blue-50 text-blue-600"
+                          }`}>{s.status}</span>
                         </td>
                       </tr>
                     ))}
@@ -620,79 +715,181 @@ const Teachers = () => {
                 </table>
               </div>
             ) : (
-              <div className="text-center py-20 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                <Users className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No enrollment records found.</p>
+              <div className="text-center py-16 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                <Users className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                <p className="text-sm font-semibold text-slate-400">No enrollment records found</p>
               </div>
             )}
           </div>
         </DialogContent>
       </Dialog>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {filtered.length > 0 ? filtered.map(t => (
-          <div key={t.id}
-            className="bg-white rounded-[2.5rem] border border-slate-50 p-8 shadow-sm hover:shadow-2xl transition-all cursor-pointer group relative overflow-hidden"
-          >
-             <div className="absolute top-4 right-4 flex gap-2">
-                 <button onClick={e => { e.stopPropagation(); handleOpenRoster(t); }} className="p-2.5 bg-slate-50 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-xl transition-all border border-transparent hover:border-indigo-100 shadow-sm"><Eye className="w-4 h-4" /></button>
-                 <button onClick={e => { e.stopPropagation(); handleStartEdit(t); }} className="p-2.5 bg-slate-50 text-slate-400 hover:text-amber-600 hover:bg-white rounded-xl transition-all border border-transparent hover:border-amber-100 shadow-sm"><Edit3 className="w-4 h-4" /></button>
-                 <button onClick={e => { e.stopPropagation(); handleDeleteTeacher(t.id, t.name); }} className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-white rounded-xl transition-all border border-transparent hover:border-rose-100 shadow-sm"><Trash2 className="w-4 h-4" /></button>
-             </div>
-
-            <div className="flex flex-col items-center text-center mb-8">
-              <div className={`w-20 h-20 rounded-[2rem] ${t.color} flex items-center justify-center text-2xl font-black text-white shadow-xl shadow-black/10 mb-4 group-hover:scale-110 transition-transform`}>
-                {t.initials}
+      {/* ── TEACHER GRID / LIST ───────────────────────────────────────────── */}
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-28 bg-white rounded-2xl border border-dashed border-slate-200">
+          <GraduationCap className="w-12 h-12 text-slate-200 mb-4" />
+          <p className="text-base font-bold text-slate-400">No teachers found</p>
+          <p className="text-sm text-slate-300 mt-1">Try changing your search or filters</p>
+        </div>
+      ) : viewMode === "grid" ? (
+        /* ── GRID VIEW ────────────────────────────────────────────────────── */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map(t => (
+            <div
+              key={t.id}
+              onClick={() => setSelectedTeacher(t)}
+              className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all cursor-pointer group relative"
+            >
+              {/* Hover actions */}
+              <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <button
+                  onClick={e => { e.stopPropagation(); handleOpenRoster(t); }}
+                  className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-[#1e3a8a] hover:border-[#1e3a8a]/30 transition-colors shadow-sm"
+                  title="View Roster"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); handleStartEdit(t); }}
+                  className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-amber-500 hover:border-amber-200 transition-colors shadow-sm"
+                  title="Edit Name"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); handleDeleteTeacher(t.id, t.name); }}
+                  className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 hover:border-rose-200 transition-colors shadow-sm"
+                  title="Archive"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <div className="w-full flex flex-col items-center justify-center">
-                {editingId === t.id ? (
-                    <div className="flex items-center gap-2 mt-2 w-full" onClick={e => e.stopPropagation()}>
-                        <Input autoFocus value={editName} onChange={e => setEditName(e.target.value)} className="h-10 rounded-xl text-center font-black border-2 border-indigo-200 bg-indigo-50/30" onKeyDown={e => e.key === "Enter" && handleSaveName(t.id)} />
-                        <button onClick={() => handleSaveName(t.id)} className="p-2 bg-emerald-500 text-white rounded-xl shadow-lg"><Save className="w-4 h-4" /></button>
+
+              {/* Teacher Info Header */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className={`w-12 h-12 rounded-xl ${t.color} flex items-center justify-center text-white text-base font-bold shrink-0 group-hover:scale-105 transition-transform shadow-sm`}>
+                  {t.initials}
+                </div>
+                <div className="min-w-0">
+                  {editingId === t.id ? (
+                    <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                      <input
+                        autoFocus
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && handleSaveName(t.id)}
+                        className="w-full text-sm font-bold border border-[#1e3a8a]/40 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                      />
+                      <button onClick={() => handleSaveName(t.id)} className="w-7 h-7 bg-green-500 text-white rounded-lg flex items-center justify-center shrink-0">
+                        <Save className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                ) : (
-                    <h3 className="font-black text-slate-800 text-lg leading-tight group-hover:text-[#1e3a8a] transition-colors">{t.name}</h3>
-                )}
-                <p className="text-[10px] text-slate-400 font-extrabold uppercase mt-1 tracking-widest">{t.subject}</p>
+                  ) : (
+                    <h3 className="text-sm font-bold text-slate-800 truncate group-hover:text-[#1e3a8a] transition-colors leading-tight">{t.name}</h3>
+                  )}
+                  <p className="text-xs text-slate-400 mt-0.5 truncate">{t.subject}</p>
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-4 pt-6 border-t border-slate-50">
-              <div className="flex justify-between items-center group/row">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic group-hover/row:text-indigo-400 transition-colors">Course Classes</span>
-                  <span className="text-xs font-black text-slate-700 max-w-[120px] truncate text-right">{t.actualClasses}</span>
+              {/* Stats Rows */}
+              <div className="space-y-2.5 border-t border-slate-50 pt-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-500">Classes</span>
+                  <span className="text-sm font-bold text-slate-800">
+                    {t.classCount === null ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-300 inline" /> : t.classCount}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-500">Experience</span>
+                  <span className="text-sm font-bold text-slate-800">{t.experience}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-500">Rating</span>
+                  <span className="flex items-center gap-1 text-sm font-bold text-slate-800">
+                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                    {t.rating}
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between items-center group/row">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic group-hover/row:text-emerald-400 transition-colors">Tenure</span>
-                  <span className="text-xs font-black text-slate-700">{t.experience}</span>
-              </div>
-              <div className="flex justify-between items-center group/row">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic group-hover/row:text-amber-400 transition-colors">Rating</span>
-                <span className="flex items-center gap-1 font-black text-amber-500 text-xs">
-                  <Star className="w-3 h-3 fill-amber-500" /> {t.rating}
+
+              {/* Status Badge */}
+              <div className="mt-4">
+                <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full ${
+                  t.status === "Active"   ? "bg-green-50 text-green-600"  :
+                  t.status === "On Leave" ? "bg-amber-50 text-amber-600"  :
+                  t.status === "Invited"  ? "bg-blue-50 text-blue-600"    :
+                  "bg-slate-50 text-slate-500"
+                }`}>
+                  {t.status}
                 </span>
               </div>
             </div>
-
-            <div className="mt-8 flex justify-center">
-              <span className={`text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-[0.2em] border-2 shadow-sm ${
-                  t.status === "Active" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
-                  t.status === "Invited" ? "bg-blue-50 text-blue-600 border-blue-100" : "bg-rose-50 text-rose-600 border-rose-100"
-              }`}>
-                {t.status}
-              </span>
-            </div>
-          </div>
-        )) : (
-          <div className="col-span-full py-32 flex flex-col items-center justify-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
-            <div className="w-20 h-20 rounded-[2rem] bg-slate-50 flex items-center justify-center mb-6">
-              <Users className="w-10 h-10 text-slate-200" />
-            </div>
-            <h3 className="text-xl font-black text-slate-800 uppercase tracking-widest">No Faculty Data Found</h3>
-            <p className="text-[11px] font-bold text-slate-400 max-w-xs text-center mt-2 uppercase tracking-widest leading-relaxed">System is ready for teacher onboarding. Use "Bulk Import" to sync faculty database.</p>
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        /* ── LIST VIEW ────────────────────────────────────────────────────── */
+        <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-100">
+              <tr>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Teacher</th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Subject</th>
+                <th className="px-5 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Classes</th>
+                <th className="px-5 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Experience</th>
+                <th className="px-5 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Rating</th>
+                <th className="px-5 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                <th className="px-5 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {filtered.map(t => (
+                <tr
+                  key={t.id}
+                  onClick={() => setSelectedTeacher(t)}
+                  className="hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-xl ${t.color} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                        {t.initials}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-800">{t.name}</p>
+                        <p className="text-xs text-slate-400">{t.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">{t.subject}</td>
+                  <td className="px-5 py-4 text-center font-semibold text-slate-800">
+                    {t.classCount === null ? "…" : t.classCount}
+                  </td>
+                  <td className="px-5 py-4 text-center text-slate-600">{t.experience}</td>
+                  <td className="px-5 py-4 text-center">
+                    <span className="flex items-center justify-center gap-1 font-semibold text-slate-800">
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />{t.rating}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 text-center">
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase ${
+                      t.status === "Active"   ? "bg-green-50 text-green-600"  :
+                      t.status === "On Leave" ? "bg-amber-50 text-amber-600"  :
+                      t.status === "Invited"  ? "bg-blue-50 text-blue-600"    :
+                      "bg-slate-50 text-slate-500"
+                    }`}>{t.status}</span>
+                  </td>
+                  <td className="px-5 py-4" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button onClick={() => handleOpenRoster(t)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-[#1e3a8a] transition-colors"><Eye className="w-4 h-4" /></button>
+                      <button onClick={() => handleStartEdit(t)} className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"><Edit3 className="w-4 h-4" /></button>
+                      <button onClick={() => handleDeleteTeacher(t.id, t.name)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Lightbulb, Target, BookOpen, UserCheck, Loader2, Sparkles, Activity } from "lucide-react";
 import { AIController } from "@/ai/controller/ai-controller";
 import { db } from "@/lib/firebase";
-import { collection, query, getDocs, limit } from "firebase/firestore";
+import { collection, query, getDocs, limit, where } from "firebase/firestore";
+import { useAuth } from "@/lib/AuthContext";
 
 interface RecommendationData {
   improvement_recommendations: { subject: string; recommendation: string }[];
@@ -11,6 +12,7 @@ interface RecommendationData {
 }
 
 const Recommendations = () => {
+  const { userData } = useAuth();
   const [data, setData] = useState<RecommendationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [placeholderMessage, setPlaceholderMessage] = useState<string | null>(null);
@@ -18,7 +20,8 @@ const Recommendations = () => {
   useEffect(() => {
     const fetchRecommendations = async () => {
       try {
-        const snap = await getDocs(query(collection(db, "exam_results"), limit(5)));
+        const constraints: any[] = userData?.schoolId ? [where("schoolId", "==", userData.schoolId)] : [];
+        const snap = await getDocs(query(collection(db, "results"), ...constraints, limit(5)));
         const dataExists = !snap.empty;
 
         // Structured Input Format strictly mimicking the prompt's request requirements

@@ -35,15 +35,15 @@ const GenerateReport = ({ templateName, onBack }: GenerateReportProps) => {
     const fetchData = async () => {
       try {
         const constraints = [where("schoolId", "==", userData.schoolId)];
-        if (userData.branch) constraints.push(where("branch", "==", userData.branch));
+        if (userData.branch) constraints.push(where("branchId", "==", userData.branchId));
 
-        const sysSnap = await getDocs(query(collection(db, "exam_results"), ...constraints, limit(5)));
+        const sysSnap = await getDocs(query(collection(db, "results"), ...constraints, limit(5)));
         setSystemData(sysSnap.docs.map(d => d.data()));
         
         const scheduleSnap = await getDocs(query(collection(db, "scheduled_reports"), ...constraints, limit(5)));
         setScheduledReports(scheduleSnap.docs.map(d => d.data()));
-      } catch (e) {
-        console.warn("Error fetching reporting info.");
+      } catch {
+        // silently handle fetch errors
       }
       setLoading(false);
     };

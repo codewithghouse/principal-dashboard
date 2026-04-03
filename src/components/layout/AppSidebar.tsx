@@ -10,7 +10,9 @@ import {
   CalendarCheck,
   ShieldAlert,
   MessageSquare,
+  MessageCircle,
   FileText,
+  ClipboardList,
   BarChart3,
   Settings,
   LogOut
@@ -27,7 +29,9 @@ const menuItems = [
   { title: "Attendance", icon: CalendarCheck, path: "/attendance" },
   { title: "Discipline & Incidents", icon: ShieldAlert, path: "/discipline" },
   { title: "Parent Communication", icon: MessageSquare, path: "/parent-communication", badge: 5 },
-  { title: "Exams & Results", icon: FileText, path: "/exams" },
+  { title: "Teacher Notes", icon: MessageCircle, path: "/teacher-notes" },
+  { title: "Exams & Results",       icon: FileText,       path: "/exams" },
+  { title: "Assignments & Marks",   icon: ClipboardList,  path: "/assignments" },
   { title: "Reports", icon: BarChart3, path: "/reports" },
   { title: "Settings", icon: Settings, path: "/settings" },
 ];
