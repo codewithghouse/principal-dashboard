@@ -15,25 +15,45 @@ import {
   ClipboardList,
   BarChart3,
   Settings,
-  LogOut
+  LogOut,
+  TrendingUp,
+  Clock,
+  Award,
+  ShieldCheck,
+  KeyRound
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const menuItems = [
-  { title: "Dashboard", icon: LayoutDashboard, path: "/" },
-  { title: "Students", icon: Users, path: "/students" },
-  { title: "Risk Students", icon: AlertTriangle, path: "/risk-students", badge: 12 },
-  { title: "Classes & Sections", icon: Monitor, path: "/classes" },
-  { title: "Teachers", icon: GraduationCap, path: "/teachers" },
-  { title: "Academics", icon: BookOpen, path: "/academics" },
-  { title: "Attendance", icon: CalendarCheck, path: "/attendance" },
-  { title: "Discipline & Incidents", icon: ShieldAlert, path: "/discipline" },
-  { title: "Parent Communication", icon: MessageSquare, path: "/parent-communication", badge: 5 },
-  { title: "Teacher Notes", icon: MessageCircle, path: "/teacher-notes" },
-  { title: "Exams & Results",       icon: FileText,       path: "/exams" },
-  { title: "Assignments & Marks",   icon: ClipboardList,  path: "/assignments" },
-  { title: "Reports", icon: BarChart3, path: "/reports" },
-  { title: "Settings", icon: Settings, path: "/settings" },
+// Full principal menu
+const PRINCIPAL_MENU = [
+  { title: "Dashboard",              icon: LayoutDashboard, path: "/" },
+  { title: "Students",               icon: Users,           path: "/students" },
+  { title: "Risk Students",          icon: AlertTriangle,   path: "/risk-students", badge: true },
+  { title: "Classes & Sections",     icon: Monitor,         path: "/classes" },
+  { title: "Teachers",               icon: GraduationCap,   path: "/teachers" },
+  { title: "Academics",              icon: BookOpen,        path: "/academics" },
+  { title: "Attendance",             icon: CalendarCheck,   path: "/attendance" },
+  { title: "Discipline & Incidents", icon: ShieldAlert,     path: "/discipline" },
+  { title: "Parent Communication",   icon: MessageSquare,   path: "/parent-communication" },
+  { title: "Teacher Notes",          icon: MessageCircle,   path: "/teacher-notes" },
+  { title: "Exams & Results",        icon: FileText,        path: "/exams" },
+  { title: "Assignments & Marks",    icon: ClipboardList,   path: "/assignments" },
+  { title: "Teacher Performance",    icon: TrendingUp,      path: "/teacher-performance" },
+  { title: "Exam Structure",         icon: Award,           path: "/exam-structure" },
+  { title: "Timetable Setup",        icon: Clock,           path: "/timetable" },
+  { title: "Staff Access",           icon: ShieldCheck,     path: "/access-requests" },
+  { title: "Reports",                icon: BarChart3,       path: "/reports" },
+  { title: "Settings",               icon: Settings,        path: "/settings" },
+];
+
+// Data entry operator menu — only allowed pages
+const DEO_MENU = [
+  { title: "Students",            icon: Users,        path: "/students" },
+  { title: "Attendance",          icon: CalendarCheck, path: "/attendance" },
+  { title: "Assignments & Marks", icon: ClipboardList, path: "/assignments" },
+  { title: "Exams & Results",     icon: FileText,      path: "/exams" },
+  { title: "Teacher Notes",       icon: MessageCircle, path: "/teacher-notes" },
+  { title: "Classes & Sections",  icon: Monitor,       path: "/classes" },
 ];
 
 interface AppSidebarProps {
@@ -42,15 +62,31 @@ interface AppSidebarProps {
 
 const AppSidebar = ({ onClose }: AppSidebarProps) => {
   const location = useLocation();
-  const { logout } = useAuth();
+  const { logout, userData } = useAuth();
+
+  const isDeo      = userData?.role === "data_entry";
+  const menuItems  = isDeo
+    // DEO sees only their approved pages (intersection of DEO_MENU and allowedPages)
+    ? DEO_MENU.filter(item =>
+        !userData?.allowedPages || userData.allowedPages.includes(item.path)
+      )
+    : PRINCIPAL_MENU;
 
   return (
     <aside className="w-64 h-full bg-card border-r border-border flex flex-col shrink-0 overflow-y-auto shadow-sm">
-      <div className="px-4 py-3 border-b border-slate-50">
+
+      {/* Role badge */}
+      <div className="px-4 py-3 border-b border-slate-50 flex items-center justify-between">
         <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
           Navigation
         </span>
+        {isDeo && (
+          <span className="flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded-lg text-[8px] font-black uppercase tracking-widest">
+            <KeyRound className="w-2.5 h-2.5" /> Data Entry
+          </span>
+        )}
       </div>
+
       <nav className="flex-1 px-3 py-4 space-y-1">
         {menuItems.map((item) => {
           const isActive = location.pathname === item.path;
@@ -67,23 +103,24 @@ const AppSidebar = ({ onClose }: AppSidebarProps) => {
             >
               <item.icon className={`w-4.5 h-4.5 shrink-0 ${isActive ? "text-white" : "text-slate-400"}`} />
               <span className="flex-1">{item.title}</span>
-              {item.badge && (
-                <span
-                  className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                    isActive
-                      ? "bg-white/20 text-white"
-                      : item.title === "Risk Students"
-                      ? "bg-rose-500 text-white"
-                      : "bg-amber-500 text-white"
-                  }`}
-                >
-                  {item.badge}
-                </span>
+              {/* Staff Access pending badge */}
+              {item.path === "/access-requests" && !isActive && (
+                <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-500 text-white">!</span>
               )}
             </NavLink>
           );
         })}
       </nav>
+
+      {/* DEO info panel */}
+      {isDeo && (
+        <div className="mx-3 mb-3 p-3 bg-amber-50 border border-amber-100 rounded-2xl">
+          <p className="text-[9px] font-black text-amber-700 uppercase tracking-widest">Limited Access</p>
+          <p className="text-[10px] text-amber-600 mt-0.5">
+            {userData?.allowedPages?.length || 0} pages granted by principal
+          </p>
+        </div>
+      )}
 
       <div className="p-4 border-t border-slate-100 mt-auto">
         <Button

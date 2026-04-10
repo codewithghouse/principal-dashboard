@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { CheckCircle, XCircle, Clock, TrendingUp, Send, Edit3, Bell, FileText } from "lucide-react";
+import { CheckCircle, XCircle, Clock, TrendingUp, Send, Edit3, Bell, FileText, TrendingDown, AlertTriangle } from "lucide-react";
 import ClassAttendanceDetail from "@/components/ClassAttendanceDetail";
 import { db } from "@/lib/firebase";
 import { collection, query, onSnapshot, where } from "firebase/firestore";
@@ -25,6 +25,8 @@ const Attendance = () => {
   const [trendData, setTrendData] = useState<any[]>([]);
   const [gradeHeatmap, setGradeHeatmap] = useState<any[]>([]);
   const [absentStudents, setAbsentStudents] = useState<any[]>([]);
+  // Delta-drop: classes/grades that dropped ≥15% vs last 7 days
+  const [suddenDrops, setSuddenDrops] = useState<{ grade: string; drop: number; recent: number; prev: number }[]>([]);
 
   useEffect(() => {
     if (!userData?.schoolId) return;
@@ -75,6 +77,31 @@ const Attendance = () => {
         })
         .sort((a, b) => a.grade.localeCompare(b.grade))
         .slice(0, 8);
+
+      // ── Delta-based sudden drop detection per grade ──────────────────────
+      const sevenAgo     = new Date(); sevenAgo.setDate(sevenAgo.getDate() - 7);
+      const fourteenAgo  = new Date(); fourteenAgo.setDate(fourteenAgo.getDate() - 14);
+      const sevenAgoStr  = sevenAgo.toLocaleDateString('en-CA');
+      const fourteenAgoStr = fourteenAgo.toLocaleDateString('en-CA');
+
+      const gradeDeltaGroups: Record<string, { recent: number[]; prev: number[] }> = {};
+      records.forEach(r => {
+        const g = r.gradeLevel || r.className || null;
+        if (!g || !r.date) return;
+        if (!gradeDeltaGroups[g]) gradeDeltaGroups[g] = { recent: [], prev: [] };
+        if (r.date >= sevenAgoStr) gradeDeltaGroups[g].recent.push(r.status === 'present' ? 1 : 0);
+        else if (r.date >= fourteenAgoStr) gradeDeltaGroups[g].prev.push(r.status === 'present' ? 1 : 0);
+      });
+      const drops = Object.entries(gradeDeltaGroups)
+        .map(([grade, { recent, prev }]) => {
+          if (recent.length < 3 || prev.length < 3) return null;
+          const recentPct = Math.round((recent.reduce((a,b)=>a+b,0)/recent.length)*100);
+          const prevPct   = Math.round((prev.reduce((a,b)=>a+b,0)/prev.length)*100);
+          const drop = prevPct - recentPct;
+          return drop >= 15 ? { grade, drop, recent: recentPct, prev: prevPct } : null;
+        })
+        .filter(Boolean) as { grade: string; drop: number; recent: number; prev: number }[];
+      setSuddenDrops(drops);
 
       // ── 30-Day trend ──
       const trend: any[] = [];
@@ -247,6 +274,29 @@ const Attendance = () => {
           </div>
 
           {/* ===== HEATMAP + TREND ===== */}
+          {/* ── Sudden Drop Alerts (delta-based) ── */}
+          {suddenDrops.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingDown className="w-4 h-4 text-red-500" />
+                <span className="text-xs font-black text-red-600 uppercase tracking-widest">Sudden Drop Detected</span>
+              </div>
+              {suddenDrops.map(d => (
+                <div key={d.grade} className="flex items-center gap-3 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+                  <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                  <div className="flex-1">
+                    <span className="text-xs font-bold text-red-700">{d.grade}</span>
+                    <span className="text-xs text-red-500 font-medium ml-2">
+                      dropped {d.drop}% this week ({d.prev}% → {d.recent}%)
+                    </span>
+                  </div>
+                  <button onClick={() => setSelectedClass(d.grade)}
+                    className="text-[10px] font-black text-[#1e3a8a] hover:underline">View →</button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Grade-wise Heatmap */}
             <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">

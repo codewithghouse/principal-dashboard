@@ -9,7 +9,7 @@ import {
   browserLocalPersistence
 } from 'firebase/auth';
 import { auth, db } from './firebase';
-import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, query, where } from 'firebase/firestore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AuthContextType {
@@ -67,10 +67,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUserData({ ...data, id: matched.id, role: 'principal' });
             setError(null);
           } else {
-            // User authenticated via Google but NOT in principals whitelist
-            setUser(currentUser);   // keep user so Login page doesn't flicker
-            setUserData(null);      // App.tsx will show Login with error
-            setError(`Access denied: ${userEmail} is not an invited principal.`);
+            // Not a principal — check if they are an approved data entry operator
+            const deoSnap = await getDocs(
+              query(collection(db, 'data_entry_staff'),
+                where('email', '==', userEmail),
+                where('status', '==', 'approved')
+              )
+            );
+
+            if (!deoSnap.empty) {
+              const deoDoc = deoSnap.docs[0];
+              const deoData = deoDoc.data();
+              // Update last active
+              await updateDoc(doc(db, 'data_entry_staff', deoDoc.id), {
+                lastActive: new Date().toLocaleString(),
+                uid: currentUser.uid,
+              });
+              setUser(currentUser);
+              setUserData({ ...deoData, id: deoDoc.id, role: 'data_entry' });
+              setError(null);
+            } else {
+              // Check if pending (to show a better error message)
+              const pendingSnap = await getDocs(
+                query(collection(db, 'data_entry_staff'),
+                  where('email', '==', userEmail)
+                )
+              );
+              setUser(currentUser);
+              setUserData(null);
+              setError(
+                !pendingSnap.empty
+                  ? `Your access request is ${pendingSnap.docs[0].data().status}. Please wait for principal approval.`
+                  : `Access denied: ${userEmail} is not authorised. Submit an access request first.`
+              );
+            }
           }
         } catch (err: any) {
           console.error('Auth lookup error:', err);

@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import {
   AlertTriangle, Flame, Bell, UserPlus, ChevronRight,
-  Loader2, ShieldAlert, Filter
+  Loader2, ShieldAlert, Filter, CalendarPlus
 } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import RiskIntervention from "@/components/RiskIntervention";
+import MeetingScheduler from "@/components/MeetingScheduler";
 
 type RiskLevel = "CRITICAL" | "WARNING" | "MONITORING";
 type FilterTab = "All" | RiskLevel;
@@ -60,20 +61,24 @@ const startOfWeekStr = () => {
 const RiskStudents = () => {
   const { userData } = useAuth();
 
-  const [riskStudents, setRiskStudents] = useState<RiskStudent[]>([]);
-  const [loading, setLoading]           = useState(true);
-  const [filterTab, setFilterTab]       = useState<FilterTab>("All");
+  const [riskStudents,   setRiskStudents]   = useState<RiskStudent[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [filterTab,      setFilterTab]      = useState<FilterTab>("All");
   const [selectedStudent, setSelectedStudent] = useState<RiskStudent | null>(null);
+  const [meetingStudent,  setMeetingStudent]  = useState<RiskStudent | null>(null);
 
   // Cross-listener refs
-  const studentsRef    = useRef<any[]>([]);
-  const enrollmentsRef = useRef<any[]>([]);
-  const attRef         = useRef<any[]>([]);
-  const resultsRef     = useRef<any[]>([]);
-  const incidentsRef   = useRef<any[]>([]);
-  const parentNotesRef = useRef<any[]>([]);
+  const studentsRef      = useRef<any[]>([]);
+  const enrollmentsRef   = useRef<any[]>([]);
+  const attRef           = useRef<any[]>([]);
+  const resultsRef       = useRef<any[]>([]);
+  const incidentsRef     = useRef<any[]>([]);
+  const parentNotesRef   = useRef<any[]>([]);
   const interventionsRef = useRef<any[]>([]);
-  const flagsRef       = useRef<any[]>([]);
+  const flagsRef         = useRef<any[]>([]);
+  // 3rd factor: assignments + submissions
+  const assignmentsRef   = useRef<any[]>([]);
+  const submissionsRef   = useRef<any[]>([]);
 
   // ── compute all at-risk students from current refs ──────────────────────────
   const compute = () => {
@@ -143,23 +148,73 @@ const RiskStudents = () => {
       );
       const parentEngagement = Math.min(100, notes.length * 20); // 5+ notes = 100%
 
+      // ── 3rd Factor: Task / Assignment completion ──
+      const studentClassIds = enrollmentsRef.current
+        .filter(e => (e.studentId === sid) || (email && e.studentEmail?.toLowerCase() === email))
+        .map(e => e.classId).filter(Boolean);
+
+      // All assignments for student's classes
+      const studentAssignments = assignmentsRef.current.filter(a =>
+        studentClassIds.includes(a.classId)
+      );
+      // Student's submissions
+      const studentSubmissions = submissionsRef.current.filter(s2 =>
+        (s2.studentId === sid) || (email && s2.studentEmail?.toLowerCase() === email)
+      );
+      const submittedIds = new Set(studentSubmissions.map(s2 => s2.homeworkId || s2.assignmentId));
+      const now = new Date();
+      const overdueAssignments = studentAssignments.filter(a => {
+        const due = a.dueDate ? new Date(a.dueDate) : null;
+        return due && due < now && !submittedIds.has(a.id);
+      });
+      const taskCompletionPct = studentAssignments.length > 0
+        ? Math.round(((studentAssignments.length - overdueAssignments.length) / studentAssignments.length) * 100)
+        : null;
+
+      // ── Delta-based attendance drop detection ──
+      // Compare last 7 days vs previous 7 days — "sudden drop"
+      const sevenDaysAgo  = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const fourteenDaysAgo = new Date(); fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+      const recent7  = attRecs.filter(r => r.date && new Date(r.date) >= sevenDaysAgo);
+      const prev7    = attRecs.filter(r => r.date && new Date(r.date) >= fourteenDaysAgo && new Date(r.date) < sevenDaysAgo);
+      const recent7Pct = recent7.length > 0 ? Math.round((recent7.filter(r => r.status === "present").length / recent7.length) * 100) : null;
+      const prev7Pct   = prev7.length   > 0 ? Math.round((prev7.filter(r => r.status === "present").length   / prev7.length)   * 100) : null;
+      const attDrop = (recent7Pct !== null && prev7Pct !== null) ? prev7Pct - recent7Pct : null;
+
       // ── Determine risk level ──
       const factors: string[] = [];
       let riskLevel: RiskLevel | null = null;
 
-      if (attPct !== null && attPct < 60) { factors.push("Attendance"); riskLevel = "CRITICAL"; }
-      else if (attPct !== null && attPct < 75) { factors.push("Attendance"); if (!riskLevel) riskLevel = "WARNING"; }
+      if (attPct !== null && attPct < 60) { factors.push("Attendance <60%"); riskLevel = "CRITICAL"; }
+      else if (attPct !== null && attPct < 75) { factors.push("Attendance <75%"); if (!riskLevel) riskLevel = "WARNING"; }
 
-      if (avgScore !== null && avgScore < 40) { factors.push("Academics"); riskLevel = "CRITICAL"; }
-      else if (avgScore !== null && avgScore < 55) { factors.push("Academics"); if (!riskLevel) riskLevel = "WARNING"; }
+      // Delta drop: sudden 20%+ drop in recent 7 days
+      if (attDrop !== null && attDrop >= 20) {
+        factors.push(`Sudden drop (${attDrop}% this week)`);
+        if (!riskLevel) riskLevel = "WARNING";
+      }
+
+      if (avgScore !== null && avgScore < 40) { factors.push("Academics <40%"); riskLevel = "CRITICAL"; }
+      else if (avgScore !== null && avgScore < 55) { factors.push("Academics <55%"); if (!riskLevel) riskLevel = "WARNING"; }
+
+      // 3rd factor: tasks
+      if (taskCompletionPct !== null && overdueAssignments.length >= 3) {
+        factors.push(`${overdueAssignments.length} tasks overdue`);
+        if (!riskLevel) riskLevel = "WARNING";
+        if (overdueAssignments.length >= 5 && (attPct !== null && attPct < 75)) riskLevel = "CRITICAL";
+      } else if (taskCompletionPct !== null && overdueAssignments.length >= 1 && taskCompletionPct < 50) {
+        factors.push(`Tasks ${taskCompletionPct}% done`);
+        if (!riskLevel) riskLevel = "MONITORING";
+      }
 
       const criticalInc = incRecs.filter(i => i.severity === "critical" || i.severity === "high").length;
       if (criticalInc >= 2) { factors.push("Discipline"); riskLevel = "CRITICAL"; }
       else if (incRecs.length >= 1) { factors.push("Discipline"); if (!riskLevel) riskLevel = "WARNING"; }
 
-      // MONITORING: no critical/warning factors but still has some data
+      // MONITORING: subtle attendance trend
       if (!riskLevel && (attPct !== null || avgScore !== null)) {
         if (attPct !== null && attPct < 85) { factors.push("Attendance trend"); riskLevel = "MONITORING"; }
+        else if (attDrop !== null && attDrop >= 10) { factors.push("Attendance declining"); riskLevel = "MONITORING"; }
       }
 
       if (!riskLevel || factors.length === 0) return; // Not at risk
@@ -236,6 +291,9 @@ const RiskStudents = () => {
     unsubs.push(onSnapshot(query(collection(db, "parent_notes"),   ...C), snap => { parentNotesRef.current = snap.docs.map(d => d.data()); compute(); }));
     unsubs.push(onSnapshot(query(collection(db, "interventions"),  ...C), snap => { interventionsRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }, () => {}));
     unsubs.push(onSnapshot(query(collection(db, "student_flags"),  ...C), snap => { flagsRef.current       = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }, () => {}));
+    // 3rd factor listeners
+    unsubs.push(onSnapshot(query(collection(db, "assignments"),    ...C), snap => { assignmentsRef.current  = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }, () => {}));
+    unsubs.push(onSnapshot(query(collection(db, "submissions"),    ...C), snap => { submissionsRef.current  = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }, () => {}));
 
     return () => unsubs.forEach(u => u());
   }, [userData?.schoolId, userData?.branchId]);
@@ -431,12 +489,20 @@ const RiskStudents = () => {
 
                     {/* Actions */}
                     <td className="px-6 py-5 text-right">
-                      <button
-                        onClick={() => setSelectedStudent(s)}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-wider hover:bg-[#1e3a8a] transition-colors shadow-sm"
-                      >
-                        View Action <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-2 justify-end">
+                        <button
+                          onClick={() => setMeetingStudent(s)}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 text-[#1e3a8a] text-[10px] font-black hover:bg-blue-100 transition-colors"
+                        >
+                          <CalendarPlus className="w-3.5 h-3.5" /> Meet
+                        </button>
+                        <button
+                          onClick={() => setSelectedStudent(s)}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-wider hover:bg-[#1e3a8a] transition-colors shadow-sm"
+                        >
+                          View Action <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -445,6 +511,19 @@ const RiskStudents = () => {
           </div>
         )}
       </div>
+
+      {/* Meeting Scheduler Modal */}
+      <MeetingScheduler
+        open={!!meetingStudent}
+        onClose={() => setMeetingStudent(null)}
+        context={meetingStudent ? {
+          type: "student",
+          name: meetingStudent.name,
+          id:   meetingStudent.id,
+          email: meetingStudent.email,
+          reason: `Risk level: ${meetingStudent.riskLevel}. Factors: ${meetingStudent.riskFactors.join(", ")}`
+        } : undefined}
+      />
     </div>
   );
 };
