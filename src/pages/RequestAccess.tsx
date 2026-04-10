@@ -113,7 +113,11 @@ const RequestAccess = () => {
 
       setDone(true);
     } catch (e: any) {
-      setError("Submission failed. Please try again.");
+      console.error("RequestAccess submission error:", e);
+      setError(e?.code === "permission-denied"
+        ? "Permission denied — Firestore rules block public writes. Ask admin to update rules."
+        : `Submission failed: ${e?.message || "Please try again."}`
+      );
     }
     setSubmitting(false);
   };
