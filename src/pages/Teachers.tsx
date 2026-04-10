@@ -278,7 +278,9 @@ const Teachers = () => {
               subject: `Welcome Back to ${userData?.schoolName || "EduIntellect"}`,
               html: `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#1e3a8a">Welcome Back, ${inviteForm.name}!</h2><p>Your account has been restored at <strong>${userData?.schoolName || "the institution"}</strong>.</p><div style="margin:24px 0"><a href="https://teacher-dashboard-ochre.vercel.app" style="background:#1e3a8a;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold">Open Teacher Dashboard</a></div></div>`,
             });
-          } catch { /* silent */ }
+          } catch (emailErr: any) {
+            toast.warning(`Teacher restored, but email failed: ${emailErr?.message || "Unknown error"}`);
+          }
           toast.success("Teacher restored & re-invited!");
         } else {
           toast.error("A teacher with this email is already active.");
@@ -302,8 +304,10 @@ const Teachers = () => {
           subject: `Invitation to join ${userData?.schoolName || "EduIntellect"}`,
           html: `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#1e3a8a">Welcome, ${inviteForm.name}!</h2><p>You have been invited to <strong>${userData?.schoolName || "the institution"}</strong>.</p><div style="margin:24px 0"><a href="https://teacher-dashboard-ochre.vercel.app" style="background:#1e3a8a;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold">Login to Teacher Portal</a></div></div>`,
         });
-      } catch { /* silent */ }
-      toast.success("Teacher invited successfully!");
+        toast.success("Teacher invited & email sent successfully!");
+      } catch (emailErr: any) {
+        toast.warning(`Teacher added to system, but email failed: ${emailErr?.message || "Unknown error"}`);
+      }
       setIsInviteOpen(false);
       setInviteForm({ name: "", email: "", subject: "", assignClassId: "" });
     } catch (err) {
@@ -481,9 +485,9 @@ const Teachers = () => {
       </div>
 
       {/* ── TOOLBAR ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+      <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
         {/* Search */}
-        <div className="relative flex-1 max-w-xs">
+        <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
@@ -553,7 +557,7 @@ const Teachers = () => {
 
       {/* ── BULK IMPORT DIALOG ────────────────────────────────────────────── */}
       <Dialog open={isBulkOpen} onOpenChange={(o) => { if (!o) { setIsBulkOpen(false); setBulkDone(false); setBulkData([]); } else setIsBulkOpen(true); }}>
-        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto rounded-2xl">
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[560px] max-h-[90vh] overflow-y-auto rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-[#1e3a8a]">Bulk Import Teachers</DialogTitle>
             <DialogDescription className="text-slate-500">Upload an Excel (.xlsx) file to invite multiple teachers at once.</DialogDescription>
@@ -631,7 +635,7 @@ const Teachers = () => {
 
       {/* ── INVITE DIALOG ─────────────────────────────────────────────────── */}
       <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-        <DialogContent className="sm:max-w-[425px] rounded-2xl">
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[425px] rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-[#1e3a8a]">Add Teacher</DialogTitle>
             <DialogDescription className="text-slate-500">
@@ -678,7 +682,7 @@ const Teachers = () => {
 
       {/* ── ROSTER DIALOG ─────────────────────────────────────────────────── */}
       <Dialog open={isRosterOpen} onOpenChange={setIsRosterOpen}>
-        <DialogContent className="sm:max-w-[640px] max-h-[80vh] overflow-y-auto rounded-2xl">
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[640px] max-h-[80vh] overflow-y-auto rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-[#1e3a8a]">Class Roster — {teacherToAssign?.name}</DialogTitle>
             <DialogDescription className="text-slate-500">Students currently enrolled under this teacher.</DialogDescription>
@@ -687,8 +691,8 @@ const Teachers = () => {
             {loadingRoster ? (
               <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-[#1e3a8a]" /></div>
             ) : teacherRoster.length > 0 ? (
-              <div className="rounded-xl overflow-hidden border border-slate-100">
-                <table className="w-full text-sm">
+              <div className="rounded-xl overflow-hidden border border-slate-100 overflow-x-auto">
+                <table className="w-full text-sm min-w-[400px]">
                   <thead className="bg-[#1e3a8a] text-white">
                     <tr>
                       <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide">Student</th>
@@ -829,7 +833,8 @@ const Teachers = () => {
       ) : (
         /* ── LIST VIEW ────────────────────────────────────────────────────── */
         <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Teacher</th>
@@ -888,6 +893,7 @@ const Teachers = () => {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

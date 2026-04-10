@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import {
   CheckCircle, AlertCircle, XCircle, Loader2,
-  GraduationCap, Users, BarChart2, CalendarCheck, Plus, X
+  GraduationCap, Users, BarChart2, CalendarCheck, Plus, X, UserPlus, UserCheck,
+  Search as SearchIcon, Mail, Check
 } from "lucide-react";
 import ClassPerformance from "@/components/ClassPerformance";
 import { db } from "@/lib/firebase";
 import {
   collection, query, where, onSnapshot,
-  addDoc, serverTimestamp
+  addDoc, serverTimestamp, updateDoc, doc, getDocs, writeBatch
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
@@ -82,6 +83,25 @@ const ClassesSections = () => {
   const [addModal, setAddModal]             = useState(false);
   const [saving, setSaving]                 = useState(false);
   const [newClass, setNewClass]             = useState({ name: "", grade: "", section: "", subject: "" });
+  const [newClassTeacherId, setNewClassTeacherId] = useState("");
+
+  const [teachers, setTeachers]             = useState<any[]>([]);
+  const [assignModal, setAssignModal]       = useState(false);
+  const [assigningClass, setAssigningClass] = useState<ClassRow | null>(null);
+  const [assignTeacherId, setAssignTeacherId] = useState("");
+  const [assigning, setAssigning]           = useState(false);
+
+  // ── Add Students modal state ───────────────────────────────────────────────
+  const [studentModal,     setStudentModal]     = useState(false);
+  const [studentModalClass, setStudentModalClass] = useState<ClassRow | null>(null);
+  const [studentTab,       setStudentTab]       = useState<"existing" | "invite">("existing");
+  const [schoolStudents,   setSchoolStudents]   = useState<any[]>([]);
+  const [studentsLoading,  setStudentsLoading]  = useState(false);
+  const [studentSearch,    setStudentSearch]    = useState("");
+  const [selectedSids,     setSelectedSids]     = useState<string[]>([]);
+  const [enrolling,        setEnrolling]        = useState(false);
+  const [inviteStudentForm, setInviteStudentForm] = useState({ name: "", email: "" });
+  const [inviting,         setInviting]         = useState(false);
 
   // Cross-listener refs
   const classesRef     = useRef<any[]>([]);
@@ -209,6 +229,7 @@ const ClassesSections = () => {
     unsubs.push(onSnapshot(query(collection(db, "enrollments"), ...C), snap => { enrollRef.current  = snap.docs.map(d => d.data()); compute(); }, () => {}));
     unsubs.push(onSnapshot(query(collection(db, "attendance"),  ...C), snap => { attRef.current     = snap.docs.map(d => d.data()); compute(); }, () => {}));
     unsubs.push(onSnapshot(query(collection(db, "results"),     ...C), snap => { resultsRef.current = snap.docs.map(d => d.data()); compute(); }, () => {}));
+    unsubs.push(onSnapshot(query(collection(db, "teachers"),    ...C), snap => { setTeachers(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, () => {}));
 
     return () => unsubs.forEach(u => u());
   }, [userData?.schoolId, userData?.branchId]);
@@ -222,28 +243,197 @@ const ClassesSections = () => {
     const branchId = userData?.branchId;
     if (!schoolId || !branchId) return toast.error("School context missing.");
 
+    const selectedTeacher = teachers.find(t => t.id === newClassTeacherId);
+
     setSaving(true);
     try {
-      await addDoc(collection(db, "classes"), {
-        name:      newClass.name.trim(),
-        grade:     newClass.grade.trim(),
-        section:   newClass.section.trim(),
-        subject:   newClass.subject.trim(),
-        teacherId: "",
-        teacherName: "",
+      const classRef = await addDoc(collection(db, "classes"), {
+        name:        newClass.name.trim(),
+        grade:       newClass.grade.trim(),
+        section:     newClass.section.trim(),
+        subject:     newClass.subject.trim(),
+        teacherId:   selectedTeacher?.id   || "",
+        teacherName: selectedTeacher?.name || "",
         schoolId,
         branchId,
         status: "Active",
         createdAt: serverTimestamp(),
       });
-      toast.success(`Class "${newClass.name}" created!`);
+
+      if (selectedTeacher) {
+        await addDoc(collection(db, "teaching_assignments"), {
+          teacherId:   selectedTeacher.id,
+          classId:     classRef.id,
+          subjectName: newClass.subject.trim(),
+          schoolId,
+          branchId,
+          status: "active",
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      toast.success(`Class "${newClass.name}" created!${selectedTeacher ? ` Assigned to ${selectedTeacher.name}.` : ""}`);
       setAddModal(false);
       setNewClass({ name: "", grade: "", section: "", subject: "" });
+      setNewClassTeacherId("");
     } catch {
       toast.error("Could not create class.");
     } finally {
       setSaving(false);
     }
+  };
+
+  // ── Assign teacher to existing class ────────────────────────────────────────
+  const handleAssignTeacher = async () => {
+    if (!assigningClass || !assignTeacherId) return toast.error("Please select a teacher.");
+    const teacher = teachers.find(t => t.id === assignTeacherId);
+    if (!teacher) return;
+
+    setAssigning(true);
+    try {
+      // 1. Update class doc
+      await updateDoc(doc(db, "classes", assigningClass.id), {
+        teacherId:   teacher.id,
+        teacherName: teacher.name || "",
+      });
+
+      // 2. Upsert teaching_assignment
+      await addDoc(collection(db, "teaching_assignments"), {
+        teacherId:   teacher.id,
+        classId:     assigningClass.id,
+        subjectName: assigningClass.subject || "",
+        schoolId:    assigningClass.schoolId,
+        branchId:    assigningClass.branchId,
+        status:      "active",
+        createdAt:   serverTimestamp(),
+      });
+
+      // 3. Update all enrollments for this class
+      const enrollSnap = await getDocs(
+        query(collection(db, "enrollments"), where("classId", "==", assigningClass.id))
+      );
+      if (!enrollSnap.empty) {
+        const batch = writeBatch(db);
+        enrollSnap.docs.forEach(d => {
+          batch.update(d.ref, { teacherId: teacher.id, teacherName: teacher.name || "" });
+        });
+        await batch.commit();
+      }
+
+      toast.success(`${teacher.name} assigned to ${assigningClass.name}!`);
+      setAssignModal(false);
+      setAssigningClass(null);
+      setAssignTeacherId("");
+    } catch {
+      toast.error("Failed to assign teacher. Try again.");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  // ── Add Students to class ────────────────────────────────────────────────────
+  const openStudentModal = async (cls: ClassRow) => {
+    setStudentModalClass(cls);
+    setStudentModal(true);
+    setStudentTab("existing");
+    setStudentSearch("");
+    setSelectedSids([]);
+    setInviteStudentForm({ name: "", email: "" });
+    setStudentsLoading(true);
+    const schoolId = userData?.schoolId;
+    const branchId = userData?.branchId;
+    if (!schoolId || !branchId) { setStudentsLoading(false); return; }
+    try {
+      const [studentSnap, enrollSnap] = await Promise.all([
+        getDocs(query(collection(db, "students"), where("schoolId", "==", schoolId), where("branchId", "==", branchId))),
+        getDocs(query(collection(db, "enrollments"), where("classId", "==", cls.id))),
+      ]);
+      const enrolledIds = new Set([
+        ...enrollSnap.docs.map(d => d.data().studentId),
+        ...enrollSnap.docs.map(d => (d.data().studentEmail || "").toLowerCase()),
+      ]);
+      setSchoolStudents(
+        studentSnap.docs
+          .map(d => ({ id: d.id, ...d.data() } as any))
+          .filter(s => !enrolledIds.has(s.id) && !enrolledIds.has((s.email || "").toLowerCase()))
+      );
+    } catch { }
+    setStudentsLoading(false);
+  };
+
+  const handleAddExistingToClass = async () => {
+    if (!studentModalClass || selectedSids.length === 0) return toast.error("Select at least one student.");
+    setEnrolling(true);
+    try {
+      const toAdd = schoolStudents.filter(s => selectedSids.includes(s.id));
+      for (const s of toAdd) {
+        await addDoc(collection(db, "enrollments"), {
+          studentId:    s.id,
+          studentEmail: (s.email || "").toLowerCase(),
+          studentName:  s.name || "",
+          classId:      studentModalClass.id,
+          className:    studentModalClass.name,
+          teacherId:    studentModalClass.teacherId   || "",
+          teacherName:  studentModalClass.teacherName || "",
+          schoolId:     studentModalClass.schoolId,
+          branchId:     studentModalClass.branchId,
+          createdAt:    serverTimestamp(),
+        });
+      }
+      toast.success(`${toAdd.length} student${toAdd.length > 1 ? "s" : ""} added to ${studentModalClass.name}!`);
+      setStudentModal(false);
+      setSelectedSids([]);
+    } catch {
+      toast.error("Failed to add students. Try again.");
+    }
+    setEnrolling(false);
+  };
+
+  const handleInviteStudentToClass = async () => {
+    if (!studentModalClass) return;
+    if (!inviteStudentForm.name.trim() || !inviteStudentForm.email.trim())
+      return toast.error("Name and email are required.");
+    setInviting(true);
+    const email = inviteStudentForm.email.toLowerCase().trim();
+    const name  = inviteStudentForm.name.trim();
+    const cls   = studentModalClass;
+    try {
+      await addDoc(collection(db, "students"), {
+        name, email, studentId: email,
+        classId:     cls.id,   className:   cls.name,
+        teacherId:   cls.teacherId   || "",
+        teacherName: cls.teacherName || "",
+        schoolId:    cls.schoolId,
+        branchId:    cls.branchId,
+        status:      "Active",      createdAt:   serverTimestamp(),
+      });
+      await addDoc(collection(db, "enrollments"), {
+        studentId:    email,
+        studentEmail: email,
+        studentName:  name,
+        classId:      cls.id,   className:   cls.name,
+        teacherId:    cls.teacherId   || "",
+        teacherName:  cls.teacherName || "",
+        schoolId:     cls.schoolId,
+        branchId:     cls.branchId,
+        createdAt:    serverTimestamp(),
+      });
+      fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: email,
+          subject: `You've been enrolled — ${cls.name}`,
+          html: `<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;border:1px solid #eee;border-radius:12px;"><h2 style="color:#1e3a8a;margin-bottom:8px;">Welcome, ${name}!</h2><p style="color:#555;">You have been enrolled in <strong>${cls.name}</strong>${cls.teacherName ? ` — Teacher: <strong>${cls.teacherName}</strong>` : ""}.</p><div style="margin:28px 0;text-align:center;"><a href="https://parent-dashboard-ten.vercel.app/" style="background:#1e3a8a;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">Go to Student Portal</a></div><p style="color:#aaa;font-size:12px;text-align:center;">Use your email (${email}) to sign in.</p></div>`,
+        }),
+      }).catch(() => {});
+      toast.success(`${name} enrolled & invitation sent!`);
+      setInviteStudentForm({ name: "", email: "" });
+      setStudentModal(false);
+    } catch {
+      toast.error("Failed to enroll student. Try again.");
+    }
+    setInviting(false);
   };
 
   // ── Detail view ──────────────────────────────────────────────────────────────
@@ -337,7 +527,7 @@ const ClassesSections = () => {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
+                <table className="w-full text-sm text-left min-w-[700px]">
                   <thead>
                     <tr className="bg-slate-50/50 border-b border-slate-100">
                       <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Section</th>
@@ -373,9 +563,27 @@ const ClassesSections = () => {
 
                           {/* Teacher */}
                           <td className="px-6 py-5">
-                            <span className="text-sm font-medium text-slate-700">
-                              {cls.teacherName || <span className="text-slate-300 italic">Not assigned</span>}
-                            </span>
+                            {cls.teacherName ? (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5">
+                                  <UserCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                  <span className="text-sm font-medium text-slate-700">{cls.teacherName}</span>
+                                </div>
+                                <button
+                                  onClick={() => { setAssigningClass(cls); setAssignTeacherId(cls.teacherId || ""); setAssignModal(true); }}
+                                  className="text-[10px] text-blue-500 hover:text-blue-700 font-bold underline underline-offset-2"
+                                >
+                                  Change
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => { setAssigningClass(cls); setAssignTeacherId(""); setAssignModal(true); }}
+                                className="flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg font-bold hover:bg-amber-100 transition-colors"
+                              >
+                                <UserPlus className="w-3 h-3" /> Assign Teacher
+                              </button>
+                            )}
                           </td>
 
                           {/* Students */}
@@ -423,14 +631,23 @@ const ClassesSections = () => {
                             </div>
                           </td>
 
-                          {/* View */}
+                          {/* Actions */}
                           <td className="px-6 py-5 text-right">
-                            <button
-                              onClick={() => setSelectedSection(cls)}
-                              className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-wider hover:bg-[#1e3a8a] transition-colors shadow-sm"
-                            >
-                              View
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => openStudentModal(cls)}
+                                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-black hover:bg-indigo-100 transition-colors"
+                                title="Add students to this class"
+                              >
+                                <UserPlus className="w-3.5 h-3.5" /> Students
+                              </button>
+                              <button
+                                onClick={() => setSelectedSection(cls)}
+                                className="px-5 py-2 rounded-xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-wider hover:bg-[#1e3a8a] transition-colors shadow-sm"
+                              >
+                                View
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -496,6 +713,21 @@ const ClassesSections = () => {
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
                 />
               </div>
+              <div>
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Assign Class Teacher (optional)</label>
+                <select
+                  value={newClassTeacherId}
+                  onChange={e => setNewClassTeacherId(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 bg-white appearance-none"
+                >
+                  <option value="">— Assign later —</option>
+                  {teachers.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}{t.subject ? ` · ${t.subject}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => setAddModal(false)}
@@ -510,6 +742,209 @@ const ClassesSections = () => {
                 >
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                   Create Class
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Students Modal ── */}
+      {studentModal && studentModalClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-[#1e3a8a]" /> Add Students to {studentModalClass.name}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">Assign existing students or invite new ones</p>
+              </div>
+              <button onClick={() => setStudentModal(false)} className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center">
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-slate-100 shrink-0">
+              <button onClick={() => setStudentTab("existing")} className={`flex-1 py-3 text-sm font-bold transition-colors ${studentTab === "existing" ? "text-[#1e3a8a] border-b-2 border-[#1e3a8a]" : "text-slate-400 hover:text-slate-600"}`}>
+                From School List
+              </button>
+              <button onClick={() => setStudentTab("invite")} className={`flex-1 py-3 text-sm font-bold transition-colors ${studentTab === "invite" ? "text-[#1e3a8a] border-b-2 border-[#1e3a8a]" : "text-slate-400 hover:text-slate-600"}`}>
+                Invite New Student
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 min-h-0">
+              {studentTab === "existing" ? (
+                <div className="space-y-4">
+                  <div className="relative">
+                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input type="text" placeholder="Search by name or email..." value={studentSearch}
+                      onChange={e => setStudentSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                    />
+                  </div>
+                  {studentsLoading ? (
+                    <div className="py-12 flex items-center justify-center">
+                      <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+                    </div>
+                  ) : (() => {
+                    const filtered = schoolStudents.filter(s =>
+                      (s.name || "").toLowerCase().includes(studentSearch.toLowerCase()) ||
+                      (s.email || "").toLowerCase().includes(studentSearch.toLowerCase())
+                    );
+                    return filtered.length === 0 ? (
+                      <div className="py-12 text-center">
+                        <Users className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                        <p className="text-sm text-slate-400">
+                          {schoolStudents.length === 0 ? "All school students are already in this class." : "No students match your search."}
+                        </p>
+                        <p className="text-xs text-slate-300 mt-1">Use "Invite New Student" to add someone new.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {selectedSids.length > 0 && (
+                          <p className="text-xs font-bold text-[#1e3a8a] mb-1">{selectedSids.length} selected</p>
+                        )}
+                        {filtered.map((s: any) => {
+                          const isSel = selectedSids.includes(s.id);
+                          return (
+                            <div key={s.id} onClick={() => setSelectedSids(prev => isSel ? prev.filter(id => id !== s.id) : [...prev, s.id])}
+                              className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all border ${isSel ? "bg-blue-50 border-[#1e3a8a]/30" : "border-slate-100 hover:bg-slate-50"}`}
+                            >
+                              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${isSel ? "bg-[#1e3a8a] border-[#1e3a8a]" : "border-slate-300"}`}>
+                                {isSel && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-xs font-black text-indigo-600 shrink-0">
+                                {(s.name || "S").substring(0, 2).toUpperCase()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-slate-800 truncate">{s.name || "Unknown"}</p>
+                                <p className="text-xs text-slate-400 truncate">{s.email}</p>
+                              </div>
+                              {s.className && s.className !== studentModalClass.name && (
+                                <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">{s.className}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Student Name *</label>
+                    <input type="text" placeholder="e.g. Rahul Sharma" value={inviteStudentForm.name}
+                      onChange={e => setInviteStudentForm(p => ({ ...p, name: e.target.value }))}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Email Address *</label>
+                    <input type="email" placeholder="student@example.com" value={inviteStudentForm.email}
+                      onChange={e => setInviteStudentForm(p => ({ ...p, email: e.target.value }))}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                    />
+                  </div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-start gap-2">
+                    <Mail className="w-4 h-4 text-[#1e3a8a] shrink-0 mt-0.5" />
+                    <p className="text-xs text-slate-600">Student will receive an email invitation with their login link.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-3 p-6 border-t border-slate-100 shrink-0">
+              <button onClick={() => setStudentModal(false)} className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50">
+                Cancel
+              </button>
+              {studentTab === "existing" ? (
+                <button onClick={handleAddExistingToClass} disabled={enrolling || selectedSids.length === 0}
+                  className="flex-1 py-3 rounded-xl bg-[#1e3a8a] text-white text-sm font-bold hover:bg-blue-800 disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {enrolling ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                  {enrolling ? "Adding..." : `Add${selectedSids.length > 0 ? ` (${selectedSids.length})` : ""}`}
+                </button>
+              ) : (
+                <button onClick={handleInviteStudentToClass} disabled={inviting || !inviteStudentForm.name || !inviteStudentForm.email}
+                  className="flex-1 py-3 rounded-xl bg-[#1e3a8a] text-white text-sm font-bold hover:bg-blue-800 disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                  {inviting ? "Inviting..." : "Invite & Enroll"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Assign Teacher Modal ── */}
+      {assignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-[#1e3a8a]" />
+                  {assigningClass?.teacherName ? "Change Class Teacher" : "Assign Class Teacher"}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5 font-medium">{assigningClass?.name}</p>
+              </div>
+              <button
+                onClick={() => { setAssignModal(false); setAssigningClass(null); setAssignTeacherId(""); }}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Select Teacher *</label>
+                {teachers.length === 0 ? (
+                  <div className="w-full bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm font-medium text-amber-700">
+                    No teachers found. Add teachers first from the Teachers page.
+                  </div>
+                ) : (
+                  <select
+                    value={assignTeacherId}
+                    onChange={e => setAssignTeacherId(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 bg-white appearance-none"
+                  >
+                    <option value="">— Select a teacher —</option>
+                    {teachers.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}{t.subject ? ` · ${t.subject}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {assigningClass?.teacherName && (
+                <p className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
+                  Current teacher: <span className="font-bold text-slate-600">{assigningClass.teacherName}</span>
+                </p>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => { setAssignModal(false); setAssigningClass(null); setAssignTeacherId(""); }}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAssignTeacher}
+                  disabled={assigning || !assignTeacherId}
+                  className="flex-1 py-3 rounded-xl bg-[#1e3a8a] text-white text-sm font-bold hover:bg-[#1e4fc0] disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {assigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+                  {assigning ? "Assigning..." : "Assign Teacher"}
                 </button>
               </div>
             </div>

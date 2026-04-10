@@ -212,7 +212,7 @@ const Discipline = () => {
       ) : (
         <>
           {/* ===== 4 STAT CARDS ===== */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium text-muted-foreground">Today's Incidents</span>
@@ -364,7 +364,7 @@ const Discipline = () => {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className="w-full min-w-[500px]">
                     <thead>
                       <tr className="border-b border-border bg-secondary/20">
                         <th className="text-left px-6 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Date</th>
@@ -422,7 +422,7 @@ const Discipline = () => {
           </div>
 
           {/* ===== ACTION BUTTONS ===== */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => setFilterType('all')}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors"

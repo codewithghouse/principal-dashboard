@@ -283,7 +283,7 @@ export default function ExamsResults() {
       </div>
 
       {/* ── 4 Stat Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {/* Latest Exam */}
         <div
           className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
@@ -485,7 +485,7 @@ export default function ExamsResults() {
             <span className="text-xs text-muted-foreground font-semibold">{examGroups.length} exams</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[500px]">
               <thead>
                 <tr className="border-b border-border bg-muted/20">
                   {["Exam Name", "Date", "Students", "Pass Rate", "Avg %", ""].map(h => (

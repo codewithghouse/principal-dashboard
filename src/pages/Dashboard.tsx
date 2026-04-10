@@ -399,7 +399,7 @@ const Dashboard = () => {
     <div className="space-y-5 pb-10 animate-in fade-in duration-500">
 
       {/* ── Academic Health Banner ───────────────────────────────────────────── */}
-      <div className="bg-[#1e3a8a] rounded-2xl px-7 py-6 flex flex-wrap items-center justify-between gap-5 text-white relative overflow-hidden shadow-lg">
+      <div className="bg-[#1e3a8a] rounded-2xl px-4 sm:px-7 py-5 sm:py-6 flex flex-wrap items-center justify-between gap-4 sm:gap-5 text-white relative overflow-hidden shadow-lg">
         {/* Decorative blobs */}
         <div className="absolute -right-10 -top-10 w-56 h-56 bg-white/5 rounded-full pointer-events-none" />
         <div className="absolute right-40 -bottom-8 w-36 h-36 bg-white/5 rounded-full pointer-events-none" />
@@ -442,7 +442,7 @@ const Dashboard = () => {
       </div>
 
       {/* ── 4 Stat Cards ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
 
         {/* Total Students */}
         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200">

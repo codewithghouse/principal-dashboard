@@ -154,7 +154,7 @@ const Reports = () => {
       {/* Pre-built templates */}
       <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
         <h2 className="text-base font-bold text-foreground mb-6">Pre-built Report Templates</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {templates.map((tpl, i) => (
             <div
               key={i}
@@ -185,7 +185,7 @@ const Reports = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[560px]">
             <thead>
               <tr className="bg-muted/20 border-b border-border">
                 {["Report Name", "Type", "Generated On", "Format", "Actions"].map(h => (
@@ -274,7 +274,7 @@ const Reports = () => {
       </div>
 
       {/* ── Sticky bottom action bar ── */}
-      <div className="fixed bottom-0 left-64 right-0 z-30 bg-card border-t border-border px-8 py-3 flex items-center gap-4 shadow-lg">
+      <div className="fixed bottom-0 left-0 md:left-64 right-0 z-30 bg-card border-t border-border px-4 sm:px-8 py-3 flex flex-wrap items-center gap-2 sm:gap-4 shadow-lg">
         <button
           onClick={() => setSelectedTemplate("Custom")}
           className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a8a] text-white text-sm font-bold rounded-xl hover:bg-[#1e4fc0] transition-colors shadow-sm"

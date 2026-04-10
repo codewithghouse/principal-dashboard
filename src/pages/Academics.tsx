@@ -239,7 +239,7 @@ const Academics = () => {
 
       {/* ── SUBJECT STAT CARDS ───────────────────────────────────────────────── */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
           {[1,2,3,4].map((i) => (
             <div key={i} className="bg-card border border-border rounded-2xl p-6 shadow-sm animate-pulse">
               <div className="h-4 bg-slate-100 rounded w-24 mb-4" />
@@ -255,7 +255,7 @@ const Academics = () => {
           <p className="text-xs text-slate-300 mt-1">Subject performance will appear once teachers record results</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
           {subjects.map((s) => (
             <div
               key={s.id}

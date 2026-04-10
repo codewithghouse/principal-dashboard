@@ -357,7 +357,7 @@ const Students = () => {
       {/* Table */}
       <div className="bg-white rounded-[2.5rem] border-2 border-slate-50 overflow-hidden shadow-sm">
         <div className="overflow-x-auto text-left">
-          <table className="w-full text-sm text-left">
+          <table className="w-full text-sm text-left min-w-[700px]">
             <thead>
               <tr className="bg-slate-50/50 border-b-2 border-slate-50">
                 <th className="px-8 py-6 text-slate-400 font-black uppercase tracking-[0.2em] text-[10px]">Scholar Details</th>
@@ -463,7 +463,7 @@ const Students = () => {
 
         {/* Pagination */}
         {!loading && filtered.length > ITEMS_PER_PAGE && (
-          <div className="px-8 py-6 border-t border-slate-50 flex items-center justify-between">
+          <div className="px-4 sm:px-8 py-4 sm:py-6 border-t border-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
               Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} of {filtered.length}
             </p>
@@ -506,9 +506,9 @@ const Students = () => {
 
       {/* Add Scholar Modal */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-        <DialogContent className="sm:max-w-[480px] rounded-[2rem] p-0 overflow-hidden bg-white">
-          <div className="bg-[#1e3a8a] px-10 py-8">
-            <DialogTitle className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[480px] rounded-[2rem] p-0 overflow-hidden bg-white">
+          <div className="bg-[#1e3a8a] px-6 sm:px-10 py-6 sm:py-8">
+            <DialogTitle className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-3">
               <GraduationCap className="w-6 h-6" /> Add New Scholar
             </DialogTitle>
             <DialogDescription className="text-blue-200/60 font-bold uppercase text-[10px] tracking-widest mt-1">
@@ -516,7 +516,7 @@ const Students = () => {
             </DialogDescription>
           </div>
 
-          <div className="p-10 space-y-5">
+          <div className="p-6 sm:p-10 space-y-5">
             <div className="space-y-2">
               <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Full Name *</Label>
               <Input

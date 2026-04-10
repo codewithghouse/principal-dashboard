@@ -36,12 +36,16 @@ const menuItems = [
   { title: "Settings", icon: Settings, path: "/settings" },
 ];
 
-const AppSidebar = () => {
+interface AppSidebarProps {
+  onClose?: () => void;
+}
+
+const AppSidebar = ({ onClose }: AppSidebarProps) => {
   const location = useLocation();
   const { logout } = useAuth();
 
   return (
-    <aside className="w-64 h-[calc(100vh-64px)] sticky top-16 bg-card border-r border-border flex flex-col shrink-0 overflow-y-auto shadow-sm">
+    <aside className="w-64 h-full bg-card border-r border-border flex flex-col shrink-0 overflow-y-auto shadow-sm">
       <div className="px-4 py-3 border-b border-slate-50">
         <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
           Navigation
@@ -54,6 +58,7 @@ const AppSidebar = () => {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={onClose}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${
                 isActive
                   ? "bg-[#1e3a8a] text-white shadow-lg shadow-blue-900/10 scale-[1.02]"
@@ -81,8 +86,8 @@ const AppSidebar = () => {
       </nav>
 
       <div className="p-4 border-t border-slate-100 mt-auto">
-        <Button 
-          variant="ghost" 
+        <Button
+          variant="ghost"
           onClick={logout}
           className="w-full justify-start gap-3 h-12 rounded-xl text-rose-500 hover:bg-rose-50 hover:text-rose-600 font-bold transition-colors"
         >

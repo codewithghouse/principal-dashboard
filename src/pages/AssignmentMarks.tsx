@@ -158,7 +158,7 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
           <h2 className="text-base font-bold text-foreground">Student-wise Marks</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[480px]">
             <thead>
               <tr className="border-b border-border bg-muted/20">
                 {["#", "Student Name", "Score /100", "Grade", "Feedback"].map(h => (
@@ -395,7 +395,7 @@ export default function AssignmentMarks() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-border bg-muted/20">
                   {["Assignment", "Class", "Teacher", "Due Date", "Graded", "Avg Score", "Top Score", ""].map(h => (

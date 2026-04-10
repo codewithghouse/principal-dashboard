@@ -132,7 +132,7 @@ const ParentCommunication = () => {
   }, [studentMessages]);
 
   return (
-    <div className="h-screen flex flex-col" style={{ fontFamily: "'Montserrat', sans-serif" }}>
+    <div className="-m-4 sm:-m-6 md:-m-8 flex flex-col" style={{ fontFamily: "'Montserrat', sans-serif", height: "calc(100vh - 56px)" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
         .wa-sidebar::-webkit-scrollbar { width: 4px; }
@@ -150,7 +150,7 @@ const ParentCommunication = () => {
       `}</style>
 
       {/* ─── STAT STRIP ─────────────────────────────────────────── */}
-      <div className="flex gap-4 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
+      <div className="flex gap-2 sm:gap-4 px-3 sm:px-4 py-3 bg-white border-b border-gray-200 shrink-0 overflow-x-auto">
         {[
           { label: "Total Messages", val: stats.total,     icon: MessageSquare, color: "text-blue-600"  },
           { label: "Unread Replies", val: stats.unread,    icon: Mail,          color: "text-amber-500" },

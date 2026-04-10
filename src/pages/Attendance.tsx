@@ -198,7 +198,7 @@ const Attendance = () => {
       ) : (
         <>
           {/* ===== 4 STAT CARDS ===== */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
             {/* Today's Present */}
             <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
@@ -350,7 +350,7 @@ const Attendance = () => {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[600px]">
                   <thead>
                     <tr className="border-b border-border">
                       <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Student</th>
@@ -398,7 +398,7 @@ const Attendance = () => {
           </div>
 
           {/* ===== ACTION BUTTONS ===== */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#1e3a8a] text-white text-sm font-bold hover:bg-[#1e4fc0] transition-colors shadow-md">
               <Edit3 className="w-4 h-4" /> Mark Attendance
             </button>
