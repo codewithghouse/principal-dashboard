@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, writeBatch, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, getDoc, query, where } from 'firebase/firestore';
 import { Database, AlertTriangle, CheckCircle2, Loader2, Play, RefreshCcw, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/AuthContext';
@@ -22,7 +22,20 @@ export default function MigrationEngine() {
   const [debugLogs, setDebugLogs] = useState<any[]>([]);
   const [showDebug, setShowDebug] = useState(false);
 
+  // ── Validate principal context before any DB operation ──────────────────────
+  const getContext = (): { schoolId: string; branchId: string } | null => {
+    const schoolId = userData?.schoolId;
+    const branchId = userData?.branchId;
+    if (!schoolId) { toast.error("Principal schoolId not found. Cannot proceed."); return null; }
+    if (!branchId) { toast.error("Principal branchId not found. Cannot proceed."); return null; }
+    return { schoolId, branchId };
+  };
+
   const analyzeDatabase = async () => {
+    const ctx = getContext();
+    if (!ctx) return;
+    const { schoolId, branchId } = ctx;
+
     setAnalyzing(true);
     setReport(null);
     setDebugLogs([]);
@@ -33,14 +46,17 @@ export default function MigrationEngine() {
       let totalValid = 0;
       let totalOrphaned = 0;
 
-      // 1. Fetch truth map (teaching_assignments)
-      const taSnap = await getDocs(collection(db, "teaching_assignments"));
+      // Scope all queries to this school + branch only
+      const scope = [where("schoolId", "==", schoolId), where("branchId", "==", branchId)];
+
+      // 1. Fetch truth map (teaching_assignments) — scoped
+      const taSnap = await getDocs(query(collection(db, "teaching_assignments"), ...scope));
       const teachingAssignments = taSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      
+
       if (teachingAssignments.length === 0) {
-          logs.push({ type: 'error', msg: 'Zero teaching_assignments found in database. Cannot map data.' });
+          logs.push({ type: 'error', msg: 'Zero teaching_assignments found for this branch. Cannot map data.' });
       } else {
-          logs.push({ type: 'info', msg: `Initialized Truth Map: ${teachingAssignments.length} teaching_assignments found.` });
+          logs.push({ type: 'info', msg: `Truth Map: ${teachingAssignments.length} teaching_assignments found.` });
       }
 
       const getMatchedAssignment = (classId: string, teacherId: string, subject?: string) => {
@@ -49,8 +65,8 @@ export default function MigrationEngine() {
          if (matches.length === 1) return matches[0].id;
          if (subject) {
             const cleanSubject = subject.toLowerCase().trim();
-            const subjectMatch = matches.find(t => 
-                t.subjectId?.toLowerCase().trim() === cleanSubject || 
+            const subjectMatch = matches.find(t =>
+                t.subjectId?.toLowerCase().trim() === cleanSubject ||
                 t.subjectName?.toLowerCase().trim() === cleanSubject ||
                 t.subject?.toLowerCase().trim() === cleanSubject
             );
@@ -59,21 +75,24 @@ export default function MigrationEngine() {
          return matches[0].id;
       };
 
-      const colSnap = await getDocs(collection(db, "gradebook_columns"));
+      // 2. gradebook_columns — scoped
+      const colSnap = await getDocs(query(collection(db, "gradebook_columns"), ...scope));
       const columnMap = new Map();
       colSnap.docs.forEach(d => {
          const data = d.data();
          columnMap.set(d.id, data.assignmentId || getMatchedAssignment(data.classId, data.teacherId, data.subject));
       });
 
-      const taskSnap = await getDocs(collection(db, "assignments"));
+      // 3. assignments — scoped
+      const taskSnap = await getDocs(query(collection(db, "assignments"), ...scope));
       const taskMap = new Map();
       taskSnap.docs.forEach(d => taskMap.set(d.id, d.data()));
 
       const updateQueue: any[] = [];
 
+      // 4. Each collection — scoped to this school + branch
       for (const colName of COLLECTIONS) {
-         const snap = await getDocs(collection(db, colName));
+         const snap = await getDocs(query(collection(db, colName), ...scope));
          let colMigrate = 0;
          let colValid = 0;
          let colOrphan = 0;
@@ -81,7 +100,7 @@ export default function MigrationEngine() {
          snap.docs.forEach(d => {
              const data = d.data();
              const isLegacySubRes = (colName === "submissions" || colName === "results") && !data.homeworkId;
-             
+
              if (data.assignmentId && !isLegacySubRes && data.assignmentId !== "legacy") {
                   if (teachingAssignments.some(ta => ta.id === data.assignmentId)) {
                      colValid++;
@@ -91,7 +110,7 @@ export default function MigrationEngine() {
              }
 
              let resolvedAssignmentId = null;
-             let extraPayload = {}; 
+             let extraPayload = {};
              let failReason = "";
 
              if (colName === "gradebook_scores") {
@@ -147,57 +166,61 @@ export default function MigrationEngine() {
   };
 
   const repairInstitutionalContext = async () => {
-    const schoolId = userData?.schoolId || userData?.school || userData?.schoolID || userData?.school_id;
-    const branch = userData?.branch || userData?.branchName || "Main";
-    
-    if (!schoolId) return toast.error("Principal schoolId not found. Cannot repair context.");
+    const ctx = getContext();
+    if (!ctx) return;
+    const { schoolId, branchId } = ctx;
 
     setMigrating(true);
     try {
         // 0. Get School Name for injection
-        let schoolName = "Institutional Faculty";
-        const schoolSnap = await getDoc(doc(db, "schools", schoolId));
-        if (schoolSnap.exists()) {
-            schoolName = schoolSnap.data().name || userData?.schoolName || "Institutional Faculty";
-        }
+        let schoolName = userData?.schoolName || "School";
+        try {
+          const schoolSnap = await getDoc(doc(db, "schools", schoolId));
+          if (schoolSnap.exists()) schoolName = schoolSnap.data().name || schoolName;
+        } catch { /* school doc optional */ }
 
-        const tSnap = await getDocs(collection(db, "teachers"));
-        const myTeacherIds = tSnap.docs
-            .filter(d => {
-                const data = d.data();
-                const tSchoolId = data.schoolId || data.school || data.schoolID || data.school_id;
-                return tSchoolId === schoolId;
-            })
-            .map(d => d.id);
+        // 1. Fetch teachers scoped to this school+branch (server-side filter, no full scan)
+        const tSnap = await getDocs(
+          query(collection(db, "teachers"), where("schoolId", "==", schoolId), where("branchId", "==", branchId))
+        );
+        const myTeacherIds = tSnap.docs.map(d => d.id);
 
         if (myTeacherIds.length === 0) {
-            toast.error("No teachers found for this school. Link teachers first.");
+            toast.error("No teachers found for this school/branch. Link teachers first.");
             return;
         }
 
         let totalRepaired = 0;
         const collectionsToRepair = ['students', 'enrollments', 'attendance', 'test_scores', 'gradebook_scores'];
-        
-        for (const col of collectionsToRepair) {
-            const snap = await getDocs(collection(db, col));
-            const batch = writeBatch(db);
-            let colCount = 0;
 
-            snap.docs.forEach(d => {
-                const data = d.data();
-                const hasSchoolId = data.schoolId || data.school || data.schoolID || data.school_id;
-                if (!hasSchoolId && myTeacherIds.includes(data.teacherId)) {
-                    batch.update(doc(db, col, d.id), { 
-                        schoolId, 
-                        school: schoolId, 
-                        schoolName,
-                        branch 
-                    });
-                    colCount++;
-                    totalRepaired++;
-                }
-            });
-            if (colCount > 0) await batch.commit();
+        // 2. Process in chunks of 10 (Firestore "in" limit)
+        // schoolId filter prevents touching records from other schools with same teacherId
+        for (const col of collectionsToRepair) {
+            const chunkSize = 10;
+            let colCount = 0;
+            for (let i = 0; i < myTeacherIds.length; i += chunkSize) {
+                const chunk = myTeacherIds.slice(i, i + chunkSize);
+                const snap = await getDocs(
+                  query(collection(db, col), where("schoolId", "==", schoolId), where("teacherId", "in", chunk))
+                );
+                const batch = writeBatch(db);
+
+                snap.docs.forEach(d => {
+                    const data = d.data();
+                    const hasSchoolId = data.schoolId || data.school || data.schoolID || data.school_id;
+                    if (!hasSchoolId) {
+                        batch.update(doc(db, col, d.id), {
+                            schoolId,
+                            branchId,
+                            school: schoolId,
+                            schoolName,
+                        });
+                        colCount++;
+                        totalRepaired++;
+                    }
+                });
+                if (colCount > 0) await batch.commit();
+            }
         }
         toast.success(`Successfully healed ${totalRepaired} ghost records! Refresh to see data.`);
         analyzeDatabase();
@@ -214,7 +237,7 @@ export default function MigrationEngine() {
     setMigrating(true);
     try {
         const queue = [...report.updateQueue];
-        const chunkSize = 400; 
+        const chunkSize = 400;
         for (let i = 0; i < queue.length; i += chunkSize) {
             const chunk = queue.slice(i, i + chunkSize);
             const batch = writeBatch(db);
@@ -233,7 +256,7 @@ export default function MigrationEngine() {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-12 shadow-2xl text-white relative overflow-hidden text-left">
        <div className="absolute -right-20 -bottom-20 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-       
+
        <div className="relative z-10">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12 border-b border-white/10 pb-8">
              <div>
@@ -244,16 +267,16 @@ export default function MigrationEngine() {
                    Repair institutional context and migrate legacy architecture to Phase 2/3 Assignment-based systems.
                 </p>
              </div>
-             
+
              <div className="flex items-center gap-3">
-                <button 
+                <button
                     onClick={repairInstitutionalContext}
                     disabled={analyzing || migrating}
                     className="shrink-0 px-8 py-4 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-400 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-3 disabled:opacity-50"
                  >
                     <ShieldCheck className="w-4 h-4"/> Heal Ghost Records
                  </button>
-                <button 
+                <button
                     onClick={analyzeDatabase}
                     disabled={analyzing || migrating}
                     className="shrink-0 px-8 py-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-indigo-900/50 flex items-center gap-3 disabled:opacity-50"
@@ -321,12 +344,12 @@ export default function MigrationEngine() {
                        </tbody>
                     </table>
                  </div>
-                 
+
                  <div className="flex items-center justify-between pt-6 border-t border-white/10">
                     <button onClick={() => setShowDebug(!showDebug)} className="text-[10px] font-black uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors">
                        {showDebug ? "Hide Trace Logs" : "Show Trace Logs & Orphan Details"}
                     </button>
-                    <button 
+                    <button
                        onClick={executeMigration}
                        disabled={report.totalToMigrate === 0 || migrating}
                        className="px-10 py-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-indigo-900/50 flex items-center gap-3 disabled:opacity-50 disabled:bg-slate-700"

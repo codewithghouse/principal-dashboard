@@ -149,11 +149,24 @@ const RiskIntervention = ({ student, onBack }: Props) => {
   // ── Intervention history listener ────────────────────────────────────────────
   useEffect(() => {
     if (!student.id) { setHistLoading(false); return; }
+    const schoolId = userData?.schoolId;
+    const branchId = userData?.branchId;
+    if (!schoolId) { setHistLoading(false); return; }
 
-    // Try with orderBy first; if index missing, fall back to unordered
-    let q = query(
-      collection(db, "interventions"),
+    // Base constraints — always scoped to this school/branch
+    const baseConstraints: any[] = [
       where("studentId", "==", student.id),
+      where("schoolId", "==", schoolId),
+    ];
+    if (branchId) baseConstraints.push(where("branchId", "==", branchId));
+
+    // Track fallback listener so it can be cleaned up
+    let unsub2: (() => void) | null = null;
+
+    // Try with orderBy first; if composite index missing, fall back to unordered
+    const q = query(
+      collection(db, "interventions"),
+      ...baseConstraints,
       orderBy("createdAt", "desc")
     );
 
@@ -164,9 +177,9 @@ const RiskIntervention = ({ student, onBack }: Props) => {
         setHistLoading(false);
       },
       () => {
-        // Fallback without orderBy (no index needed)
-        const q2 = query(collection(db, "interventions"), where("studentId", "==", student.id));
-        onSnapshot(q2, snap2 => {
+        // Fallback without orderBy (no composite index needed)
+        const q2 = query(collection(db, "interventions"), ...baseConstraints);
+        unsub2 = onSnapshot(q2, snap2 => {
           setHistory(
             snap2.docs
               .map(d => ({ id: d.id, ...d.data() }))
@@ -177,8 +190,8 @@ const RiskIntervention = ({ student, onBack }: Props) => {
       }
     );
 
-    return () => unsub();
-  }, [student.id]);
+    return () => { unsub(); unsub2?.(); };
+  }, [student.id, userData?.schoolId, userData?.branchId]);
 
   // ── Save action ──────────────────────────────────────────────────────────────
   const handleSaveAction = async () => {

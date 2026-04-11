@@ -245,17 +245,17 @@ export default function AssignmentMarks() {
     if (!userData?.schoolId) return;
     const go = async () => {
       try {
-        /* 1. results by schoolId */
-        const rSnap = await getDocs(
-          query(collection(db, "results"), where("schoolId", "==", userData.schoolId))
-        );
+        /* 1. results by schoolId + branchId */
+        const c: any[] = [where("schoolId", "==", userData.schoolId)];
+        if (userData.branchId) c.push(where("branchId", "==", userData.branchId));
+        const rSnap = await getDocs(query(collection(db, "results"), ...c));
         const results = rSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
         setAllResults(results);
 
-        /* 2. fetch assignments metadata by homeworkId */
+        /* 2. fetch assignments metadata by homeworkId (max 10 per "in" query) */
         const hwIds = [...new Set(results.map(r => r.homeworkId).filter(Boolean))] as string[];
         const aMap  = new Map<string, any>();
-        for (const ids of chunk(hwIds, 30)) {
+        for (const ids of chunk(hwIds, 10)) {
           const aSnap = await getDocs(
             query(collection(db, "assignments"), where("__name__", "in", ids))
           );
@@ -266,7 +266,7 @@ export default function AssignmentMarks() {
       setLoading(false);
     };
     go();
-  }, [userData?.schoolId]);
+  }, [userData?.schoolId, userData?.branchId]);
 
   /* ── build assignment groups ── */
   const groups = useMemo<AssignmentGroup[]>(() => {

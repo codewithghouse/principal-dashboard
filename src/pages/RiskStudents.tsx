@@ -68,6 +68,7 @@ const RiskStudents = () => {
   const [meetingStudent,  setMeetingStudent]  = useState<RiskStudent | null>(null);
 
   // Cross-listener refs
+  const computeTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const studentsRef      = useRef<any[]>([]);
   const enrollmentsRef   = useRef<any[]>([]);
   const attRef           = useRef<any[]>([]);
@@ -114,10 +115,7 @@ const RiskStudents = () => {
       const sid   = s.id;
 
       // ── Attendance ──
-      const attRecs = attRef.current.filter(r =>
-        (sid   && r.studentId === sid) ||
-        (email && r.studentEmail?.toLowerCase() === email)
-      );
+      const attRecs = attRef.current.filter(r => r.studentId === sid);
       let attPct: number | null = null;
       if (attRecs.length > 0) {
         const present = attRecs.filter(r => r.status === "present" || r.status === "late").length;
@@ -125,10 +123,7 @@ const RiskStudents = () => {
       }
 
       // ── Academic ──
-      const resultRecs = resultsRef.current.filter(r =>
-        (sid   && r.studentId === sid) ||
-        (email && r.studentEmail?.toLowerCase() === email)
-      );
+      const resultRecs = resultsRef.current.filter(r => r.studentId === sid);
       let avgScore: number | null = null;
       if (resultRecs.length > 0) {
         const sum = resultRecs.reduce((a, r) => a + Number(r.percentage || r.score || 0), 0);
@@ -136,21 +131,15 @@ const RiskStudents = () => {
       }
 
       // ── Incidents ──
-      const incRecs = incidentsRef.current.filter(r =>
-        (sid   && r.studentId === sid) ||
-        (email && r.studentEmail?.toLowerCase() === email)
-      );
+      const incRecs = incidentsRef.current.filter(r => r.studentId === sid);
 
       // ── Parent engagement score (0-100) ──
-      const notes = parentNotesRef.current.filter(r =>
-        (sid && r.studentId === sid) ||
-        (email && r.studentEmail?.toLowerCase() === email)
-      );
+      const notes = parentNotesRef.current.filter(r => r.studentId === sid);
       const parentEngagement = Math.min(100, notes.length * 20); // 5+ notes = 100%
 
       // ── 3rd Factor: Task / Assignment completion ──
       const studentClassIds = enrollmentsRef.current
-        .filter(e => (e.studentId === sid) || (email && e.studentEmail?.toLowerCase() === email))
+        .filter(e => e.studentId === sid)
         .map(e => e.classId).filter(Boolean);
 
       // All assignments for student's classes
@@ -158,9 +147,7 @@ const RiskStudents = () => {
         studentClassIds.includes(a.classId)
       );
       // Student's submissions
-      const studentSubmissions = submissionsRef.current.filter(s2 =>
-        (s2.studentId === sid) || (email && s2.studentEmail?.toLowerCase() === email)
-      );
+      const studentSubmissions = submissionsRef.current.filter(s2 => s2.studentId === sid);
       const submittedIds = new Set(studentSubmissions.map(s2 => s2.homeworkId || s2.assignmentId));
       const now = new Date();
       const overdueAssignments = studentAssignments.filter(a => {
@@ -283,19 +270,29 @@ const RiskStudents = () => {
     const C = [where("schoolId", "==", schoolId), where("branchId", "==", branchId)];
     const unsubs: (() => void)[] = [];
 
-    unsubs.push(onSnapshot(query(collection(db, "students"),       ...C), snap => { studentsRef.current    = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "enrollments"),    ...C), snap => { enrollmentsRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "attendance"),     ...C), snap => { attRef.current         = snap.docs.map(d => d.data()); compute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "results"),        ...C), snap => { resultsRef.current     = snap.docs.map(d => d.data()); compute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "incidents"),      ...C), snap => { incidentsRef.current   = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "parent_notes"),   ...C), snap => { parentNotesRef.current = snap.docs.map(d => d.data()); compute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "interventions"),  ...C), snap => { interventionsRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }, () => {}));
-    unsubs.push(onSnapshot(query(collection(db, "student_flags"),  ...C), snap => { flagsRef.current       = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }, () => {}));
-    // 3rd factor listeners
-    unsubs.push(onSnapshot(query(collection(db, "assignments"),    ...C), snap => { assignmentsRef.current  = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }, () => {}));
-    unsubs.push(onSnapshot(query(collection(db, "submissions"),    ...C), snap => { submissionsRef.current  = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }, () => {}));
+    // Debounce: all 10 listeners share one timer so compute() only runs once
+    // after they all settle (prevents 10 redundant re-renders on initial load)
+    const scheduleCompute = () => {
+      if (computeTimerRef.current) clearTimeout(computeTimerRef.current);
+      computeTimerRef.current = setTimeout(compute, 30);
+    };
 
-    return () => unsubs.forEach(u => u());
+    unsubs.push(onSnapshot(query(collection(db, "students"),       ...C), snap => { studentsRef.current    = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }));
+    unsubs.push(onSnapshot(query(collection(db, "enrollments"),    ...C), snap => { enrollmentsRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }));
+    unsubs.push(onSnapshot(query(collection(db, "attendance"),     ...C), snap => { attRef.current         = snap.docs.map(d => d.data()); scheduleCompute(); }));
+    unsubs.push(onSnapshot(query(collection(db, "results"),        ...C), snap => { resultsRef.current     = snap.docs.map(d => d.data()); scheduleCompute(); }));
+    unsubs.push(onSnapshot(query(collection(db, "incidents"),      ...C), snap => { incidentsRef.current   = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }));
+    unsubs.push(onSnapshot(query(collection(db, "parent_notes"),   ...C), snap => { parentNotesRef.current = snap.docs.map(d => d.data()); scheduleCompute(); }));
+    unsubs.push(onSnapshot(query(collection(db, "interventions"),  ...C), snap => { interventionsRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, () => {}));
+    unsubs.push(onSnapshot(query(collection(db, "student_flags"),  ...C), snap => { flagsRef.current       = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, () => {}));
+    // 3rd factor listeners
+    unsubs.push(onSnapshot(query(collection(db, "assignments"),    ...C), snap => { assignmentsRef.current  = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, () => {}));
+    unsubs.push(onSnapshot(query(collection(db, "submissions"),    ...C), snap => { submissionsRef.current  = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, () => {}));
+
+    return () => {
+      if (computeTimerRef.current) clearTimeout(computeTimerRef.current);
+      unsubs.forEach(u => u());
+    };
   }, [userData?.schoolId, userData?.branchId]);
 
   // ── Derived counts ───────────────────────────────────────────────────────────

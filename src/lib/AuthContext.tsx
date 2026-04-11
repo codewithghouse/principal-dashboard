@@ -43,15 +43,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const userEmail = currentUser.email.toLowerCase().trim();
 
-          // 3. Fetch principals whitelist and match in-memory
-          //    (Handles case-insensitive emails & avoids Firestore index errors)
-          const snap = await getDocs(collection(db, 'principals'));
-          const matched = snap.docs.find(
-            (d) => d.data().email?.toLowerCase().trim() === userEmail
+          // 3. Fetch principal by email (server-side filter — O(1) at any scale)
+          const snap = await getDocs(
+            query(collection(db, 'principals'), where('email', '==', userEmail))
           );
+          const matched = snap.docs[0] ?? null;
 
           if (matched) {
-            const data = matched.data();
+            const data = matched.data() as any;
 
             // 4. One-time UID linking + status upgrade
             if (data.status !== 'Active' || !data.uid) {

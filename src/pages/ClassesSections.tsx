@@ -346,7 +346,7 @@ const ClassesSections = () => {
     try {
       const [studentSnap, enrollSnap] = await Promise.all([
         getDocs(query(collection(db, "students"), where("schoolId", "==", schoolId), where("branchId", "==", branchId))),
-        getDocs(query(collection(db, "enrollments"), where("classId", "==", cls.id))),
+        getDocs(query(collection(db, "enrollments"), where("classId", "==", cls.id), where("schoolId", "==", schoolId))),
       ]);
       const enrolledIds = new Set([
         ...enrollSnap.docs.map(d => d.data().studentId),

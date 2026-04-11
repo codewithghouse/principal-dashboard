@@ -44,10 +44,9 @@ const Reports = () => {
   /* ── listen for principal's generated reports ── */
   useEffect(() => {
     if (!userData?.schoolId) return;
-    const q = query(
-      collection(db, "principal_reports"),
-      where("schoolId", "==", userData.schoolId)
-    );
+    const reportConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
+    if (userData.branchId) reportConstraints.push(where("branchId", "==", userData.branchId));
+    const q = query(collection(db, "principal_reports"), ...reportConstraints);
     const unsub = onSnapshot(q, snap => {
       const docs = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
@@ -59,7 +58,7 @@ const Reports = () => {
       setIsLoading(false);
     });
     return () => unsub();
-  }, [userData?.schoolId]);
+  }, [userData?.schoolId, userData?.branchId]);
 
   /* ── delete a report ── */
   const handleDelete = async (id: string) => {

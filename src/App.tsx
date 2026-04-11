@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { Loader2, GraduationCap } from "lucide-react";
 
 import { AuthProvider, useAuth } from "./lib/AuthContext";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import LoginPage from "./pages/Login";
 import RequestAccess from "./pages/RequestAccess";
@@ -114,17 +115,21 @@ const AppRoutes = () => {
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <ErrorBoundary>
+              <AppRoutes />
+            </ErrorBoundary>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

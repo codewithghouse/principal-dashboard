@@ -60,16 +60,19 @@ const GenerateReport = ({ templateName, onBack }: Props) => {
     const go = async () => {
       try {
         const sid = userData.schoolId;
+        // Scope to branch when available so report reflects this principal's branch only
+        const C: any[] = [where("schoolId", "==", sid)];
+        if (userData.branchId) C.push(where("branchId", "==", userData.branchId));
 
         /* total students enrolled */
         const enrollSnap = await getDocs(
-          query(collection(db, "enrollments"), where("schoolId", "==", sid))
+          query(collection(db, "enrollments"), ...C)
         );
         const totalStudents = enrollSnap.size;
 
         /* avg marks from test_scores */
         const scoresSnap = await getDocs(
-          query(collection(db, "test_scores"), where("schoolId", "==", sid))
+          query(collection(db, "test_scores"), ...C)
         );
         const allPct = scoresSnap.docs
           .map(d => parseFloat(d.data().percentage ?? d.data().score ?? ""))
@@ -97,12 +100,12 @@ const GenerateReport = ({ templateName, onBack }: Props) => {
 
         /* discipline incidents */
         const discSnap = await getDocs(
-          query(collection(db, "discipline"), where("schoolId", "==", sid))
+          query(collection(db, "discipline"), ...C)
         );
 
         /* attendance avg — count records marked "Present" */
         const attSnap = await getDocs(
-          query(collection(db, "attendance"), where("schoolId", "==", sid))
+          query(collection(db, "attendance"), ...C)
         );
         const presentCount = attSnap.docs.filter(
           d => (d.data().status || "").toLowerCase() === "present"
@@ -118,7 +121,7 @@ const GenerateReport = ({ templateName, onBack }: Props) => {
       setLoading(false);
     };
     go();
-  }, [userData?.schoolId]);
+  }, [userData?.schoolId, userData?.branchId]);
 
   /* ── generate & publish report ── */
   const handleGenerate = async () => {

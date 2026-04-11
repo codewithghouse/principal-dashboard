@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { db } from "@/lib/firebase";
 import {
   collection, addDoc, serverTimestamp, query, where,
-  onSnapshot, doc, updateDoc, getDocs, getDoc
+  onSnapshot, doc, updateDoc, getDocs
 } from "firebase/firestore";
 import { sendEmail } from "@/lib/resend";
 import { useAuth } from "@/lib/AuthContext";
@@ -97,6 +97,7 @@ const Teachers = () => {
 
   const [inviteForm,       setInviteForm]       = useState({ name: "", email: "", subject: "", assignClassId: "" });
   const [availableClasses, setAvailableClasses] = useState<any[]>([]);
+  const availableClassesRef = useRef<any[]>([]); // ref so onSnapshot closures see latest value
 
   // ── Aggregated Stats State ────────────────────────────────────────────────
   const [avgRating,       setAvgRating]       = useState<number | null>(null);
@@ -137,46 +138,40 @@ const Teachers = () => {
       });
       setTeachersData(teachers);
 
-      // Per-teacher class count (async, fills in after render)
-      teachers.forEach(async (t) => {
-        try {
-          const aSnap = await getDocs(
-            query(collection(db, "teaching_assignments"), where("teacherId", "==", t.id))
+      // ONE batch fetch for all teaching_assignments, then join in memory.
+      // Replaces the previous N+1 pattern (one getDocs + one getDoc per teacher).
+      getDocs(query(collection(db, "teaching_assignments"), ...constraints))
+        .then(taSnap => {
+          const allAssignments = taSnap.docs.map(d => ({ ...d.data(), id: d.id }));
+          const classMap = new Map(
+            availableClassesRef.current.map((c: any) => [c.id as string, c.name as string])
           );
-          if (aSnap.empty) {
-            setTeachersData(prev =>
-              prev.map(item => item.id === t.id
-                ? { ...item, classCount: 0, classNames: "Unassigned" }
-                : item
-              )
-            );
-            return;
-          }
-          const classIds = [...new Set(aSnap.docs.map(d => d.data().classId).filter(Boolean))];
-          const names: string[] = [];
-          for (const cId of classIds) {
-            const cDoc = await getDoc(doc(db, "classes", cId as string));
-            if (cDoc.exists()) names.push(cDoc.data().name);
-          }
-          setTeachersData(prev =>
-            prev.map(item => item.id === t.id
-              ? {
-                  ...item,
-                  classCount: classIds.length,
-                  classNames: names.join(", ") || "No Classes",
-                  subject:    t.subject || aSnap.docs[0].data().subjectId || "Faculty",
-                }
-              : item
-            )
-          );
-        } catch { /* silent */ }
-      });
+          setTeachersData(prev => prev.map(t => {
+            const tAssignments = allAssignments.filter((a: any) => a.teacherId === t.id);
+            const classIds = [...new Set(tAssignments.map((a: any) => a.classId).filter(Boolean))];
+            if (classIds.length === 0) return { ...t, classCount: 0, classNames: "Unassigned" };
+            const names = classIds.map(id => classMap.get(id as string) || "").filter(Boolean);
+            return {
+              ...t,
+              classCount: classIds.length,
+              classNames: names.join(", ") || "No Classes",
+              subject: t.subject || (tAssignments[0] as any)?.subjectId || "Faculty",
+            };
+          }));
+        })
+        .catch(() => {});
     });
 
-    const classQ = query(collection(db, "classes"), where("schoolId", "==", schoolId));
-    const unsubClasses = onSnapshot(classQ, (snap) => {
-      setAvailableClasses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    const classConstraints: any[] = [where("schoolId", "==", schoolId)];
+    if (branchId) classConstraints.push(where("branchId", "==", branchId));
+    const unsubClasses = onSnapshot(
+      query(collection(db, "classes"), ...classConstraints),
+      (snap) => {
+        const cls = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        availableClassesRef.current = cls;
+        setAvailableClasses(cls);
+      }
+    );
 
     return () => { unsub(); unsubClasses(); };
   }, [userData]);
@@ -185,9 +180,12 @@ const Teachers = () => {
   useEffect(() => {
     if (!userData) return;
     const schoolId = userData?.schoolId || userData?.school || userData?.schoolID;
+    const branchId = userData?.branchId || "";
     if (!schoolId) return;
+    const c: any[] = [where("schoolId", "==", schoolId)];
+    if (branchId) c.push(where("branchId", "==", branchId));
     const unsub = onSnapshot(
-      query(collection(db, "results"), where("schoolId", "==", schoolId)),
+      query(collection(db, "results"), ...c),
       (snap) => {
         const docs = snap.docs.map(d => d.data());
         if (docs.length === 0) { setAvgClassPerf(null); return; }
@@ -205,9 +203,12 @@ const Teachers = () => {
   useEffect(() => {
     if (!userData) return;
     const schoolId = userData?.schoolId || userData?.school || userData?.schoolID;
+    const branchId = userData?.branchId || "";
     if (!schoolId) return;
+    const c: any[] = [where("schoolId", "==", schoolId)];
+    if (branchId) c.push(where("branchId", "==", branchId));
     const unsub = onSnapshot(
-      query(collection(db, "teacher_attendance"), where("schoolId", "==", schoolId)),
+      query(collection(db, "teacher_attendance"), ...c),
       (snap) => {
         const docs = snap.docs.map(d => d.data());
         if (docs.length === 0) { setTeacherAttPct(null); return; }
@@ -222,9 +223,12 @@ const Teachers = () => {
   useEffect(() => {
     if (!userData) return;
     const schoolId = userData?.schoolId || userData?.school || userData?.schoolID;
+    const branchId = userData?.branchId || "";
     if (!schoolId) return;
+    const c: any[] = [where("schoolId", "==", schoolId)];
+    if (branchId) c.push(where("branchId", "==", branchId));
     const unsub = onSnapshot(
-      query(collection(db, "teacher_reviews"), where("schoolId", "==", schoolId)),
+      query(collection(db, "teacher_reviews"), ...c),
       (snap) => {
         const docs = snap.docs.map(d => d.data());
         setReviewCount(docs.length);
@@ -246,6 +250,8 @@ const Teachers = () => {
       if (!classId) return;
       await addDoc(collection(db, "teaching_assignments"), {
         teacherId, classId,
+        schoolId: userData?.schoolId || "",
+        branchId: userData?.branchId || "",
         subjectId: inviteForm.subject || "",
         status: "active",
         createdAt: serverTimestamp(),

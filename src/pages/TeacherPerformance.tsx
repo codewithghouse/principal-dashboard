@@ -44,16 +44,21 @@ const TeacherPerformance = () => {
     if (!userData?.schoolId) return;
     setLoading(true);
 
+    const schoolId = userData.schoolId;
+    const branchId = userData?.branchId || "";
+    const C: any[] = [where("schoolId", "==", schoolId)];
+    if (branchId) C.push(where("branchId", "==", branchId));
+
     // ── Listen to teachers ────────────────────────────────────────────────
     const tUnsub = onSnapshot(
-      query(collection(db, "teachers"), where("schoolId", "==", userData.schoolId)),
+      query(collection(db, "teachers"), ...C),
       async (tSnap) => {
         const teacherDocs = tSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
 
         // ── Fetch test_scores, teaching_assignments in parallel ───────────
         const [scoresSnap, assignSnap] = await Promise.all([
-          getDocs(query(collection(db, "test_scores"), where("schoolId", "==", userData.schoolId))),
-          getDocs(query(collection(db, "teaching_assignments"), where("schoolId", "==", userData.schoolId))),
+          getDocs(query(collection(db, "test_scores"),         ...C)),
+          getDocs(query(collection(db, "teaching_assignments"), ...C)),
         ]);
 
         const scores   = scoresSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
@@ -142,7 +147,7 @@ const TeacherPerformance = () => {
       }
     );
     return () => tUnsub();
-  }, [userData?.schoolId]);
+  }, [userData?.schoolId, userData?.branchId]);
 
   const filtered = teachers.filter(t =>
     !search || t.name.toLowerCase().includes(search.toLowerCase()) ||

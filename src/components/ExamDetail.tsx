@@ -116,9 +116,11 @@ export default function ExamDetail({ exam, allExams, onBack, userData }: ExamDet
     if (!userData?.schoolId) return toast.error("School data not found.");
     setSharingParents(true);
     try {
-      /* Fetch all student enrollments for this school */
+      /* Fetch all student enrollments for this school/branch */
+      const enrollConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
+      if (userData.branchId) enrollConstraints.push(where("branchId", "==", userData.branchId));
       const snap = await getDocs(
-        query(collection(db, "enrollments"), where("schoolId", "==", userData.schoolId))
+        query(collection(db, "enrollments"), ...enrollConstraints)
       );
       const message = `📊 *${exam.name} Results Published*\n\nDear Parent,\n\nThe results for *${exam.name}* have been published.\n\n🏫 School Pass Rate: ${exam.passRate}%\n📈 School Average: ${exam.avgPct}%\n\nPlease check your child's result in the Parent Dashboard under "Performance" section.\n\n— ${userData.name || "Principal"}`;
 

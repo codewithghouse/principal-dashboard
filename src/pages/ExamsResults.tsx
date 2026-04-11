@@ -117,16 +117,18 @@ export default function ExamsResults() {
     if (!userData?.schoolId) return;
     const go = async () => {
       try {
-        /* 1. test_scores by schoolId */
+        /* 1. test_scores by schoolId + branchId */
+        const scoreConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
+        if (userData.branchId) scoreConstraints.push(where("branchId", "==", userData.branchId));
         const scoresSnap = await getDocs(
-          query(collection(db, "test_scores"), where("schoolId", "==", userData.schoolId))
+          query(collection(db, "test_scores"), ...scoreConstraints)
         );
         const rawScores = scoresSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
 
-        /* 2. enrich with className from tests */
+        /* 2. enrich with className from tests (max 10 per "in" query) */
         const testIds = [...new Set(rawScores.map(s => s.testId).filter(Boolean))] as string[];
         const testsMap = new Map<string, any>();
-        for (const ids of chunk(testIds, 30)) {
+        for (const ids of chunk(testIds, 10)) {
           const tSnap = await getDocs(query(collection(db, "tests"), where("__name__", "in", ids)));
           tSnap.docs.forEach(d => testsMap.set(d.id, { id: d.id, ...d.data() }));
         }
@@ -136,9 +138,11 @@ export default function ExamsResults() {
         });
         setAllScores(enriched);
 
-        /* 3. upcoming tests via teachers */
+        /* 3. upcoming tests via teachers (schoolId + branchId scoped) */
+        const teacherConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
+        if (userData.branchId) teacherConstraints.push(where("branchId", "==", userData.branchId));
         const tSnap = await getDocs(
-          query(collection(db, "teachers"), where("schoolId", "==", userData.schoolId))
+          query(collection(db, "teachers"), ...teacherConstraints)
         );
         const tIds = tSnap.docs.map(d => d.id);
         const upcoming: any[] = [];
@@ -146,7 +150,9 @@ export default function ExamsResults() {
         for (const ids of chunk(tIds, 10)) {
           if (!ids.length) continue;
           const uSnap = await getDocs(
-            query(collection(db, "tests"), where("teacherId", "in", ids))
+            query(collection(db, "tests"),
+              where("schoolId", "==", userData.schoolId),
+              where("teacherId", "in", ids))
           );
           uSnap.docs.forEach(d => {
             const data = { id: d.id, ...d.data() } as any;

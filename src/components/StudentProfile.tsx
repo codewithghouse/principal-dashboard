@@ -107,7 +107,9 @@ const StudentProfile = ({ student, onBack }: Props) => {
           const taSnap = await getDocs(query(collection(db, "teaching_assignments"), where("classId", "==", classId)));
           const tIds = [...new Set(taSnap.docs.map(d => d.data().teacherId).filter(Boolean))];
           if (tIds.length > 0 && schoolId) {
-            const tSnap = await getDocs(query(collection(db, "teachers"), where("schoolId", "==", schoolId)));
+            const tConstraints: any[] = [where("schoolId", "==", schoolId)];
+            if (branchId) tConstraints.push(where("branchId", "==", branchId));
+            const tSnap = await getDocs(query(collection(db, "teachers"), ...tConstraints));
             const filtered = tSnap.docs
               .filter(d => tIds.includes(d.id))
               .map(d => ({ id: d.id, ...d.data() }));

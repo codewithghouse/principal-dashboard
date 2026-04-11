@@ -174,13 +174,14 @@ const Dashboard = () => {
     ));
 
     // ── 3. Attendance (last 30 days) → rate, trend, attendance risk alerts ─
-    // Requires Firestore composite index: attendance (schoolId, date ASC)
-    // or (schoolId, branch, date ASC). Create in Firebase Console if missing.
+    // Server-side date filter prevents downloading entire attendance history.
+    // Requires composite index: attendance (schoolId ASC, date ASC)
+    // and (schoolId ASC, branchId ASC, date ASC). Deploy via firestore.indexes.json.
+    const attCutoff = daysAgoStr(30);
     unsubs.push(onSnapshot(
-      query(collection(db, "attendance"), ...C),
+      query(collection(db, "attendance"), ...C, where("date", ">=", attCutoff)),
       snap => {
-        const cutoff = daysAgoStr(30);
-        const records = snap.docs.map(d => d.data()).filter(r => toDateStr(r.date) >= cutoff);
+        const records = snap.docs.map(d => d.data()); // already ≤30 days from server
         const today = todayStr();
         const yesterday = daysAgoStr(1);
 

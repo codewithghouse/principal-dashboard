@@ -97,7 +97,7 @@ const TimetableSetup = () => {
     // teaching_assignments → build teacherId → subjects[] map
     // Each assignment doc has: teacherId, classId, subjectId / subject / subjectName
     const unsubAssign = onSnapshot(
-      query(collection(db, "teaching_assignments"), where("schoolId", "==", schoolId)),
+      query(collection(db, "teaching_assignments"), ...C),
       snap => {
         const map = new Map<string, string[]>();
         snap.docs.forEach(d => {
