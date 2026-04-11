@@ -397,6 +397,38 @@ const Teachers = () => {
           schoolId, branchId, status: "Invited",
           createdAt: serverTimestamp(), rating: 5.0,
         });
+        // Send invite email — don't let failure break the bulk import
+        sendEmail({
+          to: t.email,
+          subject: `Invitation to join ${userData?.schoolName || "EduIntellect"}`,
+          html: `
+            <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+              <div style="background:#1e3a8a;padding:24px 28px;">
+                <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">EDUINTELLECT</h1>
+                <p style="color:#bfdbfe;margin:4px 0 0;font-size:13px;">Teacher Dashboard Invitation</p>
+              </div>
+              <div style="padding:28px;background:#fff;">
+                <h2 style="color:#1e293b;margin:0 0 12px;">Welcome, ${t.name}!</h2>
+                <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 8px;">
+                  You have been invited to join <strong>${userData?.schoolName || "EduIntellect"}</strong> as a
+                  <strong>${t.subject ? `${t.subject} Teacher` : "Teacher"}</strong>.
+                </p>
+                <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
+                  Log in with this email address to access your dashboard.
+                </p>
+                <div style="text-align:center;margin:24px 0;">
+                  <a href="https://teacher-dashboard-ochre.vercel.app"
+                     style="background:#1e3a8a;color:#fff;padding:13px 30px;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;display:inline-block;">
+                    Open Teacher Dashboard
+                  </a>
+                </div>
+              </div>
+              <div style="background:#f1f5f9;padding:14px 28px;text-align:center;">
+                <p style="color:#94a3b8;font-size:11px;margin:0;">Powered by EduIntellect Cloud Architecture</p>
+              </div>
+            </div>
+          `,
+        }).catch(() => {}); // fire-and-forget — don't block row status
         rows[i]._status = "success";
       } catch (err) {
         rows[i]._status = "error";

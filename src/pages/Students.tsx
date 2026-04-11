@@ -15,6 +15,7 @@ import {
   query, where, onSnapshot, writeBatch, doc, getDocs
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
+import { sendEmail } from "@/lib/resend";
 import * as XLSX from "xlsx";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -385,12 +386,54 @@ const Students = () => {
 
         await batch.commit();
         successCount += chunk.length;
+
+        // Fire invite emails in parallel — don't await so it doesn't slow the upload
+        Promise.allSettled(
+          chunk
+            .filter(r => !!r.email)
+            .map(r => {
+              const cls = classes.find(c =>
+                c.name?.toLowerCase() === r.class?.toLowerCase() ||
+                c.id?.toLowerCase()   === r.class?.toLowerCase()
+              );
+              return sendEmail({
+                to: r.email,
+                subject: `You've been enrolled${cls ? ` — ${cls.name}` : ""}`,
+                html: `
+                  <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+                    <div style="background:#1e3a8a;padding:24px 28px;">
+                      <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">EDUINTELLECT</h1>
+                      <p style="color:#bfdbfe;margin:4px 0 0;font-size:13px;">Student Portal Invitation</p>
+                    </div>
+                    <div style="padding:28px;background:#fff;">
+                      <h2 style="color:#1e293b;margin:0 0 12px;">Welcome, ${r.name}!</h2>
+                      <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 8px;">
+                        You have been enrolled${cls ? ` in <strong>${cls.name}</strong>${cls.teacherName ? ` — Teacher: <strong>${cls.teacherName}</strong>` : ""}` : " at your school"}.
+                      </p>
+                      <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
+                        Log in with this email address (<strong>${r.email}</strong>) to access your student portal.
+                      </p>
+                      <div style="text-align:center;margin:24px 0;">
+                        <a href="https://parent-dashboard-ten.vercel.app/"
+                           style="background:#1e3a8a;color:#fff;padding:13px 30px;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;display:inline-block;">
+                          Go to Student Portal
+                        </a>
+                      </div>
+                    </div>
+                    <div style="background:#f1f5f9;padding:14px 28px;text-align:center;">
+                      <p style="color:#94a3b8;font-size:11px;margin:0;">Powered by EduIntellect Cloud Architecture</p>
+                    </div>
+                  </div>
+                `,
+              });
+            })
+        ); // intentionally not awaited — emails sent in background
       }
 
       setBulkRows(prev => prev.map(r =>
         r._status === "pending" ? { ...r, _status: "success" as const } : r
       ));
-      toast.success(`${successCount} students uploaded successfully!`);
+      toast.success(`${successCount} students uploaded & invite emails sent!`);
     } catch (e: any) {
       toast.error("Bulk upload failed: " + e.message);
       setBulkRows(prev => prev.map(r =>
