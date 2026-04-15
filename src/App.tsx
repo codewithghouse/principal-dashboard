@@ -30,6 +30,7 @@ import TeacherPerformance from "./pages/TeacherPerformance";
 import ExamStructure from "./pages/ExamStructure";
 import TimetableSetup from "./pages/TimetableSetup";
 import AccessRequests from "./pages/AccessRequests";
+import StudentProfilePage from "./pages/StudentProfilePage";
 
 // Pages data entry operators are allowed to navigate to
 const DEO_ALLOWED = ["/students", "/attendance", "/assignments", "/exams", "/teacher-notes", "/classes"];
@@ -89,6 +90,7 @@ const AppRoutes = () => {
         <Routes>
           <Route path="/"                     element={<Dashboard />} />
           <Route path="/students"             element={<Students />} />
+          <Route path="/students/:studentId"  element={<StudentProfilePage />} />
           <Route path="/risk-students"        element={<RiskStudents />} />
           <Route path="/classes"              element={<ClassesSections />} />
           <Route path="/teachers"             element={<Teachers />} />

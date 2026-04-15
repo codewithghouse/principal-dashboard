@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Search, Download, Plus, MapPin, GraduationCap, User,
   Loader2, Sparkles, Hash, ChevronLeft, ChevronRight, X,
   AlertTriangle, Filter, Upload, FileSpreadsheet, Archive, CheckCircle
 } from "lucide-react";
-import StudentProfile from "@/components/StudentProfile";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +39,7 @@ const ITEMS_PER_PAGE = 15;
 
 const Students = () => {
   const { userData } = useAuth();
+  const navigate = useNavigate();
 
   const [studentsData, setStudentsData]     = useState<any[]>([]);
   const [classes, setClasses]               = useState<any[]>([]);
@@ -533,7 +534,10 @@ const Students = () => {
   // ── Student profile view ─────────────────────────────────────────────────────
 
   if (selectedStudent) {
-    return <StudentProfile student={selectedStudent} onBack={() => setSelectedStudent(null)} />;
+    // Navigate to JARVIS HUD profile page
+    navigate(`/students/${selectedStudent.id}`);
+    setSelectedStudent(null);
+    return null;
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
