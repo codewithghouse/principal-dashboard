@@ -163,10 +163,10 @@ const Academics = () => {
     const c = allScores.filter((s) => s >= 40 && s < 60).length;
     const d = allScores.filter((s) => s < 40).length;
     setGradeDistData([
-      { name: "A (80-100%)", value: total > 0 ? a : 25, color: "#22c55e" },
-      { name: "B (60-79%)", value: total > 0 ? b : 35, color: "#1e3a8a" },
-      { name: "C (40-59%)", value: total > 0 ? c : 25, color: "#f59e0b" },
-      { name: "D (Below 40%)", value: total > 0 ? d : 15, color: "#ef4444" },
+      { name: "A (80-100%)", value: a, color: "#22c55e" },
+      { name: "B (60-79%)",  value: b, color: "#1e3a8a" },
+      { name: "C (40-59%)",  value: c, color: "#f59e0b" },
+      { name: "D (Below 40%)", value: d, color: "#ef4444" },
     ]);
 
     // ── curriculum progress (coverage proxy) ───────────────────────────────
@@ -292,6 +292,11 @@ const Academics = () => {
         {/* Grade Distribution Donut */}
         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
           <h2 className="text-base font-bold text-foreground mb-6">Grade Distribution – Latest Exam</h2>
+          {gradeDistData.reduce((s, g) => s + g.value, 0) === 0 ? (
+            <div className="flex items-center justify-center h-48 text-slate-400 text-sm font-bold">
+              No data yet
+            </div>
+          ) : (
           <ResponsiveContainer width="100%" height={280}>
             <PieChart>
               <Pie
@@ -324,6 +329,7 @@ const Academics = () => {
               />
             </PieChart>
           </ResponsiveContainer>
+          )}
           {/* Legend */}
           <div className="flex flex-wrap justify-center gap-x-5 gap-y-2 mt-2">
             {gradeDistData.map((g) => (

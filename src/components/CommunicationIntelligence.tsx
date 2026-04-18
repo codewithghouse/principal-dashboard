@@ -20,28 +20,49 @@ const CommunicationIntelligence = () => {
 
   useEffect(() => {
     const schoolId = userData?.schoolId;
+    const branchId = userData?.branchId;
     if (!schoolId) return;
 
     const fetchCommData = async () => {
       try {
+        const constraints: any[] = [where("schoolId", "==", schoolId)];
+        if (branchId) constraints.push(where("branchId", "==", branchId));
+
         const snap = await getDocs(query(
           collection(db, "communications"),
-          where("schoolId", "==", schoolId),
-          limit(5),
+          ...constraints,
+          limit(30),
         ));
         const dataExists = !snap.empty;
 
-        const mockInput = dataExists ? {
-           messages: [
-             { sender: "Parent", student: "Ali", text: "My child has been absent for several days. I am worried about his attendance." },
-             { sender: "Parent", student: "Sara", text: "Can you please share the exam schedule?" }
-           ],
-           conversation_history: [
-             { thread_id: "123", participants: ["Parent", "Teacher"], messages_count: 4 }
-           ]
-        } : null;
+        const docs = snap.docs.map(d => d.data() as any);
+        const messages = docs.map(m => ({
+          sender:  m.from || m.sender || "Parent",
+          student: m.studentName || m.student || "Unknown",
+          text:    m.message || m.text || m.content || "",
+        })).filter(m => m.text);
 
-        const result = await AIController.getCommunicationInsights(mockInput);
+        // Group by thread_id / studentId for conversation history
+        const threadMap: Record<string, { thread_id: string; participants: Set<string>; messages_count: number }> = {};
+        docs.forEach(m => {
+          const tid = m.threadId || m.studentId || m.id;
+          if (!tid) return;
+          if (!threadMap[tid]) threadMap[tid] = { thread_id: String(tid), participants: new Set(), messages_count: 0 };
+          threadMap[tid].participants.add(m.from || m.sender || "User");
+          threadMap[tid].messages_count++;
+        });
+        const conversation_history = Object.values(threadMap)
+          .filter(t => t.messages_count > 1)
+          .slice(0, 20)
+          .map(t => ({
+            thread_id: t.thread_id,
+            participants: Array.from(t.participants),
+            messages_count: t.messages_count,
+          }));
+
+        const aiInput = dataExists ? { messages, conversation_history } : null;
+
+        const result = await AIController.getCommunicationInsights(aiInput);
 
         if (result.status === "no_data") {
            setPlaceholderMessage(result.message);
@@ -58,7 +79,7 @@ const CommunicationIntelligence = () => {
       }
     };
     fetchCommData();
-  }, [userData?.schoolId]);
+  }, [userData?.schoolId, userData?.branchId]);
 
   if (!loading && placeholderMessage) {
     return (

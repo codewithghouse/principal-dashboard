@@ -104,7 +104,7 @@ const Dashboard = () => {
   const attRisksRef    = useRef<RiskAlert[]>([]);
   const incRisksRef    = useRef<RiskAlert[]>([]);
   const resRisksRef    = useRef<RiskAlert[]>([]);
-  const avgScoreRef    = useRef<number>(78);        // updated by results listener
+  const avgScoreRef    = useRef<number | null>(null);  // updated by results listener
   const attTodayRef    = useRef<number | null>(null); // updated by attendance listener
   const pendingIncRef  = useRef<number | null>(null); // updated by incidents listener
 
@@ -123,9 +123,10 @@ const Dashboard = () => {
 
   const computeHealthIndex = useCallback(() => {
     const att = attTodayRef.current;
-    if (att === null) return;
+    const score = avgScoreRef.current;
+    if (att === null || score === null) return;
     const safety = Math.max(0, 100 - (pendingIncRef.current ?? 0) * 8);
-    const idx = Math.round((att * 0.45 + avgScoreRef.current * 0.35 + safety * 0.20) * 10) / 10;
+    const idx = Math.round((att * 0.45 + score * 0.35 + safety * 0.20) * 10) / 10;
     setHealthIndex(idx);
   }, []);
 

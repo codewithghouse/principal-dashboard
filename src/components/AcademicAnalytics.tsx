@@ -13,47 +13,35 @@ interface AnalyticsData {
   historical_comparison?: string;
 }
 
-const distributionData = [
-  { range: "90-100", count: 45 },
-  { range: "75-89", count: 120 },
-  { range: "60-74", count: 180 },
-  { range: "40-59", count: 65 },
-  { range: "<40", count: 15 },
-];
-
-const monthlyTrendData = [
-  { month: "Sep", avg: 63 },
-  { month: "Oct", avg: 65 },
-  { month: "Nov", avg: 68 },
-  { month: "Dec", avg: 70 },
-  { month: "Jan", avg: 73 },
-];
-
 const AcademicAnalytics = () => {
   const { userData } = useAuth();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [placeholderMessage, setPlaceholderMessage] = useState<string | null>(null);
+  const [distributionData, setDistributionData] = useState<{ range: string; count: number }[]>([]);
+  const [monthlyTrendData, setMonthlyTrendData] = useState<{ month: string; avg: number }[]>([]);
 
   useEffect(() => {
     const schoolId = userData?.schoolId;
+    const branchId = userData?.branchId;
     if (!schoolId) return;
 
     const fetchAnalytics = async () => {
       try {
-        // Fetch results only for this principal's school (tenant-scoped).
-        const snap = await getDocs(query(
-          collection(db, "results"),
-          where("schoolId", "==", schoolId),
-        ));
+        const constraints: any[] = [where("schoolId", "==", schoolId)];
+        if (branchId) constraints.push(where("branchId", "==", branchId));
+
+        const snap = await getDocs(query(collection(db, "results"), ...constraints));
         if (snap.empty) {
+           setDistributionData([]);
+           setMonthlyTrendData([]);
            setPlaceholderMessage("No academic records found for this institution.");
            setLoading(false);
            return;
         }
 
         const rawResults = snap.docs.map(d => d.data());
-        
+
         // 1. Calculate Score Distribution Mapping
         const ranges = [
            { range: "90-100", count: 0, min: 90, max: 100 },
@@ -68,6 +56,7 @@ const AcademicAnalytics = () => {
            const range = ranges.find(rg => score >= rg.min && score <= rg.max);
            if (range) range.count++;
         });
+        setDistributionData(ranges.map(({ range, count }) => ({ range, count })));
 
         // 2. Calculate Monthly Average Trend
         const monthlyScores: Record<string, { total: number, count: number }> = {};
@@ -88,6 +77,7 @@ const AcademicAnalytics = () => {
               avg: parseFloat((stats.total / stats.count).toFixed(1))
            }))
            .slice(-5); // Show last 5 months
+        setMonthlyTrendData(trendData);
 
         // 3. Prepare AI Dataset
         const academicDataset = {
@@ -96,8 +86,8 @@ const AcademicAnalytics = () => {
            subjects: Array.from(new Set(rawResults.map(r => r.subject || "General"))).map(sub => {
               const subResults = rawResults.filter(r => (r.subject || "General") === sub);
               const avg = subResults.reduce((acc, r) => acc + (parseFloat(r.score) || 0), 0) / subResults.length;
-              return { 
-                 name: sub, 
+              return {
+                 name: sub,
                  average_score: Math.round(avg),
                  pass_rate: Math.round((subResults.filter(r => parseFloat(r.score) > 40).length / subResults.length) * 100)
               };
@@ -120,9 +110,9 @@ const AcademicAnalytics = () => {
         setLoading(false);
       }
     };
-    
+
     fetchAnalytics();
-  }, [userData?.schoolId]);
+  }, [userData?.schoolId, userData?.branchId]);
 
   if (!loading && placeholderMessage) {
      return (

@@ -47,69 +47,71 @@ const StudentProfile = ({ student, onBack }: Props) => {
   const branchId     = student.branchId || "";
 
   useEffect(() => {
+    if (!schoolId) { setFetching(false); return; }
     if (!studentId && !studentEmail) { setFetching(false); return; }
+
+    const scopeC: any[] = [where("schoolId", "==", schoolId)];
+    if (branchId) scopeC.push(where("branchId", "==", branchId));
 
     const fetchAll = async () => {
       setFetching(true);
       try {
         // Attendance
-        const attQ = studentEmail
-          ? query(collection(db, "attendance"), where("studentEmail", "==", studentEmail))
-          : query(collection(db, "attendance"), where("studentId", "==", studentId));
-        const attSnap = await getDocs(attQ);
+        const attIdentC = studentEmail
+          ? [where("studentEmail", "==", studentEmail)]
+          : [where("studentId", "==", studentId)];
+        const attSnap = await getDocs(query(collection(db, "attendance"), ...scopeC, ...attIdentC));
         setAttRecords(attSnap.docs.map(d => ({ id: d.id, ...d.data() }))
           .sort((a: any, b: any) => (b.date || "").localeCompare(a.date || "")));
 
         // Results / scores
-        const resQ = studentEmail
-          ? query(collection(db, "results"), where("studentEmail", "==", studentEmail))
-          : query(collection(db, "results"), where("studentId", "==", studentId));
-        const resSnap = await getDocs(resQ);
+        const resIdentC = studentEmail
+          ? [where("studentEmail", "==", studentEmail)]
+          : [where("studentId", "==", studentId)];
+        const resSnap = await getDocs(query(collection(db, "results"), ...scopeC, ...resIdentC));
         setResults(resSnap.docs.map(d => ({ id: d.id, ...d.data() }))
           .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
 
         // Discipline incidents
-        const incQ = studentEmail
-          ? query(collection(db, "incidents"), where("studentEmail", "==", studentEmail))
-          : query(collection(db, "incidents"), where("studentId", "==", studentId));
-        const incSnap = await getDocs(incQ);
+        const incIdentC = studentEmail
+          ? [where("studentEmail", "==", studentEmail)]
+          : [where("studentId", "==", studentId)];
+        const incSnap = await getDocs(query(collection(db, "incidents"), ...scopeC, ...incIdentC));
         setIncidents(incSnap.docs.map(d => ({ id: d.id, ...d.data() }))
           .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
 
         // Parent notes
         if (studentId) {
-          const noteSnap = await getDocs(query(collection(db, "parent_notes"), where("studentId", "==", studentId)));
+          const noteSnap = await getDocs(query(collection(db, "parent_notes"), ...scopeC, where("studentId", "==", studentId)));
           setParentNotes(noteSnap.docs.map(d => ({ id: d.id, ...d.data() }))
             .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
         }
 
         // Parent meetings
-        const meetQ = studentId
-          ? query(collection(db, "parent_meetings"), where("studentId", "==", studentId))
+        const meetIdentC = studentId
+          ? [where("studentId", "==", studentId)]
           : studentEmail
-            ? query(collection(db, "parent_meetings"), where("studentEmail", "==", studentEmail))
+            ? [where("studentEmail", "==", studentEmail)]
             : null;
-        if (meetQ) {
-          const meetSnap = await getDocs(meetQ);
+        if (meetIdentC) {
+          const meetSnap = await getDocs(query(collection(db, "parent_meetings"), ...scopeC, ...meetIdentC));
           setParentMeetings(meetSnap.docs.map(d => ({ id: d.id, ...d.data() }))
             .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
         }
 
         // Student flags (counselor assignments, remedial, etc.)
         if (studentId) {
-          const flagSnap = await getDocs(query(collection(db, "student_flags"), where("studentId", "==", studentId)));
+          const flagSnap = await getDocs(query(collection(db, "student_flags"), ...scopeC, where("studentId", "==", studentId)));
           setStudentFlags(flagSnap.docs.map(d => ({ id: d.id, ...d.data() }))
             .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
         }
 
         // Teachers via teaching_assignments for this class
         if (classId) {
-          const taSnap = await getDocs(query(collection(db, "teaching_assignments"), where("classId", "==", classId)));
+          const taSnap = await getDocs(query(collection(db, "teaching_assignments"), ...scopeC, where("classId", "==", classId)));
           const tIds = [...new Set(taSnap.docs.map(d => d.data().teacherId).filter(Boolean))];
-          if (tIds.length > 0 && schoolId) {
-            const tConstraints: any[] = [where("schoolId", "==", schoolId)];
-            if (branchId) tConstraints.push(where("branchId", "==", branchId));
-            const tSnap = await getDocs(query(collection(db, "teachers"), ...tConstraints));
+          if (tIds.length > 0) {
+            const tSnap = await getDocs(query(collection(db, "teachers"), ...scopeC));
             const filtered = tSnap.docs
               .filter(d => tIds.includes(d.id))
               .map(d => ({ id: d.id, ...d.data() }));
@@ -129,7 +131,7 @@ const StudentProfile = ({ student, onBack }: Props) => {
     };
 
     fetchAll();
-  }, [studentId, studentEmail, classId]);
+  }, [studentId, studentEmail, classId, schoolId, branchId]);
 
   // ── Computed values ──────────────────────────────────────────────────────────
 

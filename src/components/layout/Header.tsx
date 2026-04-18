@@ -28,7 +28,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
             {userData?.schoolName || "EDULLENT"}
           </span>
           <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">
-            {userData?.branch || "Portal"}
+            {userData?.branchName || userData?.branch || userData?.branchId || "Portal"}
           </span>
         </div>
       </div>

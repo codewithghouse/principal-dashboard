@@ -147,11 +147,13 @@ export default function ExamsResults() {
         const tIds = tSnap.docs.map(d => d.id);
         const upcoming: any[] = [];
         const today = new Date(); today.setHours(0, 0, 0, 0);
+        const testsScopeC: any[] = [where("schoolId", "==", userData.schoolId)];
+        if (userData.branchId) testsScopeC.push(where("branchId", "==", userData.branchId));
         for (const ids of chunk(tIds, 10)) {
           if (!ids.length) continue;
           const uSnap = await getDocs(
             query(collection(db, "tests"),
-              where("schoolId", "==", userData.schoolId),
+              ...testsScopeC,
               where("teacherId", "in", ids))
           );
           uSnap.docs.forEach(d => {
@@ -169,7 +171,7 @@ export default function ExamsResults() {
       setLoading(false);
     };
     go();
-  }, [userData?.schoolId]);
+  }, [userData?.schoolId, userData?.branchId]);
 
   /* ── derived: exam groups ── */
   const examGroups = useMemo<ExamGroup[]>(() => {

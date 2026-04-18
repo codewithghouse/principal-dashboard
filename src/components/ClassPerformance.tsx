@@ -85,10 +85,14 @@ const ClassPerformance = ({ classDoc, onBack }: Props) => {
 
   // ── Firestore listeners ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (!classDoc.id) { setLoading(false); return; }
+    if (!classDoc.id || !classDoc.schoolId) { setLoading(false); return; }
     setLoading(true);
 
-    const q = (col: string) => query(collection(db, col), where("classId", "==", classDoc.id));
+    const scopeC: any[] = [where("schoolId", "==", classDoc.schoolId)];
+    if (classDoc.branchId) scopeC.push(where("branchId", "==", classDoc.branchId));
+    const q = (col: string) =>
+      query(collection(db, col), ...scopeC, where("classId", "==", classDoc.id));
+
     let done = 0;
     const tryDone = () => { done++; if (done >= 3) setLoading(false); };
 
@@ -97,7 +101,7 @@ const ClassPerformance = ({ classDoc, onBack }: Props) => {
     const u3 = onSnapshot(q("results"),     snap => { setResults(snap.docs.map(d => d.data())); tryDone(); }, () => tryDone());
 
     return () => { u1(); u2(); u3(); };
-  }, [classDoc.id]);
+  }, [classDoc.id, classDoc.schoolId, classDoc.branchId]);
 
   // ── Derived: per-student data ─────────────────────────────────────────────
   type StudentRow = {

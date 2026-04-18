@@ -60,9 +60,11 @@ export default function NotifyTeacherModal({ student, onClose }: Props) {
 
         if (student.classId) {
           // Try class-scoped lookup via teaching_assignments first
+          const taC = [where("schoolId", "==", userData.schoolId)];
+          if (userData.branchId) taC.push(where("branchId", "==", userData.branchId));
           const assignSnap = await getDocs(query(
             collection(db, "teaching_assignments"),
-            where("schoolId", "==", userData.schoolId),
+            ...taC,
             where("classId", "==", student.classId),
           ));
           const teacherIds = Array.from(new Set(

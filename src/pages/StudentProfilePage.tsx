@@ -98,6 +98,7 @@ const StudentProfilePage = () => {
   useEffect(() => {
     if (!studentId) { setLoading(false); return; }
     const schoolId = userData?.schoolId;
+    const branchId = userData?.branchId;
     if (!schoolId) return;
 
     const run = async () => {
@@ -106,19 +107,24 @@ const StudentProfilePage = () => {
         const snap = await getDoc(doc(db, "students", studentId));
         if (!snap.exists()) { setLoading(false); return; }
         const sd = { id: snap.id, ...snap.data() } as any;
+        // Defense-in-depth: reject student docs that don't belong to this
+        // principal's school/branch, even if Firestore rules let the read through.
+        if (sd.schoolId && sd.schoolId !== schoolId) { setLoading(false); return; }
+        if (branchId && sd.branchId && sd.branchId !== branchId) { setLoading(false); return; }
         setStudent(sd);
         const email = (sd.email || sd.studentEmail || "").toLowerCase();
-        // Every list query MUST include schoolId filter so Firestore rules
-        // (inSameSchool) accept it. studentId/email alone isn't enough —
-        // the rule engine requires an explicit schoolId constraint.
+
+        const scopeC: any[] = [where("schoolId", "==", schoolId)];
+        if (branchId) scopeC.push(where("branchId", "==", branchId));
+
         const byId = (col: string) => getDocs(query(
           collection(db, col),
-          where("schoolId", "==", schoolId),
+          ...scopeC,
           where("studentId", "==", studentId),
         ));
         const byEmail = (col: string) => email ? getDocs(query(
           collection(db, col),
-          where("schoolId", "==", schoolId),
+          ...scopeC,
           where("studentEmail", "==", email),
         )) : Promise.resolve(null as any);
         const merge = (a: any, b: any) => { const l: any[] = []; if (a) a.docs.forEach((d: any) => l.push({ id: d.id, ...d.data() })); if (b) b.docs.forEach((d: any) => { if (!l.find(x => x.id === d.id)) l.push({ id: d.id, ...d.data() }); }); return l; };
@@ -141,7 +147,7 @@ const StudentProfilePage = () => {
         if (classId) {
           const asSnap = await getDocs(query(
             collection(db, "assignments"),
-            where("schoolId", "==", schoolId),
+            ...scopeC,
             where("classId", "==", classId),
           ));
           setAssignments(asSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -150,7 +156,7 @@ const StudentProfilePage = () => {
       finally { setLoading(false); }
     };
     run();
-  }, [studentId, userData?.schoolId]);
+  }, [studentId, userData?.schoolId, userData?.branchId]);
 
   // ── Metrics ────────────────────────────────────────────────────────────────
   const m = useMemo(() => {

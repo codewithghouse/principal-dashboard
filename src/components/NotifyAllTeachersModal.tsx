@@ -95,7 +95,7 @@ export default function NotifyAllTeachersModal({ classified, onClose }: Props) {
         if (userData.branchId) tc.push(where("branchId", "==", userData.branchId));
         const [tSnap, aSnap] = await Promise.all([
           getDocs(query(collection(db, "teachers"), ...tc)),
-          getDocs(query(collection(db, "teaching_assignments"), where("schoolId", "==", userData.schoolId))),
+          getDocs(query(collection(db, "teaching_assignments"), ...tc)),
         ]);
         if (cancelled) return;
         setTeachers(tSnap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<TeacherDoc, "id">) })));

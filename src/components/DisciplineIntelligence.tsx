@@ -19,27 +19,40 @@ const DisciplineIntelligence = () => {
 
   useEffect(() => {
     const schoolId = userData?.schoolId;
+    const branchId = userData?.branchId;
     if (!schoolId) return;
 
     const fetchDisciplineData = async () => {
       try {
-        const snap = await getDocs(query(
-          collection(db, "incidents"),
-          where("schoolId", "==", schoolId),
-          limit(5),
-        ));
-        const dataExists = !snap.empty;
+        const constraints: any[] = [where("schoolId", "==", schoolId)];
+        if (branchId) constraints.push(where("branchId", "==", branchId));
 
-        const mockInput = dataExists ? {
-           logs: [
-             { student: "Zaid", type: "Bullying", severity: "High", date: "2023-10-12", location: "Playground" },
-             { student: "Zaid", type: "Insubordination", severity: "Medium", date: "2023-10-15", location: "Classroom" },
-             { student: "Ali", type: "Vandalism", severity: "Medium", date: "2023-10-18", location: "Playground" }
-           ],
-           historical_incidents_count: 14
+        const [recentSnap, countSnap] = await Promise.all([
+          getDocs(query(collection(db, "incidents"), ...constraints, limit(30))),
+          getDocs(query(collection(db, "incidents"), ...constraints)),
+        ]);
+        const dataExists = !recentSnap.empty;
+
+        const logs = recentSnap.docs.map(d => {
+          const x: any = d.data();
+          const dateVal = x.date
+            || (x.createdAt?.toDate ? x.createdAt.toDate().toISOString().slice(0, 10) : "")
+            || (x.createdAt?.seconds ? new Date(x.createdAt.seconds * 1000).toISOString().slice(0, 10) : "");
+          return {
+            student:  x.studentName || x.student || "Unknown",
+            type:     x.type || x.title || "Incident",
+            severity: x.severity || "Medium",
+            date:     dateVal,
+            location: x.location || "—",
+          };
+        });
+
+        const aiInput = dataExists ? {
+          logs,
+          historical_incidents_count: countSnap.size,
         } : null;
 
-        const result = await AIController.getDisciplineInsights(mockInput);
+        const result = await AIController.getDisciplineInsights(aiInput);
 
         if (result.status === "no_data") {
            setPlaceholderMessage(result.message);
@@ -56,7 +69,7 @@ const DisciplineIntelligence = () => {
       }
     };
     fetchDisciplineData();
-  }, [userData?.schoolId]);
+  }, [userData?.schoolId, userData?.branchId]);
 
   if (!loading && placeholderMessage) {
     return (

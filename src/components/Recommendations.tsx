@@ -18,27 +18,84 @@ const Recommendations = () => {
   const [placeholderMessage, setPlaceholderMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    const schoolId = userData?.schoolId;
+    const branchId = userData?.branchId;
+    if (!schoolId) return;
+
     const fetchRecommendations = async () => {
       try {
-        const constraints: any[] = userData?.schoolId ? [where("schoolId", "==", userData.schoolId)] : [];
-        const snap = await getDocs(query(collection(db, "results"), ...constraints, limit(5)));
+        const constraints: any[] = [where("schoolId", "==", schoolId)];
+        if (branchId) constraints.push(where("branchId", "==", branchId));
+
+        const snap = await getDocs(query(collection(db, "results"), ...constraints, limit(500)));
         const dataExists = !snap.empty;
 
-        // Structured Input Format strictly mimicking the prompt's request requirements
-        const mockInput = dataExists ? {
-           grade: "10",
-           subject_performance: [
-             { subject: "Mathematics", average_score: 61, trend: "declining", weak_topics: ["Geometry", "Trigonometry"] },
-             { subject: "English", average_score: 74, trend: "stable" }
-           ],
-           teacher_stats: [
-             { teacher: "Mr. Khan", subject: "Mathematics", class_average: 61 },
-             { teacher: "Ms. Sara", subject: "English", class_average: 74 }
-           ],
-           risk_students: 4
-        } : null;
+        if (!dataExists) {
+          const result = await AIController.getRecommendations(null);
+          if (result.status === "no_data") setPlaceholderMessage(result.message);
+          else setPlaceholderMessage(result.message || "No data available.");
+          setLoading(false);
+          return;
+        }
 
-        const result = await AIController.getRecommendations(mockInput);
+        const results = snap.docs.map(d => d.data() as any);
+
+        // Aggregate subject performance
+        const subjMap: Record<string, number[]> = {};
+        const teacherMap: Record<string, { subject: string; scores: number[] }> = {};
+        const studentScores: Record<string, number[]> = {};
+        let primaryGrade = "";
+
+        results.forEach(r => {
+          const subject = r.subject || r.subjectName || "General";
+          const score = parseFloat(r.percentage ?? r.score) || 0;
+          if (!subjMap[subject]) subjMap[subject] = [];
+          subjMap[subject].push(score);
+
+          const teacherKey = r.teacherName || r.teacherId;
+          if (teacherKey) {
+            if (!teacherMap[teacherKey]) teacherMap[teacherKey] = { subject, scores: [] };
+            teacherMap[teacherKey].scores.push(score);
+          }
+
+          const sid = r.studentId || r.studentEmail;
+          if (sid) {
+            if (!studentScores[sid]) studentScores[sid] = [];
+            studentScores[sid].push(score);
+          }
+
+          if (!primaryGrade && (r.grade || r.className)) primaryGrade = String(r.grade || r.className);
+        });
+
+        const subject_performance = Object.entries(subjMap).map(([subject, scores]) => {
+          const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+          const recent = scores.slice(-Math.max(5, Math.floor(scores.length / 3)));
+          const earlier = scores.slice(0, Math.max(5, Math.floor(scores.length / 3)));
+          const recentAvg = recent.reduce((a, b) => a + b, 0) / (recent.length || 1);
+          const earlierAvg = earlier.reduce((a, b) => a + b, 0) / (earlier.length || 1);
+          const trend = recentAvg > earlierAvg + 2 ? "improving" : recentAvg < earlierAvg - 2 ? "declining" : "stable";
+          return { subject, average_score: Math.round(avg), trend };
+        });
+
+        const teacher_stats = Object.entries(teacherMap).map(([teacher, v]) => ({
+          teacher,
+          subject: v.subject,
+          class_average: Math.round(v.scores.reduce((a, b) => a + b, 0) / v.scores.length),
+        }));
+
+        const risk_students = Object.values(studentScores).filter(scores => {
+          const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+          return avg < 50;
+        }).length;
+
+        const aiInput = {
+          grade: primaryGrade || "All",
+          subject_performance,
+          teacher_stats,
+          risk_students,
+        };
+
+        const result = await AIController.getRecommendations(aiInput);
 
         if (result.status === "no_data") {
            setPlaceholderMessage(result.message);
@@ -55,7 +112,7 @@ const Recommendations = () => {
       }
     };
     fetchRecommendations();
-  }, []);
+  }, [userData?.schoolId, userData?.branchId]);
 
   if (!loading && placeholderMessage) {
     return (

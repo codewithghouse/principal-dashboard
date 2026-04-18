@@ -71,9 +71,11 @@ const IncidentDetail = ({ incident, onBack }: IncidentDetailProps) => {
   // ── Fetch related incidents (same student, different doc) ──
   useEffect(() => {
     if (!userData?.schoolId || !localInc?.student?.name) return;
+    const scopeC: any[] = [where('schoolId', '==', userData.schoolId)];
+    if (userData.branchId) scopeC.push(where('branchId', '==', userData.branchId));
     getDocs(query(
       collection(db, 'incidents'),
-      where('schoolId', '==', userData.schoolId),
+      ...scopeC,
       where('student.name', '==', localInc.student.name),
       limit(6)
     )).then(snap => {
@@ -81,7 +83,7 @@ const IncidentDetail = ({ incident, onBack }: IncidentDetailProps) => {
         snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.id !== incident.id)
       );
     }).catch(() => {});
-  }, [userData?.schoolId, localInc?.student?.name, incident.id]);
+  }, [userData?.schoolId, userData?.branchId, localInc?.student?.name, incident.id]);
 
   const actorName = userData?.name || 'Principal';
   const now       = () => new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });

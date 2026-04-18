@@ -623,11 +623,15 @@ function UsersPermissionsTab({ schoolId, userData }: any) {
     staff:     "bg-amber-50 text-amber-700",
   };
 
+  const branchId = userData?.branchId;
+
   useEffect(() => {
     if (!schoolId) return;
+    const scopeC: any[] = [where("schoolId", "==", schoolId)];
+    if (branchId) scopeC.push(where("branchId", "==", branchId));
     Promise.all([
-      getDocs(query(collection(db, "principals"), where("schoolId", "==", schoolId))),
-      getDocs(query(collection(db, "teachers"),   where("schoolId", "==", schoolId))),
+      getDocs(query(collection(db, "principals"), ...scopeC)),
+      getDocs(query(collection(db, "teachers"),   ...scopeC)),
     ]).then(([pSnap, tSnap]) => {
       const p = pSnap.docs.map(d => ({ id: d.id, ...d.data(), _col: "principals" }));
       const t = tSnap.docs.map(d => ({ id: d.id, ...d.data(), _col: "teachers"   }));
@@ -637,7 +641,7 @@ function UsersPermissionsTab({ schoolId, userData }: any) {
       setUsers(all);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [schoolId]);
+  }, [schoolId, branchId]);
 
   const handleAdd = async () => {
     if (!newName.trim() || !newEmail.trim()) return toast.error("Name and email required.");
@@ -649,6 +653,7 @@ function UsersPermissionsTab({ schoolId, userData }: any) {
         email:    newEmail.trim(),
         role:     newRole,
         schoolId,
+        branchId: branchId || "",
         status:   "Active",
         createdAt: serverTimestamp(),
       });
