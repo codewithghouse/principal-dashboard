@@ -10,6 +10,7 @@ import {
   addDoc, updateDoc, doc, serverTimestamp, deleteDoc,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
+import { sendDeoApprovedEmail, sendDeoRejectedEmail } from "@/lib/resend";
 import { toast } from "sonner";
 
 // ── Allowed pages config — keep in sync with principal-dashboard sidebar ─────
@@ -83,7 +84,12 @@ const AccessRequests = () => {
     const unsubDeo = onSnapshot(
       query(collection(db, "data_entry_staff"), where("schoolId", "==", userData.schoolId)),
       snap => setDeoDocs(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-      () => {}
+      err => {
+        console.warn("[AccessRequests] DEO snapshot error:", err.code, err.message);
+        if (err.code === "permission-denied") {
+          toast.error("Missing permission to read staff list.");
+        }
+      }
     );
     return () => { unsubReq(); unsubDeo(); };
   }, [userData?.schoolId]);
@@ -201,36 +207,19 @@ const AccessRequests = () => {
         allowedPages,
       });
 
-      // 3. Email DEO (best-effort)
-      fetch("/api/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: approvingReq.email,
-          subject: `Your access has been approved — ${userData?.schoolName || "School Dashboard"}`,
-          html: `
-            <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;">
-              <div style="background:#1e3a8a;padding:20px 24px;border-radius:8px 8px 0 0;margin:-24px -24px 24px;">
-                <h2 style="color:white;margin:0;">Access Approved!</h2>
-                <p style="color:#93c5fd;margin:4px 0 0;font-size:13px;">${userData?.schoolName || "School Dashboard"}</p>
-              </div>
-              <p style="color:#334155;">Hi <strong>${approvingReq.name}</strong>,</p>
-              <p style="color:#64748b;">Your request for Data Entry access has been <strong style="color:#16a34a;">approved</strong> by the principal.</p>
-              <p style="color:#64748b;font-weight:bold;">You now have access to:</p>
-              <ul style="color:#334155;">${allowedPages.map(p => {
-                const pg = ALL_PAGES.find(x => x.path === p);
-                return `<li style="padding:4px 0;">${pg?.label || p}</li>`;
-              }).join("")}</ul>
-              <div style="margin:28px 0;text-align:center;">
-                <a href="${window.location.origin}" style="background:#1e3a8a;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">
-                  Login Now with Google
-                </a>
-              </div>
-              <p style="color:#94a3b8;font-size:12px;">Use your Google account (${approvingReq.email}) to sign in.</p>
-            </div>
-          `,
+      // 3. Email DEO via server-side template (best-effort — fire and forget).
+      //    Sending structured fields — server escapes + renders the HTML.
+      sendDeoApprovedEmail({
+        to: approvingReq.email,
+        name: approvingReq.name,
+        schoolName: userData?.schoolName || "School Dashboard",
+        subject: `Your access has been approved — ${userData?.schoolName || "School Dashboard"}`,
+        allowedPages: allowedPages.map(p => {
+          const pg = ALL_PAGES.find(x => x.path === p);
+          return { label: pg?.label || p, path: p };
         }),
-      }).catch(() => {});
+        loginUrl: window.location.origin,
+      }).catch(err => console.warn("[approve email] failed:", err?.message));
 
       toast.success(`${approvingReq.name} approved successfully!`);
       setApprovingReq(null);
@@ -253,21 +242,14 @@ const AccessRequests = () => {
         reviewedAt:      serverTimestamp(),
       });
 
-      // Email DEO
-      fetch("/api/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: rejectingReq.email,
-          subject: `Access Request Update — ${userData?.schoolName || "School Dashboard"}`,
-          html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;">
-            <h2 style="color:#1e3a8a;">Access Request Decision</h2>
-            <p>Hi <strong>${rejectingReq.name}</strong>, your access request has been <strong style="color:#dc2626;">declined</strong>.</p>
-            ${rejectReason ? `<p style="color:#64748b;">Reason: ${rejectReason}</p>` : ""}
-            <p style="color:#94a3b8;font-size:13px;">Contact your principal for more information.</p>
-          </div>`,
-        }),
-      }).catch(() => {});
+      // Email DEO via server-side template (best-effort).
+      sendDeoRejectedEmail({
+        to: rejectingReq.email,
+        name: rejectingReq.name,
+        schoolName: userData?.schoolName || "School Dashboard",
+        subject: `Access Request Update — ${userData?.schoolName || "School Dashboard"}`,
+        rejectReason: rejectReason.trim(),
+      }).catch(err => console.warn("[reject email] failed:", err?.message));
 
       toast.success("Request rejected.");
       setRejectingReq(null);

@@ -279,20 +279,30 @@ const StudentProfile = ({ student, onBack }: Props) => {
   };
 
   const handleGenerateReport = () => {
-    const w = window.open("", "_blank");
-    if (!w) { toast.error("Allow pop-ups to generate the report."); return; }
-    const subjectRows = subjectAvgs.map(s =>
-      `<tr><td>${s.subject}</td><td style="color:${s.avg >= 60 ? "#16a34a" : s.avg >= 40 ? "#d97706" : "#dc2626"};font-weight:bold">${s.avg}%</td></tr>`
-    ).join("");
-    const attRows = attRecords.slice(0, 20).map(r =>
-      `<tr><td>${r.date || "—"}</td><td>${r.className || "—"}</td><td style="color:${r.status === "present" ? "#16a34a" : r.status === "absent" ? "#dc2626" : "#d97706"};font-weight:bold;text-transform:capitalize">${r.status}</td></tr>`
-    ).join("");
-    const incRows = incidents.map(inc =>
-      `<tr><td>${inc.date || (inc.createdAt?.seconds ? new Date(inc.createdAt.seconds * 1000).toLocaleDateString() : "—")}</td><td>${inc.title || inc.type || "Incident"}</td><td>${inc.severity || "—"}</td></tr>`
-    ).join("");
+    // HTML escaping — blocks stored XSS from any Firestore-sourced field
+    // (student name, subject, incident title, etc.).
+    const esc = (v: unknown) =>
+      String(v ?? "").replace(/[&<>"']/g, (c) => (
+        { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!
+      ));
 
-    w.document.write(`
-      <!DOCTYPE html><html><head><title>Progress Report — ${name}</title>
+    const subjectRows = subjectAvgs.map((s: any) => {
+      const color = s.avg >= 60 ? "#16a34a" : s.avg >= 40 ? "#d97706" : "#dc2626";
+      return `<tr><td>${esc(s.subject)}</td><td style="color:${color};font-weight:bold">${esc(s.avg)}%</td></tr>`;
+    }).join("");
+
+    const attRows = attRecords.slice(0, 20).map((r: any) => {
+      const color = r.status === "present" ? "#16a34a" : r.status === "absent" ? "#dc2626" : "#d97706";
+      return `<tr><td>${esc(r.date || "—")}</td><td>${esc(r.className || "—")}</td><td style="color:${color};font-weight:bold;text-transform:capitalize">${esc(r.status)}</td></tr>`;
+    }).join("");
+
+    const incRows = incidents.map((inc: any) => {
+      const date = inc.date || (inc.createdAt?.seconds ? new Date(inc.createdAt.seconds * 1000).toLocaleDateString() : "—");
+      return `<tr><td>${esc(date)}</td><td>${esc(inc.title || inc.type || "Incident")}</td><td>${esc(inc.severity || "—")}</td></tr>`;
+    }).join("");
+
+    const html = `
+      <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Progress Report — ${esc(name)}</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; padding: 48px; max-width: 820px; margin: auto; color: #1e293b; }
@@ -319,22 +329,22 @@ const StudentProfile = ({ student, onBack }: Props) => {
       <div class="header">
         <div>
           <div class="title">Student Progress Report</div>
-          <h1>${name}</h1>
-          <div class="sub">${student.gradeDisplay || student.className || "—"} &nbsp;•&nbsp; ${studentEmail || "No email"}</div>
+          <h1>${esc(name)}</h1>
+          <div class="sub">${esc(student.gradeDisplay || student.className || "—")} &nbsp;•&nbsp; ${esc(studentEmail || "No email")}</div>
         </div>
         <div style="text-align:right">
           ${isAtRisk ? '<span class="badge risk">AT RISK</span>' : '<span class="badge ok">On Track</span>'}
-          <div style="font-size:12px;color:#94a3b8;margin-top:8px;">Generated ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:8px;">Generated ${esc(new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }))}</div>
         </div>
       </div>
 
       <section>
         <h2>Attendance Summary</h2>
         <div class="stats">
-          <div class="stat"><div class="stat-label">Total Days</div><div class="stat-value">${totalAtt}</div></div>
-          <div class="stat"><div class="stat-label">Present</div><div class="stat-value" style="color:#16a34a">${presentCount}</div></div>
-          <div class="stat"><div class="stat-label">Absent</div><div class="stat-value" style="color:#dc2626">${absentCount}</div></div>
-          <div class="stat"><div class="stat-label">Percentage</div><div class="stat-value" style="color:${attPct >= 75 ? "#16a34a" : "#dc2626"}">${totalAtt > 0 ? attPct + "%" : "—"}</div></div>
+          <div class="stat"><div class="stat-label">Total Days</div><div class="stat-value">${esc(totalAtt)}</div></div>
+          <div class="stat"><div class="stat-label">Present</div><div class="stat-value" style="color:#16a34a">${esc(presentCount)}</div></div>
+          <div class="stat"><div class="stat-label">Absent</div><div class="stat-value" style="color:#dc2626">${esc(absentCount)}</div></div>
+          <div class="stat"><div class="stat-label">Percentage</div><div class="stat-value" style="color:${attPct >= 75 ? "#16a34a" : "#dc2626"}">${totalAtt > 0 ? esc(attPct) + "%" : "—"}</div></div>
         </div>
         ${attRows ? `<table><thead><tr><th>Date</th><th>Class</th><th>Status</th></tr></thead><tbody>${attRows}</tbody></table>` : "<p style='color:#94a3b8;font-size:13px'>No attendance records.</p>"}
       </section>
@@ -356,9 +366,19 @@ const StudentProfile = ({ student, onBack }: Props) => {
         <span>Confidential — School Use Only</span>
       </div>
       </body></html>
-    `);
-    w.document.close();
-    setTimeout(() => w.print(), 500);
+    `;
+
+    // Render in an opaque-origin popup so any residual XSS cannot reach the
+    // parent window's Firebase Auth storage.
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    if (!w) {
+      URL.revokeObjectURL(url);
+      toast.error("Allow pop-ups to generate the report.");
+      return;
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
   };
 
   const handleSaveNote = async () => {

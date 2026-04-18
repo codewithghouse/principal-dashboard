@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Link, Fingerprint, Activity, Loader2, Sparkles, AlertCircle, ShieldAlert } from "lucide-react";
 import { AIController } from "@/ai/controller/ai-controller";
 import { db } from "@/lib/firebase";
-import { collection, query, getDocs, limit } from "firebase/firestore";
+import { collection, query, getDocs, limit, where } from "firebase/firestore";
+import { useAuth } from "@/lib/AuthContext";
 
 interface DisciplineData {
   behavioral_patterns: { student: string; pattern_detected: string; severity: string }[];
@@ -11,14 +12,22 @@ interface DisciplineData {
 }
 
 const DisciplineIntelligence = () => {
+  const { userData } = useAuth();
   const [data, setData] = useState<DisciplineData | null>(null);
   const [loading, setLoading] = useState(true);
   const [placeholderMessage, setPlaceholderMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    const schoolId = userData?.schoolId;
+    if (!schoolId) return;
+
     const fetchDisciplineData = async () => {
       try {
-        const snap = await getDocs(query(collection(db, "incidents"), limit(5)));
+        const snap = await getDocs(query(
+          collection(db, "incidents"),
+          where("schoolId", "==", schoolId),
+          limit(5),
+        ));
         const dataExists = !snap.empty;
 
         const mockInput = dataExists ? {
@@ -47,7 +56,7 @@ const DisciplineIntelligence = () => {
       }
     };
     fetchDisciplineData();
-  }, []);
+  }, [userData?.schoolId]);
 
   if (!loading && placeholderMessage) {
     return (

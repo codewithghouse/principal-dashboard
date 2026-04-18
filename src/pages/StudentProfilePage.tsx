@@ -4,6 +4,7 @@ import { ArrowLeft, Printer, MessageSquare, AlertCircle, Loader2, ChevronLeft, C
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, Radar } from "recharts";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useAuth } from "@/lib/AuthContext";
 
 // ── Tokens ───────────────────────────────────────────────────────────────────
 const T = {
@@ -79,6 +80,7 @@ const DetailLink = () => <span style={{ fontSize: 11, color: T.blue, fontWeight:
 // ═══════════════════════════════════════════════════════════════════════════════
 const StudentProfilePage = () => {
   const { studentId } = useParams<{ studentId: string }>();
+  const { userData } = useAuth();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -95,6 +97,9 @@ const StudentProfilePage = () => {
   // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!studentId) { setLoading(false); return; }
+    const schoolId = userData?.schoolId;
+    if (!schoolId) return;
+
     const run = async () => {
       setLoading(true);
       try {
@@ -103,8 +108,19 @@ const StudentProfilePage = () => {
         const sd = { id: snap.id, ...snap.data() } as any;
         setStudent(sd);
         const email = (sd.email || sd.studentEmail || "").toLowerCase();
-        const byId = (col: string) => getDocs(query(collection(db, col), where("studentId", "==", studentId)));
-        const byEmail = (col: string) => email ? getDocs(query(collection(db, col), where("studentEmail", "==", email))) : Promise.resolve(null as any);
+        // Every list query MUST include schoolId filter so Firestore rules
+        // (inSameSchool) accept it. studentId/email alone isn't enough —
+        // the rule engine requires an explicit schoolId constraint.
+        const byId = (col: string) => getDocs(query(
+          collection(db, col),
+          where("schoolId", "==", schoolId),
+          where("studentId", "==", studentId),
+        ));
+        const byEmail = (col: string) => email ? getDocs(query(
+          collection(db, col),
+          where("schoolId", "==", schoolId),
+          where("studentEmail", "==", email),
+        )) : Promise.resolve(null as any);
         const merge = (a: any, b: any) => { const l: any[] = []; if (a) a.docs.forEach((d: any) => l.push({ id: d.id, ...d.data() })); if (b) b.docs.forEach((d: any) => { if (!l.find(x => x.id === d.id)) l.push({ id: d.id, ...d.data() }); }); return l; };
 
         const [aI, aE, sI, sE, rI, rE, subI, subE, inc, pn, iv] = await Promise.all([
@@ -123,14 +139,18 @@ const StudentProfilePage = () => {
 
         const classId = sd.classId || merge(await byId("enrollments"), await byEmail("enrollments"))[0]?.classId;
         if (classId) {
-          const asSnap = await getDocs(query(collection(db, "assignments"), where("classId", "==", classId)));
+          const asSnap = await getDocs(query(
+            collection(db, "assignments"),
+            where("schoolId", "==", schoolId),
+            where("classId", "==", classId),
+          ));
           setAssignments(asSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         }
       } catch (e) { console.error("StudentProfile fetch error:", e); }
       finally { setLoading(false); }
     };
     run();
-  }, [studentId]);
+  }, [studentId, userData?.schoolId]);
 
   // ── Metrics ────────────────────────────────────────────────────────────────
   const m = useMemo(() => {

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Mail, MessageSquare, Network, Radio, Loader2, Sparkles, AlertCircle, Clock } from "lucide-react";
 import { AIController } from "@/ai/controller/ai-controller";
 import { db } from "@/lib/firebase";
-import { collection, query, getDocs, limit } from "firebase/firestore";
+import { collection, query, getDocs, limit, where } from "firebase/firestore";
+import { useAuth } from "@/lib/AuthContext";
 
 interface CommData {
   message_classification: { student: string; category: string; summary: string }[];
@@ -12,14 +13,22 @@ interface CommData {
 }
 
 const CommunicationIntelligence = () => {
+  const { userData } = useAuth();
   const [data, setData] = useState<CommData | null>(null);
   const [loading, setLoading] = useState(true);
   const [placeholderMessage, setPlaceholderMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    const schoolId = userData?.schoolId;
+    if (!schoolId) return;
+
     const fetchCommData = async () => {
       try {
-        const snap = await getDocs(query(collection(db, "communications"), limit(5)));
+        const snap = await getDocs(query(
+          collection(db, "communications"),
+          where("schoolId", "==", schoolId),
+          limit(5),
+        ));
         const dataExists = !snap.empty;
 
         const mockInput = dataExists ? {
@@ -49,7 +58,7 @@ const CommunicationIntelligence = () => {
       }
     };
     fetchCommData();
-  }, []);
+  }, [userData?.schoolId]);
 
   if (!loading && placeholderMessage) {
     return (

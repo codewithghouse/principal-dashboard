@@ -50,13 +50,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const userEmail = currentUser.email.toLowerCase().trim();
 
-          // Sync custom claims first so subsequent reads pass through Firestore rules.
-          await syncClaimsAndRefreshToken(currentUser);
+          // Sync custom claims first — Cloud Function returns chosen schoolId.
+          // Principals doc has public `get` (RequestAccess page needs school
+          // name lookup), but `list` requires inSameSchool() — so we filter
+          // by claimSchoolId when available.
+          const synced = await syncClaimsAndRefreshToken(currentUser);
+          const claimSchoolId = synced?.schoolId || null;
 
-          // 3. Fetch principal by email (server-side filter — O(1) at any scale)
-          const snap = await getDocs(
-            query(collection(db, 'principals'), where('email', '==', userEmail))
-          );
+          // 3. Fetch principal by email. If claims already set schoolId, scope
+          //    the query; otherwise fall through (first-time login race).
+          const pQuery = claimSchoolId
+            ? query(
+                collection(db, 'principals'),
+                where('schoolId', '==', claimSchoolId),
+                where('email', '==', userEmail),
+              )
+            : query(collection(db, 'principals'), where('email', '==', userEmail));
+          const snap = await getDocs(pQuery);
           const matched = snap.docs[0] ?? null;
 
           if (matched) {
@@ -76,13 +86,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUserData({ ...data, id: matched.id, role: 'principal' });
             setError(null);
           } else {
-            // Not a principal — check if they are an approved data entry operator
-            const deoSnap = await getDocs(
-              query(collection(db, 'data_entry_staff'),
-                where('email', '==', userEmail),
-                where('status', '==', 'approved')
-              )
-            );
+            // Not a principal — check if they are an approved data entry operator.
+            // Same schoolId-filter pattern: rules require inSameSchool() on list.
+            const deoQuery = claimSchoolId
+              ? query(collection(db, 'data_entry_staff'),
+                  where('schoolId', '==', claimSchoolId),
+                  where('email', '==', userEmail),
+                  where('status', '==', 'approved')
+                )
+              : query(collection(db, 'data_entry_staff'),
+                  where('email', '==', userEmail),
+                  where('status', '==', 'approved')
+                );
+            const deoSnap = await getDocs(deoQuery);
 
             if (!deoSnap.empty) {
               const deoDoc = deoSnap.docs[0];
@@ -112,12 +128,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 () => { /* silent fail — keep cached data */ }
               );
             } else {
-              // Check if pending (to show a better error message)
-              const pendingSnap = await getDocs(
-                query(collection(db, 'data_entry_staff'),
-                  where('email', '==', userEmail)
-                )
-              );
+              // Check if pending (to show a better error message).
+              const pendingQuery = claimSchoolId
+                ? query(collection(db, 'data_entry_staff'),
+                    where('schoolId', '==', claimSchoolId),
+                    where('email', '==', userEmail),
+                  )
+                : query(collection(db, 'data_entry_staff'),
+                    where('email', '==', userEmail),
+                  );
+              const pendingSnap = await getDocs(pendingQuery);
               setUser(currentUser);
               setUserData(null);
               setError(

@@ -1,47 +1,65 @@
-// api/ai-insights.js — Vercel serverless function
-// OpenAI key lives ONLY here (process.env.OPENAI_API_KEY).
-// Client code sends { instructions, data } — key is never exposed.
+// api/ai-insights.js — Vercel serverless. Hardened 2026-04-18.
+//
+// OpenAI proxy for principal-dashboard AI insights. Requires auth + role gate
+// + input size caps + rate limiting to prevent quota burn.
+import { applyCors, requireAuth, requireRole, boundString, rateLimit } from "./_auth.js";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 const MODEL      = "gpt-4.1-mini";
 
+const MAX_INSTRUCTIONS_CHARS = 4000;
+const MAX_DATA_CHARS         = 40_000;
+
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
+  applyCors(req, res);
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST")   return res.status(405).json({ error: "Method not allowed" });
+
+  const decoded = await requireAuth(req, res);
+  if (!decoded) return;
+  if (!requireRole(decoded, ["principal", "owner"], res)) return;
+
+  // Aggressive rate limit — OpenAI calls are expensive.
+  if (!rateLimit(`ai-insights:${decoded.uid}`, 10)) {
+    return res.status(429).json({ error: "Too many AI requests. Try again in a minute." });
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    console.error("[AI] OPENAI_API_KEY not set in Vercel environment variables.");
-    return res.status(500).json({ error: "AI service not configured." });
+  if (!apiKey) return res.status(500).json({ error: "AI service not configured." });
+
+  const { instructions, data } = req.body || {};
+  if (typeof instructions !== "string" || !instructions) {
+    return res.status(400).json({ error: "instructions is required." });
+  }
+  if (data === undefined || data === null) {
+    return res.status(400).json({ error: "data is required." });
   }
 
-  const { instructions, data } = req.body;
-  if (!instructions || data === undefined) {
-    return res.status(400).json({ error: "instructions and data are required." });
+  const sInstructions = boundString(instructions, MAX_INSTRUCTIONS_CHARS);
+  const dataJson = JSON.stringify(data);
+  if (dataJson.length > MAX_DATA_CHARS) {
+    return res.status(400).json({ error: "data payload too large." });
   }
-
-  console.log(`[AI] Request — model: ${MODEL}, data size: ${JSON.stringify(data).length} chars`);
 
   try {
     const response = await fetch(OPENAI_URL, {
       method: "POST",
       headers: {
         "Content-Type":  "application/json",
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization:   `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model:        MODEL,
-        instructions: instructions,
-        input:        `Analyze the academic dataset and return results strictly in JSON format. Data: ${JSON.stringify(data)}`,
+        instructions: sInstructions,
+        input:        `Analyze the academic dataset and return results strictly in JSON format. Data: ${dataJson}`,
         text:         { format: { type: "json_object" } },
       }),
     });
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      console.error("[AI] OpenAI error:", err);
-      return res.status(502).json({ error: err.error?.message || `OpenAI error ${response.status}` });
+      console.error("[ai-insights] OpenAI error:", response.status, err?.error?.message);
+      return res.status(502).json({ error: "AI provider error." });
     }
 
     const result = await response.json();
@@ -51,14 +69,23 @@ export default async function handler(req, res) {
       result.choices?.[0]?.message?.content;
 
     if (!rawContent) {
-      return res.status(502).json({ error: "Empty response from AI." });
+      return res.status(502).json({ error: "Empty AI response." });
     }
 
-    const parsed = typeof rawContent === "string" ? JSON.parse(rawContent) : rawContent;
-    console.log("[AI] Success.");
+    let parsed;
+    if (typeof rawContent === "string") {
+      try { parsed = JSON.parse(rawContent); }
+      catch {
+        console.warn("[ai-insights] Malformed JSON (first 500):", rawContent.slice(0, 500));
+        return res.status(502).json({ error: "AI returned invalid JSON." });
+      }
+    } else {
+      parsed = rawContent;
+    }
+
     return res.status(200).json(parsed);
-  } catch (e) {
-    console.error("[AI] Handler error:", e);
+  } catch (err) {
+    console.error("[ai-insights] Handler error:", err);
     return res.status(500).json({ error: "AI processing failed." });
   }
 }

@@ -1,4 +1,4 @@
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 /**
@@ -25,10 +25,15 @@ interface AIInsightResponse {
 
 // ── Internal proxy call ────────────────────────────────────────────────────────
 // All requests go through the Vercel serverless function which holds the key.
+// Sends the caller's Firebase ID token so the server can verify identity + role.
 async function callAIProxy(data: any, instructions: string): Promise<AIInsightResponse> {
+  const token = await auth.currentUser?.getIdToken();
   const response = await fetch("/api/ai-insights", {
     method:  "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body:    JSON.stringify({ data, instructions }),
   });
 

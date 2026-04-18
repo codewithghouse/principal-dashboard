@@ -3,7 +3,8 @@ import { Activity, BarChart2, Calendar, Loader2, Sparkles } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Cell, AreaChart, Area, CartesianGrid } from "recharts";
 import { AIController } from "@/ai/controller/ai-controller";
 import { db } from "@/lib/firebase";
-import { collection, query, getDocs, limit } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { useAuth } from "@/lib/AuthContext";
 
 interface AnalyticsData {
   performance_trend?: string;
@@ -29,15 +30,22 @@ const monthlyTrendData = [
 ];
 
 const AcademicAnalytics = () => {
+  const { userData } = useAuth();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [placeholderMessage, setPlaceholderMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    const schoolId = userData?.schoolId;
+    if (!schoolId) return;
+
     const fetchAnalytics = async () => {
       try {
-        // Fetch all results for the school/branch (Principal context)
-        const snap = await getDocs(collection(db, "results"));
+        // Fetch results only for this principal's school (tenant-scoped).
+        const snap = await getDocs(query(
+          collection(db, "results"),
+          where("schoolId", "==", schoolId),
+        ));
         if (snap.empty) {
            setPlaceholderMessage("No academic records found for this institution.");
            setLoading(false);
@@ -114,7 +122,7 @@ const AcademicAnalytics = () => {
     };
     
     fetchAnalytics();
-  }, []);
+  }, [userData?.schoolId]);
 
   if (!loading && placeholderMessage) {
      return (
