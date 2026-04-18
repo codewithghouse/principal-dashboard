@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Filter, Download, MessageSquare, FileText } from 'lucide-react';
+import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import { db } from "@/lib/firebase";
 import { collection, query, onSnapshot, where, getDocs } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
@@ -172,27 +173,28 @@ const ClassAttendanceDetail = ({ className, onBack }: ClassAttendanceDetailProps
   };
 
   const exportRegister = () => {
-    const w = window.open('', '_blank');
-    if (!w) return;
-    const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-    w.document.write(`<html><head><title>Attendance Register – ${className}</title>
-    <style>
-      body{font-family:Arial,sans-serif;padding:40px;color:#1e293b}
-      h1{color:#1e3a8a}p{color:#64748b;margin-bottom:20px}
-      table{width:100%;border-collapse:collapse;margin-top:16px}
-      th{background:#1e3a8a;color:#fff;padding:10px 14px;text-align:left;font-size:12px}
-      td{padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:13px}
-    </style></head><body>
-      <h1>Attendance Register — ${className}</h1>
-      <p>Generated: ${dateStr} | Monthly Avg: ${classInfo.monthlyAvg}% | Students: ${classInfo.totalStudents} | Chronic: ${classInfo.chronicCount}</p>
-      <table><thead><tr>
-        <th>Student</th><th>Total Days</th><th>Present</th><th>Absent</th><th>%</th><th>Status</th><th>Parent Notified</th>
-      </tr></thead><tbody>
-        ${students.map(s => `<tr><td>${s.name}</td><td>${s.totalDays}</td><td>${s.present}</td><td>${s.absent}</td><td>${s.pct}</td><td>${s.status}</td><td>${s.notified}</td></tr>`).join('')}
-      </tbody></table>
-    </body></html>`);
-    w.document.close();
-    setTimeout(() => w.print(), 500);
+    const html = buildReport({
+      title: `Attendance Register — ${className}`,
+      subtitle: `Teacher: ${classInfo.teacherName} · ${classInfo.totalStudents} Students`,
+      badge: "Attendance",
+      heroStats: [
+        { label: "Monthly Avg",      value: `${classInfo.monthlyAvg}%`, color: classInfo.monthlyAvg >= 85 ? "#4ade80" : "#fbbf24" },
+        { label: "Total Students",   value: classInfo.totalStudents },
+        { label: "Chronic Absentees", value: classInfo.chronicCount, color: classInfo.chronicCount > 0 ? "#f87171" : "#4ade80" },
+      ],
+      sections: [
+        {
+          title: "Student-wise Attendance",
+          type: "table",
+          headers: ["Student", "Total Days", "Present", "Absent", "%", "Status", "Parent Notified"],
+          rows: students.map(s => ({
+            cells: [s.name, s.totalDays, s.present, s.absent, s.pct, s.status, s.notified],
+            highlight: s.pctVal < 75,
+          })),
+        },
+      ],
+    });
+    openReportWindow(html);
   };
 
   if (loading) {

@@ -34,7 +34,7 @@ export default async function handler(req, res) {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        from: 'EduIntellect <invite@edulent.dgion.com>',
+        from: 'Edullent <invite@edulent.dgion.com>',
         to,
         subject,
         html,

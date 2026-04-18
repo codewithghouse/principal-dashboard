@@ -403,7 +403,7 @@ const Students = () => {
                 html: `
                   <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
                     <div style="background:#1e3a8a;padding:24px 28px;">
-                      <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">EDUINTELLECT</h1>
+                      <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">EDULLENT</h1>
                       <p style="color:#bfdbfe;margin:4px 0 0;font-size:13px;">Student Portal Invitation</p>
                     </div>
                     <div style="padding:28px;background:#fff;">
@@ -422,7 +422,7 @@ const Students = () => {
                       </div>
                     </div>
                     <div style="background:#f1f5f9;padding:14px 28px;text-align:center;">
-                      <p style="color:#94a3b8;font-size:11px;margin:0;">Powered by EduIntellect Cloud Architecture</p>
+                      <p style="color:#94a3b8;font-size:11px;margin:0;">Powered by Edullent Cloud Architecture</p>
                     </div>
                   </div>
                 `,

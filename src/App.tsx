@@ -27,13 +27,18 @@ import Reports from "./pages/Reports";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 import TeacherPerformance from "./pages/TeacherPerformance";
+import TeacherLeaderboard from "./pages/TeacherLeaderboard";
 import ExamStructure from "./pages/ExamStructure";
 import TimetableSetup from "./pages/TimetableSetup";
 import AccessRequests from "./pages/AccessRequests";
 import StudentProfilePage from "./pages/StudentProfilePage";
+import StudentIntelligence from "./pages/StudentIntelligence";
+import FeeStructure from "./pages/FeeStructure";
+import Syllabus from "./pages/Syllabus";
 
-// Pages data entry operators are allowed to navigate to
-const DEO_ALLOWED = ["/students", "/attendance", "/assignments", "/exams", "/teacher-notes", "/classes"];
+// Legacy fallback for very old DEO records missing `allowedPages` field.
+// Normal DEOs use `userData.allowedPages` which the principal sets in Staff Access.
+const DEO_ALLOWED = ["/students", "/attendance", "/assignments", "/exams", "/teacher-notes", "/classes", "/fee-structure"];
 
 const queryClient = new QueryClient();
 
@@ -91,10 +96,12 @@ const AppRoutes = () => {
           <Route path="/"                     element={<Dashboard />} />
           <Route path="/students"             element={<Students />} />
           <Route path="/students/:studentId"  element={<StudentProfilePage />} />
+          <Route path="/student-intelligence" element={<StudentIntelligence />} />
           <Route path="/risk-students"        element={<RiskStudents />} />
           <Route path="/classes"              element={<ClassesSections />} />
           <Route path="/teachers"             element={<Teachers />} />
           <Route path="/academics"            element={<Academics />} />
+          <Route path="/syllabus"             element={<Syllabus />} />
           <Route path="/attendance"           element={<Attendance />} />
           <Route path="/discipline"           element={<Discipline />} />
           <Route path="/parent-communication" element={<ParentCommunication />} />
@@ -104,9 +111,11 @@ const AppRoutes = () => {
           <Route path="/reports"              element={<Reports />} />
           <Route path="/settings"             element={<SettingsPage />} />
           <Route path="/teacher-performance"  element={<TeacherPerformance />} />
+          <Route path="/teacher-leaderboard"  element={<TeacherLeaderboard />} />
           <Route path="/exam-structure"       element={<ExamStructure />} />
           <Route path="/timetable"            element={<TimetableSetup />} />
           <Route path="/access-requests"      element={<AccessRequests />} />
+          <Route path="/fee-structure"        element={<FeeStructure />} />
           <Route path="/request-access"       element={<RequestAccess />} />
           <Route path="*"                     element={<NotFound />} />
         </Routes>

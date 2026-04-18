@@ -4,6 +4,7 @@ import {
   ArrowRight, FileText, GraduationCap, CalendarCheck,
   Loader2, Send, TrendingUp, TrendingDown, X, Users,
 } from "lucide-react";
+import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import SubjectAnalysis from "@/components/SubjectAnalysis";
 import { useAuth } from "@/lib/AuthContext";
@@ -399,23 +400,28 @@ const Academics = () => {
         </button>
         <button
           onClick={() => {
-            const w = window.open("", "_blank");
-            if (!w) return;
-            w.document.write(`
-              <html><head><title>Academic Report</title>
-              <style>body{font-family:Arial,sans-serif;padding:40px;color:#1e293b}h1{color:#1e3a8a}
-              table{width:100%;border-collapse:collapse;margin:16px 0}
-              th{background:#1e3a8a;color:white;padding:10px;text-align:left;font-size:12px}
-              td{padding:10px;border-bottom:1px solid #f1f5f9;font-size:13px}</style></head><body>
-              <h1>Academic Performance Report</h1>
-              <p>Generated: ${new Date().toLocaleString()}</p>
-              <h2>Subject-wise Performance</h2>
-              <table><thead><tr><th>Subject</th><th>Average</th><th>Status</th><th>Weak Sections</th></tr></thead>
-              <tbody>${subjects.map(s => `<tr><td>${s.name}</td><td>${s.avg}</td><td>${s.status}</td><td>${s.weakSections}</td></tr>`).join("")}</tbody>
-              </table>
-              </body></html>`);
-            w.document.close();
-            setTimeout(() => w.print(), 500);
+            const html = buildReport({
+              title: "Academic Performance Report",
+              badge: "Academics",
+              heroStats: [
+                { label: "Subjects Tracked", value: subjects.length },
+                { label: "Weak Subjects",    value: subjects.filter(s => s.status === "Weak").length,    color: "#f87171" },
+                { label: "Good Subjects",    value: subjects.filter(s => s.status === "Good").length,    color: "#4ade80" },
+                { label: "Average Subjects", value: subjects.filter(s => s.status === "Average").length, color: "#fbbf24" },
+              ],
+              sections: [
+                {
+                  title: "Subject-wise Performance",
+                  type: "table",
+                  headers: ["Subject", "Average", "Status", "Weak Sections"],
+                  rows: subjects.map(s => ({
+                    cells: [s.name, s.avg, s.status, s.weakSections],
+                    highlight: s.status === "Weak",
+                  })),
+                },
+              ],
+            });
+            openReportWindow(html);
           }}
           className="flex items-center gap-2 px-5 py-2.5 border border-border rounded-xl text-sm font-bold text-foreground hover:bg-secondary transition-colors"
         >

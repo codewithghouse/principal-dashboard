@@ -3,6 +3,7 @@ import {
   ChevronLeft, Download, TrendingUp, TrendingDown,
   Loader2, User, Users, Printer,
 } from "lucide-react";
+import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
@@ -192,26 +193,47 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
 
   // ── export PDF ─────────────────────────────────────────────────────────────
   const handleExportPDF = () => {
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(`
-      <html><head><title>${subject.name} Analysis</title>
-      <style>body{font-family:Arial,sans-serif;padding:40px;color:#1e293b}h1{color:#1e3a8a}
-      table{width:100%;border-collapse:collapse;margin:16px 0}
-      th{background:#1e3a8a;color:white;padding:10px;text-align:left;font-size:12px}
-      td{padding:10px;border-bottom:1px solid #f1f5f9;font-size:13px}</style></head><body>
-      <h1>${subject.name} — Subject Analysis</h1>
-      <p>Overall Average: ${subject.avg} &bull; ${totalStudents} students</p>
-      <h2>Section-wise Performance</h2>
-      <table><thead><tr><th>Section</th><th>Avg Score</th><th>Teacher</th></tr></thead>
-      <tbody>${sectionData.map(s => `<tr><td>${s.section}</td><td>${s.value}%</td><td>${s.teacherName}</td></tr>`).join("")}</tbody></table>
-      <h2>Teacher Effectiveness</h2>
-      <table><thead><tr><th>Teacher</th><th>Classes</th><th>Avg</th></tr></thead>
-      <tbody>${teacherData.map(t => `<tr><td>${t.name}</td><td>${t.grades}</td><td>${t.avg}%</td></tr>`).join("")}</tbody></table>
-      <p style="color:#94a3b8;font-size:11px;margin-top:40px">Generated ${new Date().toLocaleString()}</p>
-      </body></html>`);
-    w.document.close();
-    setTimeout(() => w.print(), 500);
+    const allScores = sectionData.map(s => s.value);
+    const overallAvg = allScores.length
+      ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length)
+      : subject.avgNum ?? 0;
+    const html = buildReport({
+      title: `${subject.name} — Subject Analysis`,
+      subtitle: `Overall Average: ${subject.avg} · ${totalStudents} students`,
+      badge: subject.name,
+      heroStats: [
+        { label: "Overall Average", value: subject.avg, color: overallAvg >= 75 ? "#4ade80" : overallAvg >= 55 ? "#fbbf24" : "#f87171" },
+        { label: "Total Students",  value: totalStudents },
+        { label: "Sections",        value: sectionData.length },
+        { label: "Teachers",        value: teacherData.length },
+      ],
+      sections: [
+        {
+          title: "Section-wise Performance",
+          type: "table",
+          headers: ["Section", "Avg Score", "Teacher"],
+          rows: sectionData.map(s => ({
+            cells: [s.section, `${s.value}%`, s.teacherName],
+            highlight: s.value < 60,
+          })),
+        },
+        {
+          title: "Teacher Effectiveness",
+          type: "table",
+          headers: ["Teacher", "Classes", "Avg Score"],
+          rows: teacherData.map(t => ({
+            cells: [t.name, t.grades, `${t.avg}%`],
+            highlight: t.avg < 60,
+          })),
+        },
+        ...(insights?.issues?.length ? [{
+          title: "Key Issues Identified",
+          type: "list" as const,
+          items: insights.issues,
+        }] : []),
+      ],
+    });
+    openReportWindow(html);
   };
 
   // ── render ────────────────────────────────────────────────────────────────

@@ -38,7 +38,7 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-[#1e3a8a] text-white shadow-2xl shadow-blue-900/20 mb-6 font-bold text-3xl">
             <GraduationCap className="w-10 h-10" />
           </div>
-          <h1 className="text-4xl font-black text-[#1e294b] tracking-tight italic">EduIntellect</h1>
+          <h1 className="text-4xl font-black text-[#1e294b] tracking-tight italic">Edullent</h1>
           <p className="text-slate-500 font-bold mt-2 uppercase tracking-[0.2em] text-xs">Principal Dashboard</p>
         </div>
 

@@ -3,6 +3,7 @@ import {
   ChevronLeft, ArrowRight, Download, Printer, Share2, BarChart2,
   X, TrendingUp, TrendingDown, Minus
 } from "lucide-react";
+import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, getDocs, query, where } from "firebase/firestore";
 import { toast } from "sonner";
@@ -63,51 +64,37 @@ export default function ExamDetail({ exam, allExams, onBack, userData }: ExamDet
 
   /* ── Print Report Cards ── */
   const handlePrint = () => {
-    const win = window.open("", "_blank");
-    if (!win) return;
-    const rows = exam.scores.filter(s => !s.isAbsent).map(s => `
-      <tr style="border-bottom:1px solid #e2e8f0;">
-        <td style="padding:10px 14px;font-weight:600;">${s.studentName}</td>
-        <td style="padding:10px 14px;">${s.className || s.classId || ""}</td>
-        <td style="padding:10px 14px;text-align:center;">${s.score ?? "—"}/${s.maxScore ?? "—"}</td>
-        <td style="padding:10px 14px;text-align:center;font-weight:700;color:${s.percentage >= 75 ? "#16a34a" : s.percentage >= 50 ? "#d97706" : "#dc2626"};">
-          ${Math.round(s.percentage || 0)}%
-        </td>
-        <td style="padding:10px 14px;text-align:center;">${s.grade || "—"}</td>
-        <td style="padding:10px 14px;text-align:center;font-weight:700;color:${s.percentage >= 50 ? "#16a34a" : "#dc2626"};">
-          ${s.percentage >= 50 ? "PASS" : "FAIL"}
-        </td>
-      </tr>`).join("");
-
-    win.document.write(`<!DOCTYPE html><html><head>
-      <title>${exam.name} — Report Cards</title>
-      <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #1e293b; }
-        h1 { font-size: 22px; margin-bottom: 4px; }
-        p  { font-size: 13px; color: #64748b; margin: 0 0 20px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { padding: 10px 14px; text-align: left; background: #1e3a8a; color: white; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-        @media print { button { display: none; } }
-      </style>
-    </head><body>
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div>
-          <h1>${exam.name}</h1>
-          <p>Date: ${exam.dateLabel} &nbsp;•&nbsp; Total Students: ${exam.totalStudents} &nbsp;•&nbsp; Pass Rate: ${exam.passRate}% &nbsp;•&nbsp; Avg: ${exam.avgPct}%</p>
-        </div>
-        <button onclick="window.print()" style="padding:8px 16px;background:#1e3a8a;color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">
-          🖨️ Print
-        </button>
-      </div>
-      <table>
-        <thead><tr>
-          <th>Student Name</th><th>Class</th><th>Score</th><th>Percentage</th><th>Grade</th><th>Result</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </body></html>`);
-    win.document.close();
-    setTimeout(() => win.print(), 400);
+    const presentScores = exam.scores.filter(s => !s.isAbsent);
+    const html = buildReport({
+      title: exam.name,
+      subtitle: `Date: ${exam.dateLabel} · Total Students: ${exam.totalStudents}`,
+      badge: "Exam Results",
+      heroStats: [
+        { label: "Pass Rate",  value: `${exam.passRate}%`,  color: exam.passRate  >= 75 ? "#4ade80" : "#fbbf24" },
+        { label: "Average",    value: `${exam.avgPct}%`,    color: exam.avgPct    >= 75 ? "#4ade80" : "#fbbf24" },
+        { label: "Appeared",   value: exam.totalStudents },
+        { label: "Passed",     value: presentScores.filter(s => (s.percentage || 0) >= 50).length },
+      ],
+      sections: [
+        {
+          title: "Report Cards",
+          type: "table",
+          headers: ["Student Name", "Class", "Score", "Percentage", "Grade", "Result"],
+          rows: presentScores.map(s => ({
+            cells: [
+              s.studentName,
+              s.className || s.classId || "—",
+              `${s.score ?? "—"}/${s.maxScore ?? "—"}`,
+              `${Math.round(s.percentage || 0)}%`,
+              s.grade || "—",
+              s.percentage >= 50 ? "PASS" : "FAIL",
+            ],
+            highlight: (s.percentage || 0) < 50,
+          })),
+        },
+      ],
+    });
+    openReportWindow(html);
     toast.success("Print window opened!");
   };
 

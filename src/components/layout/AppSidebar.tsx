@@ -20,7 +20,11 @@ import {
   Clock,
   Award,
   ShieldCheck,
-  KeyRound
+  KeyRound,
+  Brain,
+  DollarSign,
+  Library,
+  Trophy
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -28,10 +32,12 @@ import { Button } from "@/components/ui/button";
 const PRINCIPAL_MENU = [
   { title: "Dashboard",              icon: LayoutDashboard, path: "/" },
   { title: "Students",               icon: Users,           path: "/students" },
+  { title: "Student Intelligence",   icon: Brain,           path: "/student-intelligence" },
   { title: "Risk Students",          icon: AlertTriangle,   path: "/risk-students", badge: true },
   { title: "Classes & Sections",     icon: Monitor,         path: "/classes" },
   { title: "Teachers",               icon: GraduationCap,   path: "/teachers" },
   { title: "Academics",              icon: BookOpen,        path: "/academics" },
+  { title: "Syllabus",               icon: Library,         path: "/syllabus" },
   { title: "Attendance",             icon: CalendarCheck,   path: "/attendance" },
   { title: "Discipline & Incidents", icon: ShieldAlert,     path: "/discipline" },
   { title: "Parent Communication",   icon: MessageSquare,   path: "/parent-communication" },
@@ -39,6 +45,8 @@ const PRINCIPAL_MENU = [
   { title: "Exams & Results",        icon: FileText,        path: "/exams" },
   { title: "Assignments & Marks",    icon: ClipboardList,   path: "/assignments" },
   { title: "Teacher Performance",    icon: TrendingUp,      path: "/teacher-performance" },
+  { title: "Teacher Leaderboard",    icon: Trophy,          path: "/teacher-leaderboard" },
+  { title: "Fee Structure",          icon: DollarSign,      path: "/fee-structure" },
   { title: "Exam Structure",         icon: Award,           path: "/exam-structure" },
   { title: "Timetable Setup",        icon: Clock,           path: "/timetable" },
   { title: "Staff Access",           icon: ShieldCheck,     path: "/access-requests" },
@@ -46,15 +54,10 @@ const PRINCIPAL_MENU = [
   { title: "Settings",               icon: Settings,        path: "/settings" },
 ];
 
-// Data entry operator menu — only allowed pages
-const DEO_MENU = [
-  { title: "Students",            icon: Users,        path: "/students" },
-  { title: "Attendance",          icon: CalendarCheck, path: "/attendance" },
-  { title: "Assignments & Marks", icon: ClipboardList, path: "/assignments" },
-  { title: "Exams & Results",     icon: FileText,      path: "/exams" },
-  { title: "Teacher Notes",       icon: MessageCircle, path: "/teacher-notes" },
-  { title: "Classes & Sections",  icon: Monitor,       path: "/classes" },
-];
+/* DEO menu = filtered subset of PRINCIPAL_MENU.
+   Principal can now assign ANY of the principal pages to a DEO —
+   so we filter PRINCIPAL_MENU directly instead of maintaining a
+   separate (stale) DEO_MENU list. */
 
 interface AppSidebarProps {
   onClose?: () => void;
@@ -66,9 +69,10 @@ const AppSidebar = ({ onClose }: AppSidebarProps) => {
 
   const isDeo      = userData?.role === "data_entry";
   const menuItems  = isDeo
-    // DEO sees only their approved pages (intersection of DEO_MENU and allowedPages)
-    ? DEO_MENU.filter(item =>
-        !userData?.allowedPages || userData.allowedPages.includes(item.path)
+    // DEO sees only pages the principal has allowed — filtered from full PRINCIPAL_MENU
+    // so any principal-assigned page appears with proper icon & title.
+    ? PRINCIPAL_MENU.filter(item =>
+        userData?.allowedPages?.includes(item.path)
       )
     : PRINCIPAL_MENU;
 

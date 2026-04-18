@@ -216,7 +216,7 @@ function SchoolProfileTab({ schoolId, userData, user }: any) {
               <School className="w-4 h-4 text-blue-600" /> School Information
             </h2>
             <div className="space-y-4">
-              <Field label="School Name"  value={form.schoolName} onChange={set("schoolName")}  icon={School}  placeholder="EduIntellect International School" />
+              <Field label="School Name"  value={form.schoolName} onChange={set("schoolName")}  icon={School}  placeholder="Edullent International School" />
               <Field label="Address"      value={form.address}    onChange={set("address")}    icon={MapPin}  placeholder="123 School Road, Hyderabad" />
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Phone"   value={form.phone}   onChange={set("phone")}   icon={Phone} type="tel"   placeholder="+91 9000000000" />

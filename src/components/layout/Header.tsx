@@ -25,7 +25,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
         </div>
         <div className="flex flex-col min-w-0">
           <span className="text-sm font-bold text-primary uppercase leading-tight truncate max-w-[120px] sm:max-w-none">
-            {userData?.schoolName || "EDUINTELLECT"}
+            {userData?.schoolName || "EDULLENT"}
           </span>
           <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">
             {userData?.branch || "Portal"}

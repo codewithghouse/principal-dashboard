@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { ShieldAlert, Clock, AlertTriangle, AlertCircle, Plus, FileText, Calendar, X } from "lucide-react";
+import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { db } from "@/lib/firebase";
 import { collection, query, onSnapshot, where, addDoc, Timestamp } from "firebase/firestore";
@@ -162,35 +163,28 @@ const Discipline = () => {
 
   // ── Generate Report ──
   const generateReport = () => {
-    const w = window.open('', '_blank');
-    if (!w) return;
-    const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-    w.document.write(`<html><head><title>Discipline Report</title><style>
-      body{font-family:Arial,sans-serif;padding:40px;color:#1e293b}
-      h1{color:#1e3a8a}h2{color:#334155;margin-top:28px}
-      table{width:100%;border-collapse:collapse;margin-top:14px}
-      th{background:#1e3a8a;color:#fff;padding:10px 14px;text-align:left;font-size:12px}
-      td{padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:13px}
-      .stats{display:flex;gap:40px;margin:24px 0}
-      .sv{font-size:30px;font-weight:900;color:#1e3a8a}
-      .sl{font-size:12px;color:#64748b;font-weight:600}
-    </style></head><body>
-      <h1>Discipline & Incidents Report</h1>
-      <p style="color:#64748b">Generated: ${dateStr}</p>
-      <div class="stats">
-        <div><div class="sv">${stats.todayCount}</div><div class="sl">Today</div></div>
-        <div><div class="sv">${stats.pendingCount}</div><div class="sl">Pending</div></div>
-        <div><div class="sv">${stats.weekCount}</div><div class="sl">This Week</div></div>
-        <div><div class="sv">${stats.criticalCount}</div><div class="sl">Critical</div></div>
-      </div>
-      <h2>Incident List</h2>
-      <table><thead><tr><th>Date</th><th>Student</th><th>Type</th><th>Severity</th><th>Status</th></tr></thead>
-      <tbody>${filteredIncidents.map(i =>
-        `<tr><td>${i.date||'—'}</td><td>${i.student?.name||'Unknown'}</td><td>${i.type||'—'}</td><td>${i.severity||'—'}</td><td>${i.status||'Open'}</td></tr>`
-      ).join('')}</tbody></table>
-    </body></html>`);
-    w.document.close();
-    setTimeout(() => w.print(), 500);
+    const html = buildReport({
+      title: "Discipline & Incidents Report",
+      badge: "Discipline",
+      heroStats: [
+        { label: "Today",    value: stats.todayCount,    color: "#f87171" },
+        { label: "Pending",  value: stats.pendingCount,  color: "#fbbf24" },
+        { label: "This Week", value: stats.weekCount },
+        { label: "Critical", value: stats.criticalCount, color: stats.criticalCount > 0 ? "#f87171" : "#4ade80" },
+      ],
+      sections: [
+        {
+          title: "Incident List",
+          type: "table",
+          headers: ["Date", "Student", "Type", "Severity", "Status"],
+          rows: filteredIncidents.map((i: any) => ({
+            cells: [i.date || "—", i.student?.name || "Unknown", i.type || "—", i.severity || "—", i.status || "Open"],
+            highlight: ["HIGH", "CRITICAL"].includes((i.severity || "").toUpperCase()),
+          })),
+        },
+      ],
+    });
+    openReportWindow(html);
   };
 
   if (selectedIncident) {

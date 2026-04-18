@@ -48,7 +48,7 @@ export default defineConfig(({ mode }) => {
                       Authorization: `Bearer ${apiKey}`,
                     },
                     body: JSON.stringify({
-                      from: "EduIntellect <invite@edulent.dgion.com>",
+                      from: "Edullent <invite@edulent.dgion.com>",
                       to: Array.isArray(to) ? to : [to],
                       subject,
                       html,

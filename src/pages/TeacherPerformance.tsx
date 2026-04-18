@@ -1,33 +1,63 @@
 import { useState, useEffect } from "react";
 import {
   GraduationCap, TrendingUp, TrendingDown, Minus,
-  Users, Star, BarChart3, ChevronRight, Loader2, X, BookOpen
+  BarChart3, ChevronRight, Loader2,
 } from "lucide-react";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LineChart, Line, Legend
-} from "recharts";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, getDocs } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
+import TeacherProfile from "@/components/TeacherProfile";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const grade = (pct: number) => pct >= 85 ? "A" : pct >= 75 ? "B" : pct >= 60 ? "C" : "D";
 const gradeColor = (g: string) => g === "A" ? "text-green-600 bg-green-50" : g === "B" ? "text-blue-600 bg-blue-50" : g === "C" ? "text-amber-600 bg-amber-50" : "text-red-600 bg-red-50";
 
+// robust score parser matches TeacherProfile.tsx pattern — handles percentage, marks/totalMarks, etc.
+const getScore = (r: any): number => {
+  if (typeof r.percentage === "number" && r.percentage > 0) return Math.round(r.percentage);
+  const pctStr = parseFloat(r.percentage ?? "");
+  if (!isNaN(pctStr) && pctStr > 0) return Math.round(pctStr);
+  const raw = r.marksObtained ?? r.marks ?? r.score ?? null;
+  if (raw === null || raw === undefined || raw === "") return 0;
+  const total = r.totalMarks ?? r.maxMarks ?? r.outOf ?? 100;
+  const rawN = Number(raw), totN = Number(total);
+  if (isNaN(rawN)) return 0;
+  return totN > 0 ? Math.round((rawN / totN) * 100) : Math.min(100, Math.round(rawN));
+};
+
+const toDate = (v: any): Date | null => {
+  if (!v) return null;
+  if (v?.toDate) return v.toDate();
+  if (v?.seconds) return new Date(v.seconds * 1000);
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 interface TeacherStat {
   id: string;
   name: string;
+  raw: any;               // original teacher doc for TeacherProfile component
   subjects: string[];
-  classes: string[];
+  classes: string[];      // human-readable class names
+  classIds: string[];     // underlying ids for joins
   avgScore: number | null;
-  prevAvgScore: number | null;  // avg from before last 30 days — for trend
+  prevAvgScore: number | null;
   studentCount: number;
   classCount: number;
   topSubject: string;
   weakSubject: string;
   monthlyScores: { month: string; avg: number }[];
-  vsSchoolAvg: number | null;  // diff from school average
+  vsSchoolAvg: number | null;
+  // activity & feedback
+  testsCreated: number;
+  assignmentsCreated: number;
+  lessonPlansCount: number;
+  parentNotesCount: number;
+  rating: number | null;      // 0-5
+  reviewCount: number;
+  reviews: { parentName?: string; studentName?: string; rating?: number; review?: string; comment?: string; createdAt?: any }[];
+  // subject breakdown for drawer chart
+  subjectBreakdown: { subject: string; avg: number; count: number }[];
 }
 
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -49,88 +79,161 @@ const TeacherPerformance = () => {
     const C: any[] = [where("schoolId", "==", schoolId)];
     if (branchId) C.push(where("branchId", "==", branchId));
 
+    // Some collections (tests, assignments, lessonPlans, parent_notes, teacher_reviews, results)
+    // may not carry branchId — so only schoolId filter is safe there.
+    const CS: any[] = [where("schoolId", "==", schoolId)];
+
     // ── Listen to teachers ────────────────────────────────────────────────
     const tUnsub = onSnapshot(
       query(collection(db, "teachers"), ...C),
       async (tSnap) => {
         const teacherDocs = tSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
 
-        // ── Fetch test_scores, teaching_assignments in parallel ───────────
-        const [scoresSnap, assignSnap] = await Promise.all([
-          getDocs(query(collection(db, "test_scores"),         ...C)),
-          getDocs(query(collection(db, "teaching_assignments"), ...C)),
+        // ── Fetch every relevant collection in parallel ───────────────────
+        const safeGet = async (q: any) => {
+          try { return await getDocs(q); } catch { return { docs: [] as any[] }; }
+        };
+        const [
+          scoresSnap, assignSnap, classesSnap,
+          testsSnap, assignmentsSnap, lessonsSnap,
+          notesSnap, reviewsSnap, resultsSnap,
+        ] = await Promise.all([
+          safeGet(query(collection(db, "test_scores"),          ...C)),
+          safeGet(query(collection(db, "teaching_assignments"), ...C)),
+          safeGet(query(collection(db, "classes"),              ...C)),
+          safeGet(query(collection(db, "tests"),                ...CS)),
+          safeGet(query(collection(db, "assignments"),          ...CS)),
+          safeGet(query(collection(db, "lessonPlans"),          ...CS)),
+          safeGet(query(collection(db, "parent_notes"),         ...CS)),
+          safeGet(query(collection(db, "teacher_reviews"),      ...CS)),
+          safeGet(query(collection(db, "results"),              ...CS)),
         ]);
 
-        const scores   = scoresSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
-        const assigns  = assignSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+        const scores      = scoresSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
+        const assigns     = assignSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
+        const classDocs   = classesSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
+        const testDocs    = testsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
+        const asgnDocs    = assignmentsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
+        const lessonDocs  = lessonsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
+        const noteDocs    = notesSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
+        const reviewDocs  = reviewsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
+        const resultDocs  = resultsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
 
-        const now     = new Date();
-        const cutoff30 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30).toISOString().slice(0,10);
-        const cutoff60 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60).toISOString().slice(0,10);
+        // classId → name lookup
+        const classNameById = new Map<string, string>();
+        classDocs.forEach((c: any) => {
+          const label = c.name || [c.grade, c.section].filter(Boolean).join(" ") || c.className;
+          if (label) classNameById.set(c.id, label);
+        });
 
-        // School-wide average
-        const allPcts = scores.map(s => parseFloat(s.percentage ?? s.score ?? "")).filter(n => !isNaN(n));
+        const now      = new Date();
+        const cutoff30 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
+        const cutoff60 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
+
+        // Combine test_scores + results — both represent graded assessments created by teacher
+        const allScoreRows = [...scores, ...resultDocs];
+
+        // School-wide average (uses richer getScore — handles marks/totalMarks)
+        const allPcts = allScoreRows.map(s => getScore(s)).filter(n => n > 0);
         const overallAvg = allPcts.length ? Math.round(allPcts.reduce((a,b)=>a+b,0) / allPcts.length) : 0;
         setSchoolAvg(overallAvg);
 
-        const stats: TeacherStat[] = teacherDocs.map(t => {
-          // Classes & subjects from teaching_assignments
-          const tAssigns = assigns.filter(a => a.teacherId === t.id || a.teacherEmail === t.email);
-          const subjects  = [...new Set(tAssigns.map((a: any) => a.subject).filter(Boolean))] as string[];
-          const classes   = [...new Set(tAssigns.map((a: any) => a.className || a.classId).filter(Boolean))] as string[];
-          const classIds  = [...new Set(tAssigns.map((a: any) => a.classId).filter(Boolean))] as string[];
+        const stats: TeacherStat[] = teacherDocs.map((t: any) => {
+          // Classes & subjects from teaching_assignments + fallback to teacher doc
+          const tAssigns = assigns.filter((a: any) => a.teacherId === t.id || a.teacherEmail === t.email);
 
-          // Test scores for this teacher's classes
-          const tScores = scores.filter(s =>
-            classIds.includes(s.classId) || tAssigns.some((a: any) => a.classId === s.classId)
+          const subjectsSet = new Set<string>();
+          tAssigns.forEach((a: any) => a.subject && subjectsSet.add(a.subject));
+          if (t.subject) subjectsSet.add(t.subject);
+          if (Array.isArray(t.subjects)) t.subjects.forEach((s: string) => s && subjectsSet.add(s));
+          const subjects = [...subjectsSet];
+
+          const classIdsSet = new Set<string>();
+          tAssigns.forEach((a: any) => a.classId && classIdsSet.add(a.classId));
+          // also pull classes where teacherId matches directly
+          classDocs.forEach((c: any) => { if (c.teacherId === t.id) classIdsSet.add(c.id); });
+          const classIds = [...classIdsSet];
+
+          // Resolve to human-readable names — prefer classes collection, then teaching_assignments className
+          const classes = classIds.map(cid => {
+            if (classNameById.has(cid)) return classNameById.get(cid)!;
+            const ta = tAssigns.find((a: any) => a.classId === cid);
+            return ta?.className || cid;
+          });
+
+          // All score rows attributable to this teacher — match by teacherId OR classId
+          const tScores = allScoreRows.filter(s =>
+            s.teacherId === t.id ||
+            (s.classId && classIds.includes(s.classId))
           );
 
-          const pcts = tScores.map(s => parseFloat(s.percentage ?? s.score ?? "")).filter(n => !isNaN(n));
+          const pcts = tScores.map(s => getScore(s)).filter(n => n > 0);
           const avgScore = pcts.length ? Math.round(pcts.reduce((a,b)=>a+b,0) / pcts.length) : null;
 
-          // Previous 30-60 days avg for trend
+          // Previous 30-60 day avg for trend delta
           const prevScores = tScores.filter(s => {
-            const d = s.createdAt?.toDate?.()?.toISOString?.()?.slice(0,10) ?? s.date ?? "";
-            return d >= cutoff60 && d < cutoff30;
+            const d = toDate(s.createdAt || s.timestamp || s.date);
+            return d && d >= cutoff60 && d < cutoff30;
           });
-          const prevPcts = prevScores.map(s => parseFloat(s.percentage ?? s.score ?? "")).filter(n => !isNaN(n));
+          const prevPcts = prevScores.map(s => getScore(s)).filter(n => n > 0);
           const prevAvg  = prevPcts.length ? Math.round(prevPcts.reduce((a,b)=>a+b,0) / prevPcts.length) : null;
 
-          // Monthly trend (last 4 months)
+          // Monthly trend (last 4 months) — use any available timestamp
           const months = Array.from({length:4}, (_, i) => {
             const d = new Date(now.getFullYear(), now.getMonth()-3+i, 1);
             return { label: MONTH_NAMES[d.getMonth()], month: d.getMonth(), year: d.getFullYear() };
           });
           const monthlyScores = months.map(({ label, month, year }) => {
             const mScores = tScores.filter(s => {
-              const ts = s.createdAt?.toDate?.() || (s.date ? new Date(s.date) : null);
+              const ts = toDate(s.createdAt || s.timestamp || s.date);
               return ts && ts.getMonth() === month && ts.getFullYear() === year;
             });
-            const mPcts = mScores.map(s => parseFloat(s.percentage ?? s.score ?? "")).filter(n => !isNaN(n));
+            const mPcts = mScores.map(s => getScore(s)).filter(n => n > 0);
             return { month: label, avg: mPcts.length ? Math.round(mPcts.reduce((a,b)=>a+b,0)/mPcts.length) : 0 };
           });
 
-          // Per-subject breakdown
+          // Per-subject breakdown — consider subjectName / subject fallback
           const subjectMap: Record<string, number[]> = {};
           tScores.forEach(s => {
-            const sub = s.subject || "Unknown";
+            const sub = s.subjectName || s.subject || (subjects[0] || "General");
             if (!subjectMap[sub]) subjectMap[sub] = [];
-            const pct = parseFloat(s.percentage ?? s.score ?? "");
-            if (!isNaN(pct)) subjectMap[sub].push(pct);
+            const sc = getScore(s);
+            if (sc > 0) subjectMap[sub].push(sc);
           });
-          const subjectAvgs = Object.entries(subjectMap).map(([sub, vals]) => ({
-            sub, avg: Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)
-          }));
-          const topSubject  = subjectAvgs.length ? subjectAvgs.sort((a,b)=>b.avg-a.avg)[0].sub : "—";
-          const weakSubject = subjectAvgs.length ? subjectAvgs.sort((a,b)=>a.avg-b.avg)[0].sub : "—";
+          const subjectBreakdown = Object.entries(subjectMap)
+            .map(([subject, vals]) => ({
+              subject,
+              count: vals.length,
+              avg: Math.round(vals.reduce((a,b)=>a+b,0)/vals.length),
+            }))
+            .sort((a,b)=>b.avg-a.avg);
+          const topSubject  = subjectBreakdown.length ? subjectBreakdown[0].subject : "—";
+          const weakSubject = subjectBreakdown.length ? subjectBreakdown[subjectBreakdown.length-1].subject : "—";
 
-          const studentCount = [...new Set(tScores.map(s => s.studentId || s.studentEmail))].length;
+          const studentCount = [...new Set(tScores.map(s => s.studentId || s.studentEmail).filter(Boolean))].length;
+
+          // Activity counts — everything this teacher created
+          const testsCreated       = testDocs.filter((d: any) => d.teacherId === t.id).length;
+          const assignmentsCreated = asgnDocs.filter((d: any) => d.teacherId === t.id).length;
+          const lessonPlansCount   = lessonDocs.filter((d: any) => d.teacherId === t.id).length;
+          const parentNotesCount   = noteDocs.filter((d: any) => d.teacherId === t.id).length;
+
+          // Ratings & reviews
+          const tReviews = reviewDocs
+            .filter((r: any) => r.teacherId === t.id)
+            .sort((a: any, b: any) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
+          const ratingVals = tReviews.map((r: any) => Number(r.rating)).filter(n => !isNaN(n) && n > 0);
+          const rating = ratingVals.length
+            ? Math.round((ratingVals.reduce((a,b)=>a+b,0) / ratingVals.length) * 10) / 10
+            : (t.rating ? Number(t.rating) : null);
 
           return {
             id: t.id,
             name: t.name || t.teacherName || "Unknown",
+            raw: t,
             subjects,
             classes,
+            classIds,
             avgScore,
             prevAvgScore: prevAvg,
             studentCount,
@@ -139,6 +242,14 @@ const TeacherPerformance = () => {
             weakSubject,
             monthlyScores,
             vsSchoolAvg: avgScore != null ? avgScore - overallAvg : null,
+            testsCreated,
+            assignmentsCreated,
+            lessonPlansCount,
+            parentNotesCount,
+            rating,
+            reviewCount: tReviews.length,
+            reviews: tReviews.slice(0, 5),
+            subjectBreakdown,
           };
         });
 
@@ -161,6 +272,15 @@ const TeacherPerformance = () => {
     if (delta < -2) return { icon: TrendingDown,  color: "text-red-500",   label: `${delta}%` };
     return               { icon: Minus,          color: "text-slate-400",  label: "Stable" };
   };
+
+  // ── When a teacher is selected, render the full TeacherProfile page (same layout as existing profile)
+  if (selected) {
+    return (
+      <div className="animate-in fade-in duration-200">
+        <TeacherProfile teacher={selected.raw} onBack={() => setSelected(null)} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-10">
@@ -286,94 +406,6 @@ const TeacherPerformance = () => {
         </div>
       )}
 
-      {/* ── Teacher Detail Drawer ─────────────────────────────────────────── */}
-      {selected && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={() => setSelected(null)} />
-          <div className="w-full max-w-md bg-white shadow-2xl overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between z-10">
-              <div>
-                <h2 className="text-base font-bold text-[#1e294b]">{selected.name}</h2>
-                <p className="text-xs text-slate-400 font-medium">{selected.subjects.join(", ") || "No subjects assigned"}</p>
-              </div>
-              <button onClick={() => setSelected(null)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200">
-                <X className="w-4 h-4 text-slate-500" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6">
-
-              {/* Key metrics */}
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: "Avg Score",    value: selected.avgScore != null ? `${selected.avgScore}%` : "—", color: "text-[#1e3a8a]" },
-                  { label: "vs School",    value: selected.vsSchoolAvg != null ? `${selected.vsSchoolAvg >= 0 ? "+" : ""}${selected.vsSchoolAvg}%` : "—", color: selected.vsSchoolAvg != null && selected.vsSchoolAvg >= 0 ? "text-green-600" : "text-red-500" },
-                  { label: "Classes",      value: selected.classCount || 0,  color: "text-slate-700" },
-                  { label: "Students",     value: selected.studentCount || 0, color: "text-slate-700" },
-                ].map(m => (
-                  <div key={m.label} className="bg-slate-50 rounded-xl p-4">
-                    <div className={`text-xl font-bold ${m.color}`}>{m.value}</div>
-                    <div className="text-[10px] text-slate-400 font-semibold mt-1">{m.label}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Classes taught */}
-              <div>
-                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Classes Assigned</h4>
-                <div className="flex flex-wrap gap-2">
-                  {selected.classes.length ? selected.classes.map(c => (
-                    <span key={c} className="text-xs font-bold bg-blue-50 text-[#1e3a8a] px-3 py-1 rounded-full">{c}</span>
-                  )) : <span className="text-xs text-slate-300">No classes assigned yet</span>}
-                </div>
-              </div>
-
-              {/* Subject highlights */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-green-50 rounded-xl p-4">
-                  <div className="text-[9px] font-black text-green-600 uppercase tracking-widest mb-1">Top Subject</div>
-                  <div className="text-sm font-bold text-green-700">{selected.topSubject}</div>
-                </div>
-                <div className="bg-amber-50 rounded-xl p-4">
-                  <div className="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-1">Needs Focus</div>
-                  <div className="text-sm font-bold text-amber-700">{selected.weakSubject}</div>
-                </div>
-              </div>
-
-              {/* Monthly trend chart */}
-              <div>
-                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Score Trend (Last 4 Months)</h4>
-                {selected.monthlyScores.every(m => m.avg === 0) ? (
-                  <div className="flex items-center justify-center h-32 bg-slate-50 rounded-xl">
-                    <p className="text-xs text-slate-300 font-medium">No monthly data available</p>
-                  </div>
-                ) : (
-                  <div className="h-[160px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={selected.monthlyScores} margin={{top:5,right:5,left:-30,bottom:0}}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill:"#94a3b8",fontSize:10,fontWeight:600}} />
-                        <YAxis domain={[40,100]} axisLine={false} tickLine={false} tick={{fill:"#94a3b8",fontSize:10,fontWeight:600}} />
-                        <Tooltip contentStyle={{borderRadius:"12px",border:"none",boxShadow:"0 4px 20px rgba(0,0,0,0.1)"}}
-                          formatter={(v:any) => [`${v}%`, "Avg Score"]} />
-                        <Line type="monotone" dataKey="avg" stroke="#1e3a8a" strokeWidth={2.5}
-                          dot={{r:4,fill:"#1e3a8a",stroke:"#fff",strokeWidth:2}} activeDot={{r:5,strokeWidth:0}} connectNulls />
-                        {/* School average reference line */}
-                        <Line type="monotone" dataKey={() => schoolAvg} name="School Avg" stroke="#94a3b8"
-                          strokeDasharray="4 2" strokeWidth={1.5} dot={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    <div className="flex gap-4 mt-2 justify-center">
-                      <div className="flex items-center gap-1.5"><div className="w-3 h-0.5 bg-[#1e3a8a] rounded" /><span className="text-[10px] text-slate-400 font-semibold">Teacher Avg</span></div>
-                      <div className="flex items-center gap-1.5"><div className="w-3 h-0.5 bg-slate-300 rounded" style={{borderTop:"2px dashed #94a3b8"}} /><span className="text-[10px] text-slate-400 font-semibold">School Avg</span></div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

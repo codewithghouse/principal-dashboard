@@ -117,7 +117,7 @@ const ConversationDetail = ({ conversation, onBack }: ConversationDetailProps) =
                 </div>
                 <div className="flex-1 bg-blue-50/50 border border-blue-100/50 rounded-2xl p-5">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-bold text-[#1e3a8a]">EDUINTELLECT System</h4>
+                    <h4 className="text-sm font-bold text-[#1e3a8a]">EDULLENT System</h4>
                     <span className="text-[10px] font-medium text-muted-foreground">Jan 17, 10:31 AM</span>
                   </div>
                   <p className="text-sm text-[#1e3a8a]/80 leading-relaxed font-medium">

@@ -52,24 +52,32 @@ const RequestAccess = () => {
     setError("");
     setSubmitting(true);
     try {
-      // 1. Check if already submitted
-      const existing = await getDocs(
-        query(collection(db, "access_requests"),
-          where("email", "==", form.email.toLowerCase().trim()),
-          where("schoolId", "==", schoolId)
-        )
-      );
-      if (!existing.empty) {
-        const status = existing.docs[0].data().status;
-        setError(
-          status === "approved"
-            ? "Your request has already been approved! Try logging in."
-            : status === "rejected"
-            ? "Your request was rejected. Contact your principal directly."
-            : "You already have a pending request. Please wait for approval."
+      // 1. Best-effort duplicate check — silently skipped if rules block public reads
+      try {
+        const existing = await getDocs(
+          query(collection(db, "access_requests"),
+            where("email", "==", form.email.toLowerCase().trim()),
+            where("schoolId", "==", schoolId)
+          )
         );
-        setSubmitting(false);
-        return;
+        if (!existing.empty) {
+          const status = existing.docs[0].data().status;
+          setError(
+            status === "approved"
+              ? "Your request has already been approved! Try logging in."
+              : status === "rejected"
+              ? "Your request was rejected. Contact your principal directly."
+              : "You already have a pending request. Please wait for approval."
+          );
+          setSubmitting(false);
+          return;
+        }
+      } catch (preCheckErr: any) {
+        // Public users cannot read this collection — that's fine, just create the request.
+        // The principal will dedupe manually in Staff Access Control.
+        if (preCheckErr?.code !== "permission-denied") {
+          throw preCheckErr;
+        }
       }
 
       // 2. Save request
@@ -173,7 +181,7 @@ const RequestAccess = () => {
               <GraduationCap className="w-6 h-6 text-white" />
             </div>
             <div>
-              <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest">EduIntellect</p>
+              <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest">Edullent</p>
               <p className="text-sm font-black text-white">{schoolName || "School Management"}</p>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { CheckCircle, XCircle, Clock, TrendingUp, Send, Edit3, Bell, FileText, TrendingDown, AlertTriangle } from "lucide-react";
+import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import ClassAttendanceDetail from "@/components/ClassAttendanceDetail";
 import { db } from "@/lib/firebase";
 import { collection, query, onSnapshot, where } from "firebase/firestore";
@@ -171,39 +172,37 @@ const Attendance = () => {
   const pct = (n: number) => stats.totalToday > 0 ? `${Math.round((n / stats.totalToday) * 100)}%` : "—";
 
   const generateReport = () => {
-    const w = window.open('', '_blank');
-    if (!w) return;
-    const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-    w.document.write(`<html><head><title>Monthly Attendance Report</title><style>
-      body{font-family:Arial,sans-serif;padding:40px;color:#1e293b}
-      h1{color:#1e3a8a}h2{color:#334155;margin-top:32px}
-      table{width:100%;border-collapse:collapse;margin-top:16px}
-      th{background:#1e3a8a;color:#fff;padding:10px 14px;text-align:left;font-size:12px}
-      td{padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:13px}
-      .stats{display:flex;gap:40px;margin:24px 0}
-      .stat-box{text-align:center}
-      .stat-val{font-size:32px;font-weight:900;color:#1e3a8a}
-      .stat-label{font-size:12px;color:#64748b;font-weight:600}
-    </style></head><body>
-      <h1>Monthly Attendance Report</h1>
-      <p style="color:#64748b">Generated: ${dateStr}</p>
-      <div class="stats">
-        <div class="stat-box"><div class="stat-val">${stats.presentToday}</div><div class="stat-label">Present Today</div></div>
-        <div class="stat-box"><div class="stat-val">${stats.absentToday}</div><div class="stat-label">Absent Today</div></div>
-        <div class="stat-box"><div class="stat-val">${stats.lateToday}</div><div class="stat-label">Late Today</div></div>
-        <div class="stat-box"><div class="stat-val">${stats.monthlyAvg}</div><div class="stat-label">Monthly Avg</div></div>
-      </div>
-      <h2>Grade-wise Summary</h2>
-      <table><thead><tr><th>Grade/Class</th><th>Attendance %</th><th>Status</th></tr></thead><tbody>
-        ${gradeHeatmap.map(g => `<tr><td>${g.grade}</td><td>${g.pct}</td><td>${g.value >= 90 ? 'Good' : g.value >= 80 ? 'Average' : 'Critical'}</td></tr>`).join('')}
-      </tbody></table>
-      <h2>Absent Students Today</h2>
-      <table><thead><tr><th>Student</th><th>Class</th><th>Contact</th><th>Consecutive</th><th>Monthly %</th><th>Status</th></tr></thead><tbody>
-        ${absentStudents.map(s => `<tr><td>${s.name}</td><td>${s.grade}</td><td>${s.contact}</td><td>${s.consecutive}</td><td>${s.monthly}</td><td>${s.status}</td></tr>`).join('')}
-      </tbody></table>
-    </body></html>`);
-    w.document.close();
-    setTimeout(() => w.print(), 500);
+    const html = buildReport({
+      title: "Monthly Attendance Report",
+      badge: "Attendance",
+      heroStats: [
+        { label: "Present Today", value: stats.presentToday, color: "#4ade80" },
+        { label: "Absent Today",  value: stats.absentToday,  color: "#f87171" },
+        { label: "Late Today",    value: stats.lateToday,    color: "#fbbf24" },
+        { label: "Monthly Avg",   value: stats.monthlyAvg },
+      ],
+      sections: [
+        {
+          title: "Grade-wise Attendance Summary",
+          type: "table",
+          headers: ["Grade / Class", "Attendance %", "Status"],
+          rows: gradeHeatmap.map(g => ({
+            cells: [g.grade, g.pct, g.value >= 90 ? "Good" : g.value >= 80 ? "Average" : "Critical"],
+            highlight: g.value < 80,
+          })),
+        },
+        {
+          title: "Absent Students Today",
+          type: "table",
+          headers: ["Student", "Class", "Contact", "Consecutive", "Monthly %", "Status"],
+          rows: absentStudents.map(s => ({
+            cells: [s.name, s.grade, s.contact, s.consecutive, s.monthly, s.status],
+            highlight: s.status === "Chronic",
+          })),
+        },
+      ],
+    });
+    openReportWindow(html);
   };
 
   if (selectedClass) {

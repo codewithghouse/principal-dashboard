@@ -9,7 +9,8 @@ import {
   browserLocalPersistence
 } from 'firebase/auth';
 import { auth, db } from './firebase';
-import { collection, getDocs, updateDoc, doc, query, where } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, query, where, onSnapshot } from 'firebase/firestore';
+import { syncClaimsAndRefreshToken } from './syncClaims';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AuthContextType {
@@ -37,11 +38,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setPersistence(auth, browserLocalPersistence).then(() => {
     });
 
+    // Live subscription for current DEO / principal doc — so allowedPages
+    // updates propagate to the logged-in user without needing a re-login.
+    let liveUnsub: (() => void) | null = null;
+    const clearLive = () => { if (liveUnsub) { liveUnsub(); liveUnsub = null; } };
+
     // 2. THE ONLY auth listener in the entire app
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      clearLive();
       if (currentUser?.email) {
         try {
           const userEmail = currentUser.email.toLowerCase().trim();
+
+          // Sync custom claims first so subsequent reads pass through Firestore rules.
+          await syncClaimsAndRefreshToken(currentUser);
 
           // 3. Fetch principal by email (server-side filter — O(1) at any scale)
           const snap = await getDocs(
@@ -85,6 +95,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setUser(currentUser);
               setUserData({ ...deoData, id: deoDoc.id, role: 'data_entry' });
               setError(null);
+
+              // Live-refresh allowedPages / status whenever principal edits
+              liveUnsub = onSnapshot(
+                doc(db, 'data_entry_staff', deoDoc.id),
+                (snap) => {
+                  if (!snap.exists()) {
+                    // Access was revoked — log the user out of app state
+                    setUserData(null);
+                    setError('Your access has been revoked. Please contact your principal.');
+                    return;
+                  }
+                  const fresh = snap.data() as any;
+                  setUserData({ ...fresh, id: snap.id, role: 'data_entry' });
+                },
+                () => { /* silent fail — keep cached data */ }
+              );
             } else {
               // Check if pending (to show a better error message)
               const pendingSnap = await getDocs(
@@ -118,7 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => { unsubscribe(); clearLive(); };
   }, []);
 
   // ─── Actions ────────────────────────────────────────────────────────────────

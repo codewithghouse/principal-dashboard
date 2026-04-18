@@ -281,7 +281,7 @@ const Teachers = () => {
           try {
             await sendEmail({
               to: emailObj,
-              subject: `Welcome Back to ${userData?.schoolName || "EduIntellect"}`,
+              subject: `Welcome Back to ${userData?.schoolName || "Edullent"}`,
               html: `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#1e3a8a">Welcome Back, ${inviteForm.name}!</h2><p>Your account has been restored at <strong>${userData?.schoolName || "the institution"}</strong>.</p><div style="margin:24px 0"><a href="https://teacher-dashboard-ochre.vercel.app" style="background:#1e3a8a;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold">Open Teacher Dashboard</a></div></div>`,
             });
           } catch (emailErr: any) {
@@ -307,7 +307,7 @@ const Teachers = () => {
       try {
         await sendEmail({
           to: emailObj,
-          subject: `Invitation to join ${userData?.schoolName || "EduIntellect"}`,
+          subject: `Invitation to join ${userData?.schoolName || "Edullent"}`,
           html: `<div style="font-family:sans-serif;padding:20px"><h2 style="color:#1e3a8a">Welcome, ${inviteForm.name}!</h2><p>You have been invited to <strong>${userData?.schoolName || "the institution"}</strong>.</p><div style="margin:24px 0"><a href="https://teacher-dashboard-ochre.vercel.app" style="background:#1e3a8a;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold">Login to Teacher Portal</a></div></div>`,
         });
         toast.success("Teacher invited & email sent successfully!");
@@ -347,6 +347,23 @@ const Teachers = () => {
       toast.success("Name updated.");
       setEditingId(null);
     } catch { toast.error("Failed to update name."); }
+  };
+
+  // Toggle primary-school flag. A teacher who works at multiple schools logs in
+  // to the school they marked as primary by default.
+  const handleTogglePrimary = async (teacher: any) => {
+    try {
+      await updateDoc(doc(db, "teachers", teacher.id), {
+        isPrimarySchool: !teacher.isPrimarySchool,
+      });
+      toast.success(
+        teacher.isPrimarySchool
+          ? "Removed as primary school."
+          : "Marked as teacher's primary school.",
+      );
+    } catch {
+      toast.error("Failed to update primary-school flag.");
+    }
   };
 
   const handleOpenRoster = async (teacher: any) => {
@@ -406,17 +423,17 @@ const Teachers = () => {
         // Send invite email — don't let failure break the bulk import
         sendEmail({
           to: t.email,
-          subject: `Invitation to join ${userData?.schoolName || "EduIntellect"}`,
+          subject: `Invitation to join ${userData?.schoolName || "Edullent"}`,
           html: `
             <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
               <div style="background:#1e3a8a;padding:24px 28px;">
-                <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">EDUINTELLECT</h1>
+                <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">EDULLENT</h1>
                 <p style="color:#bfdbfe;margin:4px 0 0;font-size:13px;">Teacher Dashboard Invitation</p>
               </div>
               <div style="padding:28px;background:#fff;">
                 <h2 style="color:#1e293b;margin:0 0 12px;">Welcome, ${t.name}!</h2>
                 <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 8px;">
-                  You have been invited to join <strong>${userData?.schoolName || "EduIntellect"}</strong> as a
+                  You have been invited to join <strong>${userData?.schoolName || "Edullent"}</strong> as a
                   <strong>${t.subject ? `${t.subject} Teacher` : "Teacher"}</strong>.
                 </p>
                 <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
@@ -430,7 +447,7 @@ const Teachers = () => {
                 </div>
               </div>
               <div style="background:#f1f5f9;padding:14px 28px;text-align:center;">
-                <p style="color:#94a3b8;font-size:11px;margin:0;">Powered by EduIntellect Cloud Architecture</p>
+                <p style="color:#94a3b8;font-size:11px;margin:0;">Powered by Edullent Cloud Architecture</p>
               </div>
             </div>
           `,
@@ -792,6 +809,17 @@ const Teachers = () => {
                   <Eye className="w-3.5 h-3.5" />
                 </button>
                 <button
+                  onClick={e => { e.stopPropagation(); handleTogglePrimary(t); }}
+                  className={`w-8 h-8 border rounded-lg flex items-center justify-center transition-colors shadow-sm ${
+                    t.isPrimarySchool
+                      ? "bg-amber-50 border-amber-300 text-amber-500"
+                      : "bg-white border-slate-200 text-slate-400 hover:text-amber-500 hover:border-amber-200"
+                  }`}
+                  title={t.isPrimarySchool ? "Primary school (click to unset)" : "Mark as teacher's primary school"}
+                >
+                  <Star className={`w-3.5 h-3.5 ${t.isPrimarySchool ? "fill-amber-500" : ""}`} />
+                </button>
+                <button
                   onClick={e => { e.stopPropagation(); handleStartEdit(t); }}
                   className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-amber-500 hover:border-amber-200 transition-colors shadow-sm"
                   title="Edit Name"
@@ -922,9 +950,20 @@ const Teachers = () => {
                   </td>
                   <td className="px-5 py-4" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
-                      <button onClick={() => handleOpenRoster(t)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-[#1e3a8a] transition-colors"><Eye className="w-4 h-4" /></button>
-                      <button onClick={() => handleStartEdit(t)} className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors"><Edit3 className="w-4 h-4" /></button>
-                      <button onClick={() => handleDeleteTeacher(t.id, t.name)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => handleOpenRoster(t)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-[#1e3a8a] transition-colors" title="View Roster"><Eye className="w-4 h-4" /></button>
+                      <button
+                        onClick={() => handleTogglePrimary(t)}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          t.isPrimarySchool
+                            ? "bg-amber-50 text-amber-500"
+                            : "text-slate-400 hover:bg-amber-50 hover:text-amber-500"
+                        }`}
+                        title={t.isPrimarySchool ? "Primary school (click to unset)" : "Mark as primary school"}
+                      >
+                        <Star className={`w-4 h-4 ${t.isPrimarySchool ? "fill-amber-500" : ""}`} />
+                      </button>
+                      <button onClick={() => handleStartEdit(t)} className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors" title="Edit Name"><Edit3 className="w-4 h-4" /></button>
+                      <button onClick={() => handleDeleteTeacher(t.id, t.name)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-500 transition-colors" title="Archive"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
