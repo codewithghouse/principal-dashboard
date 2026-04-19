@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Heart, Users, GraduationCap, CalendarCheck, AlertCircle,
   ArrowUp, ArrowDown, Star, ChevronRight,
@@ -7,6 +8,8 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
+import DashboardMobile from "@/components/dashboard/DashboardMobile";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -79,6 +82,9 @@ const healthLabel = (idx: number | null) =>
 
 const Dashboard = () => {
   const { userData } = useAuth();
+  const isMobile = useIsMobile();
+  const [searchParams] = useSearchParams();
+  const mobileTab = ((searchParams.get("tab") as "home" | "analytics" | "teachers") || "home");
 
   // ── Stats ──────────────────────────────────────────────────────────────────
   const [studentCount,    setStudentCount]    = useState<number | null>(null);
@@ -95,7 +101,7 @@ const Dashboard = () => {
   const [trendData,    setTrendData]    = useState<TrendPoint[]>([]);
   const [riskAlerts,   setRiskAlerts]   = useState<RiskAlert[]>([]);
   const [teacherRows,  setTeacherRows]  = useState<{ ini: string; name: string; subject: string; rating: number; bg: string }[]>([]);
-  const [heatmapCells, setHeatmapCells] = useState<{ cls: string; color: string }[]>([]);
+  const [heatmapCells, setHeatmapCells] = useState<{ cls: string; color: string; avg: number | null }[]>([]);
   const [urgentComms,  setUrgentComms]  = useState<{ id: string; title: string; from: string; time: string; border: string }[]>([]);
 
   // ── Cross-listener refs ────────────────────────────────────────────────────
@@ -316,7 +322,7 @@ const Dashboard = () => {
           }))
           .sort((a, b) => a.cls.localeCompare(b.cls, undefined, { numeric: true }))
           .slice(0, 12) // cap at 12 cells for heatmap layout
-          .map(c => ({ cls: c.cls, color: heatColor(c.avg) }));
+          .map(c => ({ cls: c.cls, color: heatColor(c.avg), avg: c.avg }));
         setHeatmapCells(cells);
 
         // Overall avg for health index
@@ -396,6 +402,32 @@ const Dashboard = () => {
   const displayIncidents = pendingIncidents !== null ? pendingIncidents : "--";
 
   // ─────────────────────────────────────────────────────────────────────────
+
+  // ── Mobile view ───────────────────────────────────────────────────────────
+  // Renders a tab-based mobile layout. Desktop view below stays untouched.
+  if (isMobile) {
+    return (
+      <div className="animate-in fade-in duration-500">
+        <DashboardMobile
+          activeTab={mobileTab}
+          displayHealth={displayHealth}
+          healthIndex={healthIndex}
+          healthDelta={healthDelta}
+          displayStudents={displayStudents}
+          displayTeachers={displayTeachers}
+          displayAttendance={displayAttendance}
+          attendanceDelta={attendanceDelta}
+          displayIncidents={displayIncidents}
+          pendingIncidents={pendingIncidents}
+          trendData={trendData}
+          riskAlerts={riskAlerts}
+          teacherRows={teacherRows}
+          heatmapCells={heatmapCells}
+          urgentComms={urgentComms}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 pb-10 animate-in fade-in duration-500">

@@ -17,6 +17,8 @@ import {
 import { useAuth } from "@/lib/AuthContext";
 import { sendEmail } from "@/lib/resend";
 import * as XLSX from "xlsx";
+import { useIsMobile } from "@/hooks/use-mobile";
+import StudentsMobile from "@/components/dashboard/StudentsMobile";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface BulkStudent {
@@ -40,6 +42,7 @@ const ITEMS_PER_PAGE = 15;
 const Students = () => {
   const { userData } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const [studentsData, setStudentsData]     = useState<any[]>([]);
   const [classes, setClasses]               = useState<any[]>([]);
@@ -543,8 +546,32 @@ const Students = () => {
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-12 text-left">
+    <div className={isMobile ? "animate-in fade-in duration-500" : "space-y-8 animate-in fade-in duration-500 pb-12 text-left"}>
 
+      {isMobile ? (
+        <StudentsMobile
+          studentsTotal={studentsData.length}
+          loading={loading}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          atRiskFilter={atRiskFilter}
+          atRiskCount={atRiskCount}
+          toggleAtRisk={() => { setAtRiskFilter(f => !f); setCurrentPage(1); }}
+          filteredCount={filtered.length}
+          paginated={paginated as any}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={ITEMS_PER_PAGE}
+          setCurrentPage={setCurrentPage}
+          onAddClick={() => setIsAddModalOpen(true)}
+          onExportClick={handleExport}
+          onBulkClick={() => { setBulkRows([]); setShowBulkModal(true); }}
+          onArchiveClick={() => setShowArchiveModal(true)}
+          onProfileClick={s => setSelectedStudent(s)}
+          defaultBranchId={userData?.branchId}
+        />
+      ) : (
+      <>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="text-left">
@@ -759,6 +786,8 @@ const Students = () => {
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* ── Bulk Upload Modal ────────────────────────────────────────────── */}
       {showBulkModal && (

@@ -1,11 +1,12 @@
 import { useState, ReactNode } from "react";
 import Header from "./Header";
 import AppSidebar from "./AppSidebar";
+import MobileTabBar from "./MobileTabBar";
 
 const DashboardLayout = ({ children }: { children: ReactNode }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-[#f5f5f7] md:bg-background">
       <Header onMenuClick={() => setSidebarOpen(true)} />
       <div className="flex flex-1 overflow-hidden relative">
         {/* Mobile overlay */}
@@ -23,10 +24,11 @@ const DashboardLayout = ({ children }: { children: ReactNode }) => {
         >
           <AppSidebar onClose={() => setSidebarOpen(false)} />
         </div>
-        <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto md:h-[calc(100vh-64px)] min-w-0">
+        <main className="flex-1 px-4 pt-3 pb-24 sm:p-6 md:p-8 md:pb-8 overflow-y-auto md:h-[calc(100vh-64px)] min-w-0">
           {children}
         </main>
       </div>
+      <MobileTabBar />
     </div>
   );
 };
