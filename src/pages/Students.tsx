@@ -290,16 +290,18 @@ const Students = () => {
       const data = new Uint8Array(e.target?.result as ArrayBuffer);
       const wb   = XLSX.read(data, { type: "array" });
       const ws   = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<any>(ws);
-      const parsed: BulkStudent[] = rows.map(r => ({
-        name:          String(r["Name"] || r["name"] || "").trim(),
-        email:         String(r["Email"] || r["email"] || "").trim().toLowerCase(),
-        class:         String(r["Class"] || r["class"] || "").trim(),
-        rollNo:        String(r["RollNo"] || r["Roll No"] || r["roll_no"] || "").trim(),
-        parentPhone:   String(r["ParentPhone"] || r["Parent Phone"] || "").trim(),
-        admissionDate: String(r["AdmissionDate"] || r["Admission Date"] || "").trim(),
-        _status:       "pending",
-      })).filter(r => r.name && r.email);
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws);
+      const parsed: BulkStudent[] = rows
+        .map((r): BulkStudent => ({
+          name:          String(r["Name"] || r["name"] || "").trim(),
+          email:         String(r["Email"] || r["email"] || "").trim().toLowerCase(),
+          class:         String(r["Class"] || r["class"] || "").trim(),
+          rollNo:        String(r["RollNo"] || r["Roll No"] || r["roll_no"] || "").trim(),
+          parentPhone:   String(r["ParentPhone"] || r["Parent Phone"] || "").trim(),
+          admissionDate: String(r["AdmissionDate"] || r["Admission Date"] || "").trim(),
+          _status:       "pending",
+        }))
+        .filter(r => r.name && r.email);
       setBulkRows(parsed);
     };
     reader.readAsArrayBuffer(file);
