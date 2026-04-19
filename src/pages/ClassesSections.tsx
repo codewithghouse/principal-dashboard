@@ -5,12 +5,14 @@ import {
   Search as SearchIcon, Mail, Check
 } from "lucide-react";
 import ClassPerformance from "@/components/ClassPerformance";
+import ClassesSectionsMobile from "@/components/dashboard/ClassesSectionsMobile";
 import { db } from "@/lib/firebase";
 import {
   collection, query, where, onSnapshot,
   addDoc, serverTimestamp, updateDoc, doc, getDocs, writeBatch
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -75,6 +77,7 @@ const healthColor = (h: number) =>
 
 const ClassesSections = () => {
   const { userData } = useAuth();
+  const isMobile = useIsMobile();
 
   const [loading, setLoading]               = useState(true);
   const [classes, setClasses]               = useState<ClassRow[]>([]);
@@ -448,8 +451,24 @@ const ClassesSections = () => {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-12">
+    <div className={isMobile ? "animate-in fade-in duration-500" : "space-y-8 animate-in fade-in duration-500 pb-12"}>
 
+      {isMobile ? (
+        <ClassesSectionsMobile
+          loading={loading}
+          classes={classes}
+          gradesSummary={gradesSummary}
+          onAddClass={() => setAddModal(true)}
+          onChangeTeacher={cls => {
+            setAssigningClass(cls);
+            setAssignTeacherId(cls.teacherId || "");
+            setAssignModal(true);
+          }}
+          onOpenStudents={cls => openStudentModal(cls)}
+          onViewSection={cls => setSelectedSection(cls)}
+        />
+      ) : (
+      <>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -658,6 +677,8 @@ const ClassesSections = () => {
             )}
           </div>
         </>
+      )}
+      </>
       )}
 
       {/* ── Add Class Modal ── */}
