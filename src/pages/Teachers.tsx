@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  BarChart2, CalendarCheck, Star, Users, Search, List,
-  Plus, Upload, Download, FileSpreadsheet, X, CheckCircle,
+  CalendarCheck, Star, Users, Search, List,
+  Plus, Upload, Download, FileSpreadsheet, CheckCircle,
   Loader2, GraduationCap, Eye, Trash2, Edit3, Save,
-  TrendingUp, UserCheck, MessageSquare, LayoutGrid
+  TrendingUp, MessageSquare, LayoutGrid, MoreHorizontal, BookOpen, MapPin
 } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useNavigate } from "react-router-dom";
 import TeacherProfile from "@/components/TeacherProfile";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -67,6 +69,8 @@ const StatCard = ({
 // ─── Component ────────────────────────────────────────────────────────────────
 const Teachers = () => {
   const { userData } = useAuth();
+  const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── UI State ─────────────────────────────────────────────────────────────
@@ -489,6 +493,551 @@ const Teachers = () => {
   // ── If profile is open, render it ────────────────────────────────────────
   if (selectedTeacher) {
     return <TeacherProfile teacher={selectedTeacher} onBack={() => setSelectedTeacher(null)} />;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     MOBILE — Bright Blue Apple UI
+     ═══════════════════════════════════════════════════════════════ */
+  if (isMobile) {
+    const B1 = "#0055FF", B2 = "#1166FF", B4 = "#4499FF";
+    const BG = "#EEF4FF", BG2 = "#E0ECFF";
+    const T1 = "#001040", T2 = "#002080", T3 = "#5070B0", T4 = "#99AACC";
+    const SEP = "rgba(0,85,255,0.07)";
+    const GREEN = "#00C853", GREEN_D = "#007830", GREEN_S = "rgba(0,200,83,0.10)", GREEN_B = "rgba(0,200,83,0.22)";
+    const RED = "#FF3355", RED_S = "rgba(255,51,85,0.10)", RED_B = "rgba(255,51,85,0.22)";
+    const ORANGE = "#FF8800";
+    const GOLD = "#FFAA00";
+    const SH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 8px rgba(0,85,255,0.08), 0 10px 26px rgba(0,85,255,0.10)";
+    const SH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.11), 0 18px 44px rgba(0,85,255,0.13)";
+    const SH_BTN = "0 6px 22px rgba(0,85,255,0.40), 0 2px 5px rgba(0,85,255,0.20)";
+
+    // Avatar gradient mapping (from existing tailwind color classes)
+    const avatarGradient = (color: string) => {
+      if (color?.includes("emerald"))  return { bg: `linear-gradient(135deg, ${GREEN}, #22EE66)`,       shadow: "0 4px 14px rgba(0,200,83,0.28)" };
+      if (color?.includes("amber"))    return { bg: `linear-gradient(135deg, ${ORANGE}, #FFCC22)`,       shadow: "0 4px 14px rgba(255,136,0,0.28)" };
+      if (color?.includes("rose"))     return { bg: `linear-gradient(135deg, ${RED}, #FF88AA)`,           shadow: "0 4px 14px rgba(255,51,85,0.28)" };
+      if (color?.includes("indigo"))   return { bg: "linear-gradient(135deg, #5B6FD4, #8A9AF0)",          shadow: "0 4px 14px rgba(91,111,212,0.28)" };
+      if (color?.includes("teal"))     return { bg: "linear-gradient(135deg, #00C4B4, #22DDCC)",          shadow: "0 4px 14px rgba(0,196,180,0.24)" };
+      return                             { bg: `linear-gradient(135deg, ${B1}, ${B2})`,                 shadow: "0 4px 14px rgba(0,85,255,0.28)" };
+    };
+    const accentBar = (color: string) => {
+      if (color?.includes("emerald")) return `linear-gradient(180deg, ${GREEN}, #22EE66)`;
+      if (color?.includes("amber"))   return `linear-gradient(180deg, ${ORANGE}, #FFCC22)`;
+      if (color?.includes("rose"))    return `linear-gradient(180deg, ${RED}, #FF88AA)`;
+      return `linear-gradient(180deg, ${B1}, ${B4})`;
+    };
+
+    // Status chip
+    const statusChip = (status: string) => {
+      if (status === "Active")   return { bg: GREEN_S,                       color: GREEN_D, border: GREEN_B,                         dotColor: GREEN };
+      if (status === "On Leave") return { bg: "rgba(255,136,0,0.10)",         color: "#884400", border: "rgba(255,136,0,0.22)",         dotColor: ORANGE };
+      if (status === "Invited")  return { bg: "rgba(0,85,255,0.10)",          color: B1,       border: "rgba(0,85,255,0.20)",           dotColor: B1 };
+      return                     { bg: "rgba(153,170,204,0.10)",              color: T3,       border: "rgba(153,170,204,0.22)",        dotColor: T4 };
+    };
+
+    return (
+      <>
+        <div className="animate-in fade-in duration-500 -mx-3 -mt-3"
+          style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif", background: BG, minHeight: "100vh" }}>
+
+          {/* Page head */}
+          <div className="flex items-start justify-between px-5 pt-4">
+            <div>
+              <div className="text-[24px] font-bold mb-[3px]" style={{ color: T1, letterSpacing: "-0.6px" }}>Teachers</div>
+              <div className="text-[11px] font-normal" style={{ color: T3 }}>Manage teaching staff and monitor performance</div>
+            </div>
+            <button
+              onClick={() => setIsInviteOpen(true)}
+              className="h-10 px-[15px] rounded-[14px] flex items-center gap-[6px] text-[12px] font-bold text-white cursor-pointer whitespace-nowrap shrink-0 mt-1 relative overflow-hidden active:scale-[0.95] transition-transform"
+              style={{ background: `linear-gradient(135deg, ${B1}, ${B2})`, boxShadow: SH_BTN, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+              <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+              <Plus className="w-[13px] h-[13px] relative z-10" strokeWidth={2.5} />
+              <span className="relative z-10">Add Teacher</span>
+            </button>
+          </div>
+
+          {/* Stat grid 2x2 */}
+          <div className="grid grid-cols-2 gap-[10px] px-5 pt-[14px]">
+            {[
+              { title: "Avg Class Performance", val: avgClassPerf !== null ? `${avgClassPerf}%` : "0%", valColor: B1,       sub: "Based on recorded results",    subColor: T3,      icon: TrendingUp,   iconBg: "rgba(0,85,255,0.10)",  iconBorder: "rgba(0,85,255,0.18)",  iconColor: B1,     glow: "rgba(0,85,255,0.10)",    onClick: () => navigate("/teacher-performance") },
+              { title: "Teacher Attendance",    val: teacherAttPct !== null ? `${teacherAttPct}%` : "100%", valColor: GREEN, sub: teacherAttPct !== null && teacherAttPct >= 95 ? "Excellent" : teacherAttPct !== null && teacherAttPct >= 80 ? "Good" : "Needs attention", subColor: GREEN_D, icon: CalendarCheck, iconBg: "rgba(0,200,83,0.10)",  iconBorder: "rgba(0,200,83,0.20)",  iconColor: GREEN,  glow: "rgba(0,200,83,0.10)",    onClick: () => navigate("/attendance") },
+              { title: "Parent Feedback",       val: avgRating !== null ? `${avgRating}/5` : reviewCount > 0 ? "—" : "—",  valColor: GOLD,    sub: `Based on ${reviewCount} review${reviewCount === 1 ? "" : "s"}`, subColor: T3, icon: Star,          iconBg: "rgba(255,170,0,0.12)", iconBorder: "rgba(255,170,0,0.22)", iconColor: GOLD,   glow: "rgba(255,170,0,0.10)",   onClick: () => navigate("/teacher-leaderboard") },
+              { title: "Active Teachers",       val: totalCount > 0 ? `${activeCount}/${totalCount}` : "0", valColor: GREEN_D, sub: onLeaveCount > 0 ? `${onLeaveCount} on leave` : activeCount === totalCount && totalCount > 0 ? "All present" : "—", subColor: GREEN_D, icon: Users,         iconBg: "rgba(0,85,255,0.10)",  iconBorder: "rgba(0,85,255,0.18)",  iconColor: B1,     glow: "rgba(0,200,83,0.10)",    onClick: () => navigate("/teacher-performance") },
+            ].map(({ title, val, valColor, sub, subColor, icon: Icon, iconBg, iconBorder, iconColor, glow, onClick }) => (
+              <button
+                key={title}
+                onClick={onClick}
+                className="bg-white rounded-[20px] p-4 relative overflow-hidden cursor-pointer active:scale-[0.96] transition-transform text-left"
+                style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+                <div className="absolute -top-5 -right-4 w-[70px] h-[70px] rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)`, opacity: 0.5 }} />
+                <div className="flex items-start justify-between mb-[10px]">
+                  <div className="text-[9px] font-bold uppercase tracking-[0.07em] leading-[1.4]" style={{ color: T4 }}>{title}</div>
+                  <div className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center shrink-0"
+                    style={{ background: iconBg, border: `0.5px solid ${iconBorder}` }}>
+                    <Icon className="w-[14px] h-[14px]" style={{ color: iconColor }} strokeWidth={2.4} />
+                  </div>
+                </div>
+                <div className="text-[26px] font-bold leading-none mb-1" style={{ color: valColor, letterSpacing: "-1px" }}>{val}</div>
+                <div className="text-[11px] font-semibold truncate" style={{ color: subColor }}>{sub}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Search + Subject filter */}
+          <div className="flex gap-2 px-5 pt-3">
+            <div className="flex-1 relative">
+              <div className="absolute left-[13px] top-1/2 -translate-y-1/2 pointer-events-none">
+                <Search className="w-[15px] h-[15px]" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
+              </div>
+              <input
+                type="text"
+                placeholder="Search teachers..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full py-3 pr-[14px] pl-[40px] rounded-[14px] text-[13px] font-normal outline-none bg-white"
+                style={{ border: "0.5px solid rgba(0,85,255,0.12)", color: T1, boxShadow: SH, fontFamily: "inherit" }}
+              />
+            </div>
+            <select
+              value={subjectFilter}
+              onChange={e => setSubjectFilter(e.target.value)}
+              className="px-3 rounded-[14px] text-[11px] font-bold bg-white cursor-pointer appearance-none h-11"
+              style={{
+                border: "0.5px solid rgba(0,85,255,0.12)",
+                color: T2,
+                boxShadow: SH,
+                fontFamily: "inherit",
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230055FF' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 10px center",
+                paddingRight: "32px",
+              }}>
+              <option value="">All Subjects</option>
+              {allSubjects.map(sub => <option key={sub} value={sub}>{sub}</option>)}
+            </select>
+          </div>
+
+          {/* Action row — Grid/List toggle + Bulk Import */}
+          <div className="flex gap-2 px-5 pt-[10px]">
+            <button
+              onClick={() => setViewMode("grid")}
+              className="h-[38px] px-[14px] rounded-[13px] flex items-center justify-center gap-[6px] text-[11px] font-bold cursor-pointer active:scale-[0.94] transition-transform"
+              style={{
+                background: viewMode === "grid" ? `linear-gradient(135deg, ${B1}, ${B2})` : "#FFFFFF",
+                color: viewMode === "grid" ? "#fff" : T2,
+                border: viewMode === "grid" ? "0.5px solid transparent" : "0.5px solid rgba(0,85,255,0.14)",
+                boxShadow: viewMode === "grid" ? SH_BTN : SH,
+                transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
+              }}>
+              <LayoutGrid className="w-[13px] h-[13px]" strokeWidth={2.3} />
+              Grid
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className="h-[38px] px-[14px] rounded-[13px] flex items-center justify-center gap-[6px] text-[11px] font-bold cursor-pointer active:scale-[0.94] transition-transform"
+              style={{
+                background: viewMode === "list" ? `linear-gradient(135deg, ${B1}, ${B2})` : "#FFFFFF",
+                color: viewMode === "list" ? "#fff" : T2,
+                border: viewMode === "list" ? "0.5px solid transparent" : "0.5px solid rgba(0,85,255,0.14)",
+                boxShadow: viewMode === "list" ? SH_BTN : SH,
+                transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
+              }}>
+              <List className="w-[13px] h-[13px]" style={{ color: viewMode === "list" ? "#fff" : "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
+              List
+            </button>
+            <button
+              onClick={() => setIsBulkOpen(true)}
+              className="h-[38px] px-[14px] rounded-[13px] flex items-center justify-center gap-[6px] text-[11px] font-bold cursor-pointer active:scale-[0.94] transition-transform"
+              style={{ background: GREEN_S, border: `0.5px solid ${GREEN_B}`, color: GREEN_D, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+              <Upload className="w-[13px] h-[13px]" strokeWidth={2.3} />
+              Bulk Import
+            </button>
+          </div>
+
+          {/* Section label */}
+          <div className="flex items-center gap-2 px-5 pt-4 text-[9px] font-bold uppercase tracking-[0.10em]" style={{ color: T4 }}>
+            <span>Faculty Directory</span>
+            <span className="px-[9px] py-[3px] rounded-full ml-1" style={{ background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.16)", color: B1 }}>
+              {filtered.length} teacher{filtered.length === 1 ? "" : "s"}
+            </span>
+            <span className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
+          </div>
+
+          {/* Teacher cards */}
+          {filtered.length === 0 ? (
+            <div className="mx-5 mt-3 bg-white rounded-[24px] py-12 flex flex-col items-center gap-2"
+              style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+              <GraduationCap className="w-12 h-12" style={{ color: T4 }} strokeWidth={1.8} />
+              <div className="text-[14px] font-bold" style={{ color: T2 }}>No teachers found</div>
+              <div className="text-[11px]" style={{ color: T4 }}>Try changing your search or filters</div>
+            </div>
+          ) : (
+            filtered.map(t => {
+              const av = avatarGradient(t.color);
+              const chip = statusChip(t.status);
+              const subjectChipColor = t.subject === "Math" || t.subject?.toLowerCase().includes("math")
+                ? { bg: "rgba(255,136,0,0.10)", color: "#884400", border: "rgba(255,136,0,0.22)" }
+                : { bg: "rgba(0,85,255,0.10)", color: B1,          border: "rgba(0,85,255,0.20)" };
+              return (
+                <div key={t.id} className="mx-5 mt-3 bg-white rounded-[24px] overflow-hidden relative"
+                  style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+                  {/* Left accent */}
+                  <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-[2px]" style={{ background: accentBar(t.color) }} />
+
+                  {/* Card header */}
+                  <div className="flex items-start gap-[14px] pl-[22px] pr-[18px] pt-[18px] pb-4 relative" style={{ borderBottom: `0.5px solid ${SEP}` }}>
+                    {/* Avatar */}
+                    <div className="w-[52px] h-[52px] rounded-[17px] flex items-center justify-center text-[18px] font-bold text-white shrink-0"
+                      style={{ background: av.bg, boxShadow: av.shadow }}>
+                      {t.initials}
+                    </div>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      {editingId === t.id ? (
+                        <div className="flex items-center gap-[6px] mb-[3px]">
+                          <input
+                            autoFocus
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            onKeyDown={e => e.key === "Enter" && handleSaveName(t.id)}
+                            className="flex-1 text-[15px] font-bold px-2 py-1 rounded-[8px] outline-none"
+                            style={{ border: `1px solid ${B1}66`, color: T1 }}
+                          />
+                          <button onClick={() => handleSaveName(t.id)} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-white shrink-0"
+                            style={{ background: GREEN }}>
+                            <Save className="w-[13px] h-[13px]" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-[17px] font-bold mb-[3px] truncate" style={{ color: T1, letterSpacing: "-0.3px" }}>{t.name}</div>
+                      )}
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.06em] mb-2" style={{ color: T3 }}>{t.subject}</div>
+                      <div className="inline-flex items-center gap-1 px-[11px] py-[4px] rounded-full text-[10px] font-bold"
+                        style={{ background: chip.bg, color: chip.color, border: `0.5px solid ${chip.border}` }}>
+                        <span className="w-[5px] h-[5px] rounded-full" style={{ background: chip.dotColor, boxShadow: `0 0 0 1.5px ${chip.dotColor}33` }} />
+                        {t.status}
+                      </div>
+                    </div>
+                    {/* Icon tray */}
+                    <div className="flex gap-[6px] absolute top-[16px] right-[16px]">
+                      <button
+                        onClick={() => setSelectedTeacher(t)}
+                        className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center active:scale-[0.90] transition-transform"
+                        style={{ background: BG, border: "0.5px solid rgba(0,85,255,0.12)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
+                        aria-label="View">
+                        <Eye className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.55)" }} strokeWidth={2.3} />
+                      </button>
+                      <button
+                        onClick={() => handleTogglePrimary(t)}
+                        className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center active:scale-[0.90] transition-transform"
+                        style={{
+                          background: t.isPrimarySchool ? "rgba(255,170,0,0.10)" : BG,
+                          border: `0.5px solid ${t.isPrimarySchool ? "rgba(255,170,0,0.24)" : "rgba(0,85,255,0.12)"}`,
+                          transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
+                        }}
+                        aria-label="Primary">
+                        <Star className={`w-[13px] h-[13px] ${t.isPrimarySchool ? "fill-current" : ""}`}
+                          style={{ color: t.isPrimarySchool ? GOLD : "rgba(0,85,255,0.55)" }} strokeWidth={2.3} />
+                      </button>
+                      <button
+                        onClick={() => handleStartEdit(t)}
+                        className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center active:scale-[0.90] transition-transform"
+                        style={{ background: BG, border: "0.5px solid rgba(0,85,255,0.12)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
+                        aria-label="Edit">
+                        <Edit3 className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.55)" }} strokeWidth={2.3} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTeacher(t.id, t.name)}
+                        className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center active:scale-[0.90] transition-transform"
+                        style={{ background: RED_S, border: `0.5px solid ${RED_B}`, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
+                        aria-label="Archive">
+                        <Trash2 className="w-[13px] h-[13px]" style={{ color: RED }} strokeWidth={2.3} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Metrics strip */}
+                  <div className="flex" style={{ borderBottom: `0.5px solid ${SEP}` }}>
+                    <div className="flex-1 px-3 py-[14px] flex flex-col items-center gap-[5px] relative">
+                      <div className="text-[20px] font-bold leading-none" style={{ color: B1, letterSpacing: "-0.5px" }}>
+                        {t.classCount === null ? <Loader2 className="w-4 h-4 animate-spin inline" /> : t.classCount}
+                      </div>
+                      <div className="text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: T4 }}>Classes</div>
+                      <span className="absolute right-0 top-3 bottom-3 w-[0.5px]" style={{ background: "rgba(0,85,255,0.10)" }} />
+                    </div>
+                    <div className="flex-1 px-3 py-[14px] flex flex-col items-center gap-[5px] relative">
+                      <div className="text-[20px] font-bold leading-none" style={{ color: teacherAttPct !== null ? GREEN_D : T4, letterSpacing: "-0.5px" }}>
+                        {teacherAttPct !== null ? `${teacherAttPct}%` : "N/A"}
+                      </div>
+                      <div className="text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: T4 }}>Attendance</div>
+                      <span className="absolute right-0 top-3 bottom-3 w-[0.5px]" style={{ background: "rgba(0,85,255,0.10)" }} />
+                    </div>
+                    <div className="flex-1 px-3 py-[14px] flex flex-col items-center gap-[5px]">
+                      <div className="flex items-center gap-[3px]">
+                        <Star className="w-[14px] h-[14px]" fill={GOLD} stroke={GOLD} />
+                        <span className="text-[20px] font-bold" style={{ color: GOLD, letterSpacing: "-0.5px" }}>{t.rating}</span>
+                      </div>
+                      <div className="text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: T4 }}>Rating</div>
+                    </div>
+                  </div>
+
+                  {/* Detail rows */}
+                  <div className="py-1">
+                    <div className="flex items-center justify-between px-[18px] py-3" style={{ borderBottom: `0.5px solid ${SEP}` }}>
+                      <div className="flex items-center gap-2 text-[12px] font-medium" style={{ color: T3 }}>
+                        <CalendarCheck className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.5)" }} strokeWidth={2.2} />
+                        Experience
+                      </div>
+                      <div className="text-[13px] font-bold" style={{ color: t.experience === "N/A" ? T4 : T1, letterSpacing: "-0.1px" }}>{t.experience}</div>
+                    </div>
+                    <div className="flex items-center justify-between px-[18px] py-3" style={{ borderBottom: `0.5px solid ${SEP}` }}>
+                      <div className="flex items-center gap-2 text-[12px] font-medium" style={{ color: T3 }}>
+                        <BookOpen className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.5)" }} strokeWidth={2.2} />
+                        Subject
+                      </div>
+                      <span className="px-[9px] py-[3px] rounded-full text-[11px] font-bold"
+                        style={{ background: subjectChipColor.bg, color: subjectChipColor.color, border: `0.5px solid ${subjectChipColor.border}` }}>
+                        {t.subject}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between px-[18px] py-3">
+                      <div className="flex items-center gap-2 text-[12px] font-medium" style={{ color: T3 }}>
+                        <MapPin className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.5)" }} strokeWidth={2.2} />
+                        Campus
+                      </div>
+                      <div className="text-[13px] font-bold truncate max-w-[140px]" style={{ color: T1, letterSpacing: "-0.1px" }}>
+                        {userData?.schoolName || "—"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action bar */}
+                  <div className="flex gap-2 px-4 py-[13px]" style={{ background: "rgba(238,244,255,0.50)" }}>
+                    <button
+                      onClick={() => setSelectedTeacher(t)}
+                      className="flex-1 h-[42px] rounded-[13px] flex items-center justify-center gap-[7px] text-[12px] font-bold text-white active:scale-[0.95] transition-transform relative overflow-hidden"
+                      style={{ background: `linear-gradient(135deg, ${B1}, ${B2})`, boxShadow: SH_BTN, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+                      <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+                      <Eye className="w-[13px] h-[13px] relative z-10" strokeWidth={2.2} />
+                      <span className="relative z-10">View Profile</span>
+                    </button>
+                    <button
+                      onClick={() => navigate("/teacher-notes")}
+                      className="flex-1 h-[42px] rounded-[13px] flex items-center justify-center gap-[7px] text-[12px] font-bold text-white active:scale-[0.95] transition-transform"
+                      style={{ background: "linear-gradient(135deg, #001040, #001888)", boxShadow: "0 4px 14px rgba(0,8,64,0.24)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+                      <MessageSquare className="w-[13px] h-[13px]" strokeWidth={2.2} />
+                      Message
+                    </button>
+                    <button
+                      onClick={() => handleOpenRoster(t)}
+                      className="w-[48px] h-[42px] rounded-[13px] flex items-center justify-center active:scale-[0.90] transition-transform"
+                      style={{ background: BG, border: "0.5px solid rgba(0,85,255,0.16)", color: T2, boxShadow: SH, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
+                      aria-label="More">
+                      <MoreHorizontal className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {/* AI Faculty Summary */}
+          {totalCount > 0 && (
+            <div className="mx-5 mt-3 rounded-[24px] px-[22px] py-5 relative overflow-hidden"
+              style={{
+                background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
+                boxShadow: "0 8px 28px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.14)",
+              }}>
+              <div className="absolute -top-9 -right-6 w-[155px] h-[155px] rounded-full pointer-events-none"
+                style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+              <div className="absolute inset-0 pointer-events-none" style={{
+                backgroundImage: "linear-gradient(rgba(255,255,255,0.014) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px)",
+                backgroundSize: "24px 24px",
+              }} />
+              <div className="flex items-center gap-[6px] mb-3 relative z-10">
+                <div className="w-7 h-7 rounded-[9px] flex items-center justify-center"
+                  style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                  <TrendingUp className="w-[14px] h-[14px]" style={{ color: "rgba(255,255,255,0.90)" }} strokeWidth={2.3} />
+                </div>
+                <span className="text-[9px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI Faculty Intelligence</span>
+              </div>
+              <p className="text-[13px] leading-[1.72] font-normal relative z-10" style={{ color: "rgba(255,255,255,0.85)" }}>
+                <strong style={{ color: "#fff", fontWeight: 700 }}>{totalCount} teacher{totalCount === 1 ? "" : "s"}</strong> on faculty · {activeCount === totalCount ? "All active" : `${activeCount} active`}{onLeaveCount > 0 && `, ${onLeaveCount} on leave`}.
+                {teacherAttPct !== null && <> Teacher attendance is <strong style={{ color: "#fff", fontWeight: 700 }}>{teacherAttPct}%</strong>.</>}
+                {avgRating !== null && <> Average rating from parent feedback: <strong style={{ color: "#fff", fontWeight: 700 }}>{avgRating}/5 stars</strong>.</>}
+                {avgClassPerf !== null && <> Avg class performance across results: <strong style={{ color: "#fff", fontWeight: 700 }}>{avgClassPerf}%</strong>.</>}
+              </p>
+              <div className="grid grid-cols-3 rounded-[16px] overflow-hidden mt-[14px] relative z-10" style={{ gap: "1px", background: "rgba(255,255,255,0.12)" }}>
+                <div className="py-[13px] px-3 text-center" style={{ background: "rgba(255,255,255,0.08)" }}>
+                  <div className="text-[22px] font-bold text-white leading-none mb-1" style={{ letterSpacing: "-0.6px" }}>{totalCount}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: "rgba(255,255,255,0.40)" }}>Teachers</div>
+                </div>
+                <div className="py-[13px] px-3 text-center" style={{ background: "rgba(255,255,255,0.08)" }}>
+                  <div className="text-[22px] font-bold text-white leading-none mb-1" style={{ letterSpacing: "-0.6px" }}>{avgRating !== null ? `${avgRating} ★` : "—"}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: "rgba(255,255,255,0.40)" }}>Avg Rating</div>
+                </div>
+                <div className="py-[13px] px-3 text-center" style={{ background: "rgba(255,255,255,0.08)" }}>
+                  <div className="text-[22px] font-bold text-white leading-none mb-1" style={{ letterSpacing: "-0.6px" }}>{teacherAttPct !== null ? `${teacherAttPct}%` : "100%"}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: "rgba(255,255,255,0.40)" }}>Attendance</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="h-6" />
+        </div>
+
+        {/* ── INVITE DIALOG (shared with desktop state) ──────────────────── */}
+        <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+          <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[440px] rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-[#1e3a8a]">Invite Teacher</DialogTitle>
+              <DialogDescription className="text-slate-500">Send an email invitation to a new faculty member.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleInvite} className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Full Name</Label>
+                <Input placeholder="Mrs. Kavita Sharma" className="h-11 rounded-xl"
+                  value={inviteForm.name} onChange={e => setInviteForm({ ...inviteForm, name: e.target.value })} required />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Email Address</Label>
+                <Input type="email" placeholder="teacher@school.edu" className="h-11 rounded-xl"
+                  value={inviteForm.email} onChange={e => setInviteForm({ ...inviteForm, email: e.target.value })} required />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Subject</Label>
+                <Input placeholder="e.g. Mathematics" className="h-11 rounded-xl"
+                  value={inviteForm.subject} onChange={e => setInviteForm({ ...inviteForm, subject: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Assign Class (Optional)</Label>
+                <select
+                  value={inviteForm.assignClassId}
+                  onChange={e => setInviteForm({ ...inviteForm, assignClassId: e.target.value })}
+                  className="w-full h-11 px-3 rounded-xl border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                >
+                  <option value="">— Not assigned —</option>
+                  {availableClasses.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button type="submit" disabled={isSending}
+                className="w-full h-11 rounded-xl bg-[#1e3a8a] text-white font-semibold hover:opacity-90 transition flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isSending ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</> : <><CheckCircle className="w-4 h-4" /> Send Invitation</>}
+              </button>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── BULK IMPORT DIALOG (shared) ──────────────────────────────── */}
+        <Dialog open={isBulkOpen} onOpenChange={(v) => { setIsBulkOpen(v); if (!v) { setBulkData([]); setBulkDone(false); } }}>
+          <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[640px] max-h-[85vh] overflow-y-auto rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-[#1e3a8a] flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-600" /> Bulk Import Teachers
+              </DialogTitle>
+              <DialogDescription className="text-slate-500">Upload an Excel/CSV file to import multiple teachers at once.</DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              {bulkData.length === 0 ? (
+                <div className="space-y-3">
+                  <button onClick={downloadTemplate}
+                    className="w-full h-11 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-slate-100">
+                    <Download className="w-4 h-4" /> Download Template
+                  </button>
+                  <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} className="hidden" />
+                  <button onClick={() => fileInputRef.current?.click()}
+                    className="w-full h-12 rounded-xl bg-[#1e3a8a] text-white font-semibold text-sm flex items-center justify-center gap-2 hover:opacity-90">
+                    <Upload className="w-4 h-4" /> Choose Excel / CSV File
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-xl border border-slate-100 overflow-hidden max-h-[60vh] overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold uppercase text-slate-500">Name</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-bold uppercase text-slate-500">Email</th>
+                          <th className="px-3 py-2 text-right text-[10px] font-bold uppercase text-slate-500">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {bulkData.map((t, i) => (
+                          <tr key={i}>
+                            <td className="px-3 py-2 font-semibold text-slate-800 text-xs">{t.name}</td>
+                            <td className="px-3 py-2 text-xs text-slate-500 truncate max-w-[140px]">{t.email}</td>
+                            <td className="px-3 py-2 text-right">
+                              <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                                t._status === "success" ? "bg-green-100 text-green-700" :
+                                t._status === "duplicate" ? "bg-amber-100 text-amber-700" :
+                                t._status === "error" ? "bg-rose-100 text-rose-700" :
+                                "bg-slate-100 text-slate-500"
+                              }`}>
+                                {t._status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    {!bulkDone && (
+                      <button onClick={handleBulkImport} disabled={isBulkProcessing}
+                        className="flex-1 h-11 rounded-xl bg-[#1e3a8a] text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+                        {isBulkProcessing ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing…</> : <><Upload className="w-4 h-4" /> Import {bulkData.length} Teachers</>}
+                      </button>
+                    )}
+                    <button onClick={() => { setBulkData([]); setBulkDone(false); }}
+                      className="px-4 h-11 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold">
+                      Clear
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── ROSTER DIALOG (shared) ────────────────────────────────────── */}
+        <Dialog open={isRosterOpen} onOpenChange={setIsRosterOpen}>
+          <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[640px] max-h-[80vh] overflow-y-auto rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-[#1e3a8a]">Class Roster — {teacherToAssign?.name}</DialogTitle>
+              <DialogDescription className="text-slate-500">Students currently enrolled under this teacher.</DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              {loadingRoster ? (
+                <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-[#1e3a8a]" /></div>
+              ) : teacherRoster.length > 0 ? (
+                <div className="rounded-xl overflow-hidden border border-slate-100">
+                  <div className="divide-y divide-slate-50">
+                    {teacherRoster.map(s => (
+                      <div key={s.id} className="flex items-center justify-between px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-800 text-sm truncate">{s.studentName}</p>
+                          <p className="text-[11px] text-slate-400 truncate">{s.studentEmail}</p>
+                        </div>
+                        <span className="font-semibold text-[#1e3a8a] text-xs shrink-0">{s.className || "General"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  <Users className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-slate-400">No enrollment records found</p>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
