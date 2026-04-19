@@ -548,29 +548,51 @@ const Students = () => {
   return (
     <div className={isMobile ? "animate-in fade-in duration-500" : "space-y-8 animate-in fade-in duration-500 pb-12 text-left"}>
 
-      {isMobile ? (
-        <StudentsMobile
-          studentsTotal={studentsData.length}
-          loading={loading}
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          atRiskFilter={atRiskFilter}
-          atRiskCount={atRiskCount}
-          toggleAtRisk={() => { setAtRiskFilter(f => !f); setCurrentPage(1); }}
-          filteredCount={filtered.length}
-          paginated={paginated as any}
-          currentPage={currentPage}
-          totalPages={totalPages}
-          itemsPerPage={ITEMS_PER_PAGE}
-          setCurrentPage={setCurrentPage}
-          onAddClick={() => setIsAddModalOpen(true)}
-          onExportClick={handleExport}
-          onBulkClick={() => { setBulkRows([]); setShowBulkModal(true); }}
-          onArchiveClick={() => setShowArchiveModal(true)}
-          onProfileClick={s => setSelectedStudent(s)}
-          defaultBranchId={userData?.branchId}
-        />
-      ) : (
+      {isMobile ? (() => {
+        // Aggregate stats for the mobile UI's stat strip + dark summary card.
+        // Computed only on the mobile path to avoid touching desktop wiring.
+        const activeCount = studentsData.filter((s: any) => (s.status || "Active") === "Active").length;
+        const _validAtt = studentsData
+          .map((s: any) => s.attPct)
+          .filter((p: any): p is number => typeof p === "number");
+        const avgAttendance = _validAtt.length > 0
+          ? Math.round(_validAtt.reduce((a: number, b: number) => a + b, 0) / _validAtt.length)
+          : null;
+        const teachersCount = new Set(
+          studentsData.map((s: any) => s.faculty).filter((f: any) => f && f !== "—")
+        ).size;
+        const gradesCount = new Set(
+          studentsData.map((s: any) => s.gradeDisplay).filter(Boolean)
+        ).size;
+
+        return (
+          <StudentsMobile
+            studentsTotal={studentsData.length}
+            loading={loading}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            atRiskFilter={atRiskFilter}
+            atRiskCount={atRiskCount}
+            toggleAtRisk={() => { setAtRiskFilter(f => !f); setCurrentPage(1); }}
+            filteredCount={filtered.length}
+            paginated={paginated as any}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            itemsPerPage={ITEMS_PER_PAGE}
+            setCurrentPage={setCurrentPage}
+            onAddClick={() => setIsAddModalOpen(true)}
+            onExportClick={handleExport}
+            onBulkClick={() => { setBulkRows([]); setShowBulkModal(true); }}
+            onArchiveClick={() => setShowArchiveModal(true)}
+            onProfileClick={s => setSelectedStudent(s)}
+            defaultBranchId={userData?.branchId}
+            activeCount={activeCount}
+            avgAttendance={avgAttendance}
+            teachersCount={teachersCount}
+            gradesCount={gradesCount}
+          />
+        );
+      })() : (
       <>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
