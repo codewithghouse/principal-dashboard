@@ -9,9 +9,11 @@ import {
   PieChart, Pie, Legend
 } from "recharts";
 import { useAuth } from "@/lib/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { db } from "@/lib/firebase";
 import { collection, query, getDocs, where } from "firebase/firestore";
 import ExamDetail from "@/components/ExamDetail";
+import ExamsResultsMobile from "@/components/dashboard/ExamsResultsMobile";
 
 /* ══════════════════════════════════════════════════════════════
    Shared types  (imported by ExamDetail)
@@ -106,6 +108,7 @@ const GRADE_COLORS  = ["#16a34a", "#1d4ed8", "#d97706", "#ef4444"];
 
 export default function ExamsResults() {
   const { userData } = useAuth();
+  const isMobile = useIsMobile();
 
   const [allScores,      setAllScores]      = useState<any[]>([]);
   const [upcomingExams,  setUpcomingExams]  = useState<any[]>([]);
@@ -242,9 +245,27 @@ export default function ExamsResults() {
   /* ── school topper ── */
   const topper = latestExam?.meritList[0] || null;
 
-  /* ── detail view ── */
-  if (selectedExam) {
+  /* ── detail view (desktop only — mobile handles its own detail inside ExamsResultsMobile) ── */
+  if (selectedExam && !isMobile) {
     return <ExamDetail exam={selectedExam} allExams={examGroups} onBack={() => setSelectedExam(null)} userData={userData} />;
+  }
+
+  /* ── mobile render (dashboard + detail both handled inside ExamsResultsMobile) ── */
+  if (isMobile) {
+    return (
+      <ExamsResultsMobile
+        loading={loading}
+        upcomingExams={upcomingExams}
+        examGroups={examGroups}
+        latestExam={latestExam}
+        subjectData={subjectData}
+        gradeData={gradeData}
+        topper={topper}
+        selectedExam={selectedExam}
+        onSelectExam={exam => setSelectedExam(exam)}
+        onBackFromDetail={() => setSelectedExam(null)}
+      />
+    );
   }
 
   /* ══ MAIN RENDER ══════════════════════════════════════════════ */

@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   FileText, Users, TrendingUp, Trophy, ChevronRight, ChevronLeft,
-  Loader2, AlertTriangle, Check, Clock, X, BookOpen, Download
+  Loader2, AlertTriangle, Check, Clock, X, BookOpen, Download,
+  Sparkles, Upload, ArrowRight, Star
 } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, query, getDocs, where } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 /* ── helpers ─────────────────────────────────────────────────── */
 function chunk<T>(arr: T[], n: number): T[][] {
@@ -82,6 +84,7 @@ interface AssignmentGroup {
    DETAIL VIEW
 ════════════════════════════════════════════════════════════ */
 function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: () => void }) {
+  const isMobile = useIsMobile();
 
   const handleDownload = () => {
     const headers = ["Student Name", "Score /100", "Grade", "Feedback"];
