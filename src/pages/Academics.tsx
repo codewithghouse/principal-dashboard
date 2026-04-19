@@ -7,7 +7,9 @@ import {
 import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import SubjectAnalysis from "@/components/SubjectAnalysis";
+import AcademicsMobile from "@/components/dashboard/AcademicsMobile";
 import { useAuth } from "@/lib/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { db } from "@/lib/firebase";
 import {
   collection, query, where, onSnapshot, addDoc, getDocs, serverTimestamp,
@@ -50,6 +52,7 @@ const getSubjectStatus = (avg: number) =>
 // ─── component ───────────────────────────────────────────────────────────────
 const Academics = () => {
   const { userData } = useAuth();
+  const isMobile = useIsMobile();
 
   const [selectedSubject, setSelectedSubject] = useState<any | null>(null);
   const [subjects,        setSubjects]        = useState<any[]>([]);
@@ -230,8 +233,44 @@ const Academics = () => {
 
   // ── main render ───────────────────────────────────────────────────────────
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-12">
+    <div className={isMobile ? "animate-in fade-in duration-500" : "space-y-8 animate-in fade-in duration-500 pb-12"}>
 
+      {isMobile ? (
+        <AcademicsMobile
+          loading={loading}
+          subjects={subjects}
+          gradeDistData={gradeDistData}
+          curriculumData={curriculumData}
+          weakItems={weakItems}
+          onSelectSubject={s => setSelectedSubject(s)}
+          onOpenScheduleModal={() => setShowScheduleModal(true)}
+          onGenerateReport={() => {
+            const html = buildReport({
+              title: "Academic Performance Report",
+              badge: "Academics",
+              heroStats: [
+                { label: "Subjects Tracked", value: subjects.length },
+                { label: "Weak Subjects",    value: subjects.filter(s => s.status === "Weak").length,    color: "#f87171" },
+                { label: "Good Subjects",    value: subjects.filter(s => s.status === "Good").length,    color: "#4ade80" },
+                { label: "Average Subjects", value: subjects.filter(s => s.status === "Average").length, color: "#fbbf24" },
+              ],
+              sections: [
+                {
+                  title: "Subject-wise Performance",
+                  type: "table",
+                  headers: ["Subject", "Average", "Status", "Weak Sections"],
+                  rows: subjects.map(s => ({
+                    cells: [s.name, s.avg, s.status, s.weakSections],
+                    highlight: s.status === "Weak",
+                  })),
+                },
+              ],
+            });
+            openReportWindow(html);
+          }}
+        />
+      ) : (
+      <>
       {/* Header */}
       <div>
         <h1 className="text-2xl font-black text-foreground tracking-tight">Academic Performance</h1>
@@ -440,6 +479,8 @@ const Academics = () => {
           <CalendarCheck className="w-4 h-4" /> Schedule Remedial
         </button>
       </div>
+      </>
+      )}
 
       {/* ── SCHEDULE REMEDIAL MODAL ───────────────────────────────────────────── */}
       {showScheduleModal && (
