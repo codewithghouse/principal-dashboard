@@ -5,6 +5,8 @@ import {
   Upload, Download, FileSpreadsheet, Save, Trash2, Loader2,
   AlertCircle, CheckCircle2, Plus, Minus, DollarSign, Calendar,
   User, Search, ChevronRight,
+  Sparkles, ChevronLeft, Users, TrendingUp, Clock, AlertTriangle, Tag,
+  ChevronDown,
 } from "lucide-react";
 import { db } from "@/lib/firebase";
 import {
@@ -12,6 +14,7 @@ import {
   serverTimestamp, deleteDoc,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 /* ── types ──────────────────────────────────────────────── */
 interface FeeRow {
@@ -92,6 +95,12 @@ function currency(n: number): string {
 /* ══════════════════════════════════════════════════════════ */
 export default function FeeStructurePage() {
   const { userData } = useAuth();
+  const isMobile = useIsMobile();
+  const [mobileView, setMobileView] = useState<"plan" | "breakdown">("plan");
+  const [mobileExpandedClasses, setMobileExpandedClasses] = useState<Set<string>>(new Set());
+  const [mobileStudentFilter, setMobileStudentFilter] = useState<"all" | "paid" | "pending">("all");
+  const [mobileStudentSearch, setMobileStudentSearch] = useState("");
+  const [mobileShowAllClasses, setMobileShowAllClasses] = useState(false);
   const schoolId = userData?.schoolId || "";
   const branchId = userData?.branchId || "";
   const role     = userData?.role || "principal";
@@ -494,6 +503,2149 @@ export default function FeeStructurePage() {
     const branchTotal = Object.values(perTerm).reduce((a, b) => a + b, 0);
     return { perTerm, grandRow, branchTotal };
   };
+
+  // ───────────────────────── MOBILE RETURN ─────────────────────────────────
+  if (isMobile) {
+    const B1 = "#0055FF";
+    const B2 = "#1166FF";
+    const B3 = "#2277FF";
+    const B4 = "#4499FF";
+    const GREEN = "#00C853";
+    const GREEN_D = "#007830";
+    const RED = "#FF3355";
+    const RED_D = "#B01030";
+    const ORANGE = "#FF8800";
+    const ORANGE_D = "#884400";
+    const GOLD = "#FFAA00";
+    const VIOLET = "#7B3FF4";
+    const VIOLET_D = "#5023B0";
+    const T1 = "#001040";
+    const T2 = "#002080";
+    const T3 = "#5070B0";
+    const T4 = "#99AACC";
+    const SEP = "rgba(0,85,255,.07)";
+
+    const fmtInr = (n: number) => {
+      if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)}Cr`;
+      if (n >= 100000) return `₹${(n / 100000).toFixed(2)}L`;
+      if (n >= 1000) return `₹${(n / 1000).toFixed(0)}K`;
+      return `₹${n.toLocaleString("en-IN")}`;
+    };
+    const fmtInrFull = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+
+    // Academic year options from all structures
+    const ayOptions = Array.from(
+      new Set(allStructures.map((s) => s.academicYear).filter(Boolean))
+    ) as string[];
+
+    const latestStructure = latest;
+    const latestTotals = latestStructure ? totalsFor(latestStructure) : null;
+    const latestBranchTotal = latestTotals?.branchTotal || 0;
+    const latestClassCount = latestStructure?.rows.length || 0;
+    const latestTermCount = latestStructure?.termTypes.length || 0;
+    const annualAvg = latestTermCount > 0 ? latestBranchTotal / latestTermCount : 0;
+    const monthlyAvg = latestClassCount > 0 ? latestBranchTotal / latestClassCount / 12 : 0;
+
+    // Student-level totals (for breakdown screen)
+    const allStudents = latestStructure?.studentRows || [];
+    const totalPaid = allStudents.reduce((a, s) => a + (s.paid || 0), 0);
+    const totalPending = allStudents.reduce((a, s) => a + (s.pending || 0), 0);
+    const totalDiscount = allStudents.reduce((a, s) => a + (s.discount || 0), 0);
+    const collectionRate =
+      totalPaid + totalPending > 0 ? (totalPaid / (totalPaid + totalPending)) * 100 : 0;
+    const defaulters = allStudents.filter((s) => (s.pending || 0) > 0).length;
+    const cleared = allStudents.filter((s) => (s.pending || 0) === 0 && (s.paid || 0) > 0).length;
+    const discountApprovals = allStudents.filter((s) => (s.discount || 0) > 0).length;
+
+    // Classes with students
+    const studentsByClass = new Map<string, StudentFeeRow[]>();
+    allStudents.forEach((s) => {
+      if (!studentsByClass.has(s.className)) studentsByClass.set(s.className, []);
+      studentsByClass.get(s.className)!.push(s);
+    });
+
+    const filteredStudentsForClass = (list: StudentFeeRow[]) => {
+      let out = list;
+      if (mobileStudentFilter === "paid") out = out.filter((s) => (s.pending || 0) === 0 && (s.paid || 0) > 0);
+      if (mobileStudentFilter === "pending") out = out.filter((s) => (s.pending || 0) > 0);
+      if (mobileStudentSearch.trim()) {
+        const q = mobileStudentSearch.trim().toLowerCase();
+        out = out.filter(
+          (s) =>
+            s.studentName.toLowerCase().includes(q) ||
+            (s.rollNo || "").toLowerCase().includes(q)
+        );
+      }
+      return out;
+    };
+
+    const classAvGrads = [
+      `linear-gradient(135deg, ${B1}, ${B3})`,
+      `linear-gradient(135deg, ${GREEN}, #22DD77)`,
+      `linear-gradient(135deg, ${ORANGE}, #FFCC44)`,
+      `linear-gradient(135deg, ${VIOLET}, #A075FF)`,
+      `linear-gradient(135deg, ${GOLD}, #FFCC44)`,
+    ];
+    const classAvShadows = [
+      "0 4px 12px rgba(0,85,255,.28)",
+      "0 4px 12px rgba(0,200,83,.28)",
+      "0 4px 12px rgba(255,136,0,.28)",
+      "0 4px 12px rgba(123,63,244,.28)",
+      "0 4px 12px rgba(255,170,0,.28)",
+    ];
+    const classAccents = [
+      `linear-gradient(180deg, ${B1}, ${B4})`,
+      `linear-gradient(180deg, ${GREEN}, #66EE88)`,
+      `linear-gradient(180deg, ${ORANGE}, #FFCC44)`,
+      `linear-gradient(180deg, ${VIOLET}, #A075FF)`,
+      `linear-gradient(180deg, ${GOLD}, #FFCC44)`,
+    ];
+
+    const studentAvGrads = [
+      `linear-gradient(135deg, ${GREEN}, #22DD77)`,
+      `linear-gradient(135deg, ${VIOLET}, #A075FF)`,
+      `linear-gradient(135deg, ${B1}, ${B3})`,
+      `linear-gradient(135deg, ${ORANGE}, #FFCC44)`,
+      `linear-gradient(135deg, ${GOLD}, #FFCC44)`,
+    ];
+
+    // Upload / AY change handlers
+    const handleMobileUpload = () => fileRef.current?.click();
+
+    // ─── MOBILE BREAKDOWN VIEW ───
+    if (mobileView === "breakdown") {
+      return (
+        <div
+          style={{
+            fontFamily: "'DM Sans', -apple-system, sans-serif",
+            background: "#EEF4FF",
+            minHeight: "100vh",
+            paddingBottom: 24,
+          }}
+        >
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px 0" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                onClick={() => setMobileView("plan")}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 11,
+                  background: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                  border: "0.5px solid rgba(0,85,255,.12)",
+                  cursor: "pointer",
+                }}
+                aria-label="Back"
+              >
+                <ChevronLeft size={16} color={B1} strokeWidth={2.3} />
+              </button>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T1, letterSpacing: "-0.2px" }}>Student Payments</div>
+            </div>
+          </div>
+
+          {/* Page Head */}
+          <div style={{ padding: "14px 20px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: T1, letterSpacing: "-0.6px", marginBottom: 3, display: "flex", alignItems: "center", gap: 8 }}>
+                <div
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 10,
+                    background: `linear-gradient(135deg, ${VIOLET}, #A075FF)`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 4px 12px rgba(123,63,244,.32)",
+                  }}
+                >
+                  <Users size={16} color="#fff" strokeWidth={2.4} />
+                </div>
+                Breakdown
+              </div>
+              <div style={{ fontSize: 11, color: T3, fontWeight: 400, lineHeight: 1.5 }}>
+                Class-wise payment status<br />
+                for {allStudents.length} students
+              </div>
+            </div>
+          </div>
+
+          {/* Filter Pills */}
+          <div style={{ display: "flex", gap: 7, padding: "12px 20px 0" }}>
+            {([
+              { k: "all", l: "All" },
+              { k: "paid", l: "Paid" },
+              { k: "pending", l: "Pending" },
+            ] as const).map((f) => {
+              const isActive = mobileStudentFilter === f.k;
+              return (
+                <button
+                  key={f.k}
+                  onClick={() => setMobileStudentFilter(f.k)}
+                  style={{
+                    flex: 1,
+                    padding: "9px 6px",
+                    borderRadius: 12,
+                    background: isActive ? `linear-gradient(135deg, ${B1}, ${B2})` : "#fff",
+                    border: isActive ? "0.5px solid transparent" : "0.5px solid rgba(0,85,255,.12)",
+                    color: isActive ? "#fff" : T3,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    boxShadow: isActive
+                      ? "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)"
+                      : "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {f.l}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Hero */}
+          <div
+            style={{
+              margin: "14px 20px 0",
+              background: "linear-gradient(135deg,#001040 0%,#001888 35%,#0033CC 70%,#0055FF 100%)",
+              borderRadius: 22,
+              padding: "16px 18px",
+              position: "relative",
+              overflow: "hidden",
+              boxShadow: "0 8px 26px rgba(0,8,60,.28), 0 0 0 .5px rgba(255,255,255,.12)",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: -36,
+                right: -24,
+                width: 150,
+                height: 150,
+                background: "radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 65%)",
+                borderRadius: "50%",
+                pointerEvents: "none",
+              }}
+            />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, position: "relative", zIndex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    background: "rgba(255,255,255,.16)",
+                    border: "0.5px solid rgba(255,255,255,.24)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <TrendingUp size={18} color="rgba(255,255,255,.92)" strokeWidth={2.1} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,.50)", marginBottom: 3 }}>
+                    Collection Rate
+                  </div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: "-0.8px", lineHeight: 1 }}>
+                    {collectionRate.toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "5px 12px",
+                  borderRadius: 100,
+                  background: "rgba(120,180,255,.22)",
+                  border: "0.5px solid rgba(120,180,255,.4)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "#AACCFF",
+                }}
+              >
+                <Users size={11} strokeWidth={2.5} />
+                {allStudents.length} Students
+              </div>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 1,
+                background: "rgba(255,255,255,.12)",
+                borderRadius: 14,
+                overflow: "hidden",
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              {[
+                { v: fmtInr(totalPaid), l: "Paid", c: "#66EE88" },
+                { v: fmtInr(totalPending), l: "Pending", c: "#FF99AA" },
+                { v: defaulters, l: "Defaulters", c: "#FFDD88" },
+              ].map((s, i) => (
+                <div key={i} style={{ background: "rgba(255,255,255,.08)", padding: "11px 12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: s.c, letterSpacing: "-0.4px", lineHeight: 1, marginBottom: 3 }}>
+                    {s.v}
+                  </div>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: "rgba(255,255,255,.40)" }}>
+                    {s.l}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Bright stat grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 20px 0" }}>
+            {[
+              {
+                label: "Total Paid",
+                value: fmtInrFull(totalPaid),
+                sub: `${cleared} students cleared`,
+                bg: "linear-gradient(140deg,#E8FCF0 0%,#A8F0C4 60%,#7AE8A6 100%)",
+                border: "0.5px solid rgba(0,200,83,.35)",
+                lblColor: GREEN_D,
+                valColor: "#005A20",
+                subColor: GREEN_D,
+                iconColor: GREEN_D,
+                icon: <CheckCircle2 size={14} color={GREEN_D} strokeWidth={2.5} />,
+              },
+              {
+                label: "Total Pending",
+                value: fmtInrFull(totalPending),
+                sub: `${defaulters} students owe`,
+                bg: "linear-gradient(140deg,#FFECEE 0%,#FFBFC8 60%,#FF99A8 100%)",
+                border: "0.5px solid rgba(255,51,85,.35)",
+                lblColor: RED_D,
+                valColor: "#8A0A22",
+                subColor: RED_D,
+                iconColor: RED_D,
+                icon: <AlertCircle size={14} color={RED_D} strokeWidth={2.5} />,
+              },
+              {
+                label: "Defaulters",
+                value: defaulters,
+                sub: allStudents.length > 0 ? `${((defaulters / allStudents.length) * 100).toFixed(1)}% of branch` : "—",
+                bg: "linear-gradient(140deg,#FFF4E0 0%,#FFDB99 60%,#FFC266 100%)",
+                border: "0.5px solid rgba(255,136,0,.35)",
+                lblColor: ORANGE_D,
+                valColor: "#663300",
+                subColor: ORANGE_D,
+                iconColor: ORANGE_D,
+                icon: <AlertTriangle size={14} color={ORANGE_D} strokeWidth={2.5} />,
+              },
+              {
+                label: "Discount Given",
+                value: fmtInrFull(totalDiscount),
+                sub: `${discountApprovals} waivers approved`,
+                bg: "linear-gradient(140deg,#F3EAFF 0%,#D6BCFF 60%,#B899FF 100%)",
+                border: "0.5px solid rgba(123,63,244,.35)",
+                lblColor: VIOLET_D,
+                valColor: "#3A1580",
+                subColor: VIOLET_D,
+                iconColor: VIOLET_D,
+                icon: <Tag size={14} color={VIOLET_D} strokeWidth={2.5} />,
+              },
+            ].map((c, i) => (
+              <div
+                key={i}
+                style={{
+                  borderRadius: 20,
+                  padding: 15,
+                  position: "relative",
+                  overflow: "hidden",
+                  background: c.bg,
+                  border: c.border,
+                  boxShadow: "0 10px 28px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04)",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: -20,
+                    right: -18,
+                    width: 80,
+                    height: 80,
+                    borderRadius: "50%",
+                    background: "radial-gradient(circle, rgba(255,255,255,.65) 0%, transparent 70%)",
+                    pointerEvents: "none",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 12,
+                    right: 12,
+                    width: 30,
+                    height: 30,
+                    borderRadius: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "rgba(255,255,255,.65)",
+                    border: "0.5px solid rgba(255,255,255,.9)",
+                    zIndex: 1,
+                  }}
+                >
+                  {c.icon}
+                </div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: c.lblColor, marginBottom: 8, position: "relative", zIndex: 1 }}>
+                  {c.label}
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: c.valColor, letterSpacing: "-0.7px", lineHeight: 1, marginBottom: 4, position: "relative", zIndex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.value}
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: c.subColor, position: "relative", zIndex: 1 }}>
+                  {c.sub}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div style={{ margin: "14px 20px 0", position: "relative" }}>
+            <div style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", display: "flex" }}>
+              <Search size={15} color="rgba(0,85,255,.42)" strokeWidth={2.2} />
+            </div>
+            <input
+              value={mobileStudentSearch}
+              onChange={(e) => setMobileStudentSearch(e.target.value)}
+              placeholder="Search student or roll no..."
+              style={{
+                width: "100%",
+                padding: "12px 16px 12px 42px",
+                background: "#fff",
+                borderRadius: 14,
+                border: "0.5px solid rgba(0,85,255,.12)",
+                fontFamily: "inherit",
+                fontSize: 13,
+                color: T1,
+                fontWeight: 400,
+                outline: "none",
+                boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+              }}
+            />
+          </div>
+
+          {/* Section label */}
+          <div
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: "0.10em",
+              textTransform: "uppercase",
+              color: T4,
+              padding: "16px 20px 0",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <span>Class Breakdown</span>
+            <span
+              style={{
+                padding: "3px 9px",
+                borderRadius: 100,
+                background: "rgba(0,85,255,.10)",
+                border: "0.5px solid rgba(0,85,255,.16)",
+                fontSize: 9,
+                fontWeight: 700,
+                color: B1,
+                textTransform: "none",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {studentsByClass.size} class{studentsByClass.size === 1 ? "" : "es"}
+            </span>
+            <span style={{ flex: 1, height: "0.5px", background: "rgba(0,85,255,.12)" }} />
+          </div>
+
+          {/* Expand / Collapse All buttons */}
+          {studentsByClass.size > 0 && (
+            <div style={{ display: "flex", gap: 7, padding: "12px 20px 0" }}>
+              <button
+                onClick={() => setMobileExpandedClasses(new Set(studentsByClass.keys()))}
+                style={{
+                  flex: 1,
+                  height: 34,
+                  borderRadius: 11,
+                  background: "#fff",
+                  color: T2,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                  border: "0.5px solid rgba(0,85,255,.12)",
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  fontFamily: "inherit",
+                }}
+              >
+                <ChevronDown size={12} strokeWidth={2.4} />
+                Expand All
+              </button>
+              <button
+                onClick={() => setMobileExpandedClasses(new Set())}
+                style={{
+                  flex: 1,
+                  height: 34,
+                  borderRadius: 11,
+                  background: "#fff",
+                  color: T2,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                  border: "0.5px solid rgba(0,85,255,.12)",
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  fontFamily: "inherit",
+                }}
+              >
+                <ChevronLeft size={12} strokeWidth={2.4} style={{ transform: "rotate(90deg)" }} />
+                Collapse All
+              </button>
+            </div>
+          )}
+
+          {/* Class accordion */}
+          {studentsByClass.size === 0 ? (
+            <div
+              style={{
+                margin: "12px 20px 0",
+                background: "#fff",
+                borderRadius: 22,
+                padding: "32px 20px",
+                boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 8,
+                textAlign: "center",
+              }}
+            >
+              <Users size={44} color="rgba(0,85,255,.22)" strokeWidth={1.8} />
+              <div style={{ fontSize: 14, fontWeight: 700, color: T1 }}>No student data yet</div>
+              <div style={{ fontSize: 11, color: T4, maxWidth: 260, lineHeight: 1.5 }}>
+                Upload an Excel with a "Student Name" column to see per-student payment status.
+              </div>
+            </div>
+          ) : (
+            Array.from(studentsByClass.entries()).map(([className, studList], ci) => {
+              const isExpanded = mobileExpandedClasses.has(className);
+              const classPaid = studList.reduce((a, s) => a + (s.paid || 0), 0);
+              const classPending = studList.reduce((a, s) => a + (s.pending || 0), 0);
+              const initial = (className.match(/\d+|[A-Z]/g)?.[0] || className[0] || "?").toUpperCase().slice(0, 2);
+              const filtered = isExpanded ? filteredStudentsForClass(studList) : [];
+
+              return (
+                <div
+                  key={className}
+                  style={{
+                    margin: "10px 20px 0",
+                    background: "#fff",
+                    borderRadius: 18,
+                    boxShadow: isExpanded
+                      ? "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11)"
+                      : "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                    border: isExpanded ? "0.5px solid rgba(0,85,255,.18)" : "0.5px solid rgba(0,85,255,.08)",
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 3,
+                      background: classAccents[ci % classAccents.length],
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      setMobileExpandedClasses((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(className)) next.delete(className);
+                        else next.add(className);
+                        return next;
+                      });
+                    }}
+                    style={{
+                      padding: "14px 16px 14px 18px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 11,
+                      width: "100%",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 12,
+                        background: classAvGrads[ci % classAvGrads.length],
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "#fff",
+                        flexShrink: 0,
+                        boxShadow: classAvShadows[ci % classAvShadows.length],
+                      }}
+                    >
+                      {initial}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: T1, letterSpacing: "-0.2px", display: "flex", alignItems: "center", gap: 6 }}>
+                        {className}
+                        <span
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            color: T4,
+                            padding: "1px 7px",
+                            borderRadius: 100,
+                            background: "rgba(0,85,255,.08)",
+                            letterSpacing: "0.02em",
+                          }}
+                        >
+                          {studList.length} student{studList.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 5, fontSize: 10, fontWeight: 700 }}>
+                        <span style={{ color: GREEN_D, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: GREEN }} />
+                          {fmtInr(classPaid)} paid
+                        </span>
+                        <span style={{ color: RED_D, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: RED }} />
+                          {fmtInr(classPending)} pending
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      size={16}
+                      color={T3}
+                      strokeWidth={2.4}
+                      style={{
+                        transition: "transform .25s ease",
+                        transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                        flexShrink: 0,
+                      }}
+                    />
+                  </button>
+                  {isExpanded && (
+                    <div style={{ padding: "4px 12px 12px", background: "rgba(0,85,255,.025)", borderTop: `0.5px solid rgba(0,85,255,.08)` }}>
+                      {filtered.length === 0 ? (
+                        <div style={{ padding: "16px 18px", fontSize: 11, color: T4, textAlign: "center", fontStyle: "italic" }}>
+                          {mobileStudentSearch.trim() || mobileStudentFilter !== "all"
+                            ? "No students match your filter."
+                            : "No students in this class yet."}
+                        </div>
+                      ) : (
+                        filtered.map((s, si) => {
+                          const isCleared = (s.pending || 0) === 0 && (s.paid || 0) > 0;
+                          const isPending = (s.pending || 0) > 0;
+                          const hasDiscount = (s.discount || 0) > 0;
+                          const initials = s.studentName
+                            .split(/\s+/)
+                            .map((w) => w[0])
+                            .filter(Boolean)
+                            .slice(0, 2)
+                            .join("")
+                            .toUpperCase();
+                          const stripeColor = isCleared
+                            ? `linear-gradient(180deg, ${GREEN}, #66EE88)`
+                            : isPending
+                            ? `linear-gradient(180deg, ${RED}, #FF7788)`
+                            : `linear-gradient(180deg, ${B1}, #4499FF)`;
+
+                          // Extract term categories from latestStructure.termTypes
+                          const terms = latestStructure?.termTypes || [];
+                          const qTerms = terms.filter((t) => /^q\d/i.test(t));
+                          const halfYearlyTerm = terms.find((t) => /half/i.test(t));
+                          const annualTerm = terms.find((t) => /annual|yearly/i.test(t) && !/half/i.test(t));
+                          const monthlyTerm = terms.find((t) => /monthly|month/i.test(t));
+
+                          return (
+                            <div
+                              key={`${s.rollNo}-${si}`}
+                              style={{
+                                marginTop: 10,
+                                background: "#fff",
+                                borderRadius: 16,
+                                boxShadow: "0 2px 10px rgba(0,85,255,.08)",
+                                border: "0.5px solid rgba(0,85,255,.10)",
+                                overflow: "hidden",
+                                position: "relative",
+                              }}
+                            >
+                              {/* Stripe */}
+                              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: stripeColor }} />
+
+                              {/* Top: roll pill + avatar + name/parent + status tag */}
+                              <div style={{ padding: "12px 14px 10px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: `0.5px solid ${SEP}` }}>
+                                <div
+                                  style={{
+                                    fontSize: 9,
+                                    fontWeight: 700,
+                                    color: "#fff",
+                                    padding: "3px 8px",
+                                    borderRadius: 100,
+                                    letterSpacing: "0.04em",
+                                    flexShrink: 0,
+                                    background: `linear-gradient(135deg, ${B1}, ${B2})`,
+                                    boxShadow: "0 2px 6px rgba(0,85,255,.3)",
+                                  }}
+                                >
+                                  {s.rollNo || `#${si + 1}`}
+                                </div>
+                                <div
+                                  style={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: 10,
+                                    background: studentAvGrads[si % studentAvGrads.length],
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: "#fff",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {initials || "?"}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: T1, letterSpacing: "-0.2px", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {s.studentName}
+                                  </div>
+                                  <div style={{ fontSize: 10, color: T3, fontWeight: 500, lineHeight: 1.35, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {s.parentName || "—"}
+                                  </div>
+                                  {s.parentPhone && (
+                                    <div style={{ fontSize: 9, color: T4, fontWeight: 500 }}>{s.parentPhone}</div>
+                                  )}
+                                </div>
+                                {isCleared ? (
+                                  <div
+                                    style={{
+                                      padding: "3px 8px",
+                                      borderRadius: 100,
+                                      fontSize: 9,
+                                      fontWeight: 700,
+                                      letterSpacing: "0.02em",
+                                      background: "linear-gradient(135deg,#D0F8DE,#A5F0BC)",
+                                      color: GREEN_D,
+                                      border: `0.5px solid ${"rgba(0,200,83,.22)"}`,
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 3,
+                                      flexShrink: 0,
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    <CheckCircle2 size={9} strokeWidth={2.5} />
+                                    Cleared
+                                  </div>
+                                ) : isPending ? (
+                                  <div
+                                    style={{
+                                      padding: "3px 8px",
+                                      borderRadius: 100,
+                                      fontSize: 9,
+                                      fontWeight: 700,
+                                      letterSpacing: "0.02em",
+                                      background: "linear-gradient(135deg,#FFD8DF,#FFB0BE)",
+                                      color: RED_D,
+                                      border: `0.5px solid ${"rgba(255,51,85,.22)"}`,
+                                      flexShrink: 0,
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {fmtInr(s.pending)} due
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              {/* Q1-Q4 grid */}
+                              {qTerms.length > 0 && (
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: `repeat(${qTerms.length}, 1fr)`,
+                                    gap: 1,
+                                    background: "rgba(0,85,255,.10)",
+                                  }}
+                                >
+                                  {qTerms.map((t) => (
+                                    <div key={t} style={{ background: "#fff", padding: "7px 4px", textAlign: "center" }}>
+                                      <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: T4, marginBottom: 2, display: "block" }}>
+                                        {t}
+                                      </div>
+                                      <div style={{ fontSize: 11, fontWeight: 700, color: T2, letterSpacing: "-0.1px" }}>
+                                        {fmtInr(s.amounts[t] || 0)}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Half-Yearly / Annual / Monthly period strip */}
+                              {(halfYearlyTerm || annualTerm || monthlyTerm) && (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-around",
+                                    padding: "8px 14px",
+                                    background: "rgba(0,85,255,.03)",
+                                    borderBottom: `0.5px solid ${SEP}`,
+                                    gap: 4,
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  {halfYearlyTerm && (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                                      <span style={{ color: T4, fontWeight: 700, textTransform: "uppercase", fontSize: 8, letterSpacing: "0.06em" }}>
+                                        H-Yrly
+                                      </span>
+                                      <span style={{ color: T2, fontWeight: 700, letterSpacing: "-0.1px" }}>
+                                        {fmtInr(s.amounts[halfYearlyTerm] || 0)}
+                                      </span>
+                                    </span>
+                                  )}
+                                  {annualTerm && (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                                      <span style={{ color: T4, fontWeight: 700, textTransform: "uppercase", fontSize: 8, letterSpacing: "0.06em" }}>
+                                        Annual
+                                      </span>
+                                      <span style={{ color: T2, fontWeight: 700, letterSpacing: "-0.1px" }}>
+                                        {fmtInr(s.amounts[annualTerm] || 0)}
+                                      </span>
+                                    </span>
+                                  )}
+                                  {monthlyTerm && (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                                      <span style={{ color: T4, fontWeight: 700, textTransform: "uppercase", fontSize: 8, letterSpacing: "0.06em" }}>
+                                        Monthly
+                                      </span>
+                                      <span style={{ color: T2, fontWeight: 700, letterSpacing: "-0.1px" }}>
+                                        {fmtInr(s.amounts[monthlyTerm] || 0)}
+                                      </span>
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Pay breakdown: Paid / Discount / Pending */}
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "1fr 1fr 1fr",
+                                  gap: 1,
+                                  background: "rgba(0,85,255,.08)",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    padding: "8px 6px",
+                                    textAlign: "center",
+                                    background: (s.paid || 0) > 0
+                                      ? "linear-gradient(135deg,#E5FCEE,#C8F5DA)"
+                                      : "#fff",
+                                  }}
+                                >
+                                  <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 2, display: "block", color: (s.paid || 0) > 0 ? GREEN_D : T4 }}>
+                                    Paid
+                                  </div>
+                                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "-0.2px", lineHeight: 1, color: (s.paid || 0) > 0 ? "#004018" : T4 }}>
+                                    {fmtInr(s.paid || 0)}
+                                  </div>
+                                </div>
+                                <div
+                                  style={{
+                                    padding: "8px 6px",
+                                    textAlign: "center",
+                                    background: hasDiscount
+                                      ? "linear-gradient(135deg,#F3EAFF,#E0CEFF)"
+                                      : "#fff",
+                                  }}
+                                >
+                                  <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 2, display: "block", color: hasDiscount ? VIOLET_D : T4 }}>
+                                    Discount
+                                  </div>
+                                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "-0.2px", lineHeight: 1, color: hasDiscount ? "#280C5C" : T4 }}>
+                                    {fmtInr(s.discount || 0)}
+                                  </div>
+                                </div>
+                                <div
+                                  style={{
+                                    padding: "8px 6px",
+                                    textAlign: "center",
+                                    background: isPending
+                                      ? "linear-gradient(135deg,#FFE3E8,#FFC4CC)"
+                                      : "#fff",
+                                  }}
+                                >
+                                  <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 2, display: "block", color: isPending ? RED_D : T4 }}>
+                                    Pending
+                                  </div>
+                                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "-0.2px", lineHeight: 1, color: isPending ? "#60081A" : T4 }}>
+                                    {fmtInr(s.pending || 0)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+
+          <div style={{ height: 20 }} />
+        </div>
+      );
+    }
+
+    // ─── MOBILE PLAN VIEW ───
+    return (
+      <div
+        style={{
+          fontFamily: "'DM Sans', -apple-system, sans-serif",
+          background: "#EEF4FF",
+          minHeight: "100vh",
+          paddingBottom: 24,
+        }}
+      >
+        {/* Hidden file input — shared with desktop via fileRef */}
+        {/* (already exists in desktop return; also present here for mobile button) */}
+
+        {/* Page Head */}
+        <div style={{ padding: "14px 20px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: T1, letterSpacing: "-0.6px", marginBottom: 3, display: "flex", alignItems: "center", gap: 8 }}>
+              <div
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 10,
+                  background: `linear-gradient(135deg, ${GREEN}, #22DD77)`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 4px 12px rgba(0,200,83,.32)",
+                }}
+              >
+                <DollarSign size={16} color="#fff" strokeWidth={2.4} />
+              </div>
+              Fee Structure
+            </div>
+            <div style={{ fontSize: 11, color: T3, fontWeight: 400, lineHeight: 1.5 }}>
+              Term-wise fee plan per class,<br />
+              managed branch-wise
+            </div>
+          </div>
+          {allStudents.length > 0 && (
+            <button
+              onClick={() => setMobileView("breakdown")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 11px",
+                borderRadius: 14,
+                background: "#fff",
+                border: "0.5px solid rgba(0,85,255,.14)",
+                boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                flexShrink: 0,
+                marginTop: 4,
+                cursor: "pointer",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: T4, marginBottom: 1 }}>
+                  Students
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T1, letterSpacing: "-0.2px", lineHeight: 1 }}>
+                  {allStudents.length}
+                </div>
+              </div>
+              <ChevronRight size={13} color={T3} strokeWidth={2.4} />
+            </button>
+          )}
+        </div>
+
+        {/* Academic Year Pills — from existing structures */}
+        {ayOptions.length > 0 && (
+          <div style={{ display: "flex", gap: 7, padding: "12px 20px 0", overflowX: "auto", scrollbarWidth: "none" }}>
+            {ayOptions.map((ay) => {
+              const isActive = academicYear === ay;
+              return (
+                <button
+                  key={ay}
+                  onClick={() => setAcademicYear(ay)}
+                  style={{
+                    flex: 1,
+                    padding: "9px 6px",
+                    borderRadius: 12,
+                    background: isActive ? `linear-gradient(135deg, ${B1}, ${B2})` : "#fff",
+                    border: isActive ? "0.5px solid transparent" : "0.5px solid rgba(0,85,255,.12)",
+                    color: isActive ? "#fff" : T3,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    boxShadow: isActive
+                      ? "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)"
+                      : "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    minWidth: 90,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {ay}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Hero */}
+        <div
+          style={{
+            margin: "14px 20px 0",
+            background: "linear-gradient(135deg,#001040 0%,#001888 35%,#0033CC 70%,#0055FF 100%)",
+            borderRadius: 22,
+            padding: "16px 18px",
+            position: "relative",
+            overflow: "hidden",
+            boxShadow: "0 8px 26px rgba(0,8,60,.28), 0 0 0 .5px rgba(255,255,255,.12)",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: -36,
+              right: -24,
+              width: 150,
+              height: 150,
+              background: "radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 65%)",
+              borderRadius: "50%",
+              pointerEvents: "none",
+            }}
+          />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, position: "relative", zIndex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 12,
+                  background: "rgba(255,255,255,.16)",
+                  border: "0.5px solid rgba(255,255,255,.24)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <DollarSign size={18} color="rgba(255,255,255,.92)" strokeWidth={2.1} />
+              </div>
+              <div>
+                <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,.50)", marginBottom: 3 }}>
+                  Total Annual Fee
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.6px", lineHeight: 1 }}>
+                  {fmtInrFull(latestBranchTotal)}
+                </div>
+              </div>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "5px 12px",
+                borderRadius: 100,
+                background: latestStructure ? "rgba(0,200,83,.22)" : "rgba(255,170,0,.22)",
+                border: latestStructure ? "0.5px solid rgba(0,200,83,.4)" : "0.5px solid rgba(255,170,0,.4)",
+                fontSize: 10,
+                fontWeight: 700,
+                color: latestStructure ? "#66FFAA" : "#FFDD88",
+              }}
+            >
+              <div
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: latestStructure ? "#66FFAA" : "#FFDD88",
+                  boxShadow: latestStructure ? "0 0 8px rgba(102,255,170,.8)" : "none",
+                }}
+              />
+              {latestStructure ? "LATEST · LIVE" : "NOT PUBLISHED"}
+            </div>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 1,
+              background: "rgba(255,255,255,.12)",
+              borderRadius: 14,
+              overflow: "hidden",
+              position: "relative",
+              zIndex: 1,
+            }}
+          >
+            {[
+              { v: latestClassCount, l: "Classes", c: "#fff" },
+              { v: latestTermCount, l: "Terms", c: "#FFDD88" },
+              { v: allStructures.length, l: "Versions", c: "#66EE88" },
+            ].map((s, i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,.08)", padding: "11px 12px", textAlign: "center" }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: s.c, letterSpacing: "-0.4px", lineHeight: 1, marginBottom: 3 }}>
+                  {s.v}
+                </div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: "rgba(255,255,255,.40)" }}>
+                  {s.l}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Stat grid 2×2 */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 20px 0" }}>
+          {[
+            {
+              label: "Total Classes",
+              value: latestClassCount,
+              sub: latestClassCount > 0 ? "Per latest version" : "No data yet",
+              color: B1,
+              subColor: T4,
+              icon: <FileSpreadsheet size={13} color={B1} strokeWidth={2.4} />,
+              bg: "rgba(0,85,255,.10)",
+              border: "rgba(0,85,255,.18)",
+              glow: "rgba(0,85,255,.10)",
+            },
+            {
+              label: "Fee Terms",
+              value: latestTermCount,
+              sub: latestStructure ? (latestStructure.termTypes.slice(0, 2).join(", ") || "—") : "—",
+              color: VIOLET,
+              subColor: VIOLET_D,
+              icon: <Calendar size={13} color={VIOLET} strokeWidth={2.4} />,
+              bg: "rgba(123,63,244,.10)",
+              border: "rgba(123,63,244,.22)",
+              glow: "rgba(123,63,244,.10)",
+            },
+            {
+              label: "Annual Avg",
+              value: fmtInr(annualAvg),
+              sub: "Per term, all classes",
+              color: GREEN_D,
+              subColor: GREEN_D,
+              icon: <TrendingUp size={13} color={GREEN} strokeWidth={2.4} />,
+              bg: "rgba(0,200,83,.10)",
+              border: "rgba(0,200,83,.22)",
+              glow: "rgba(0,200,83,.10)",
+            },
+            {
+              label: "Monthly Avg",
+              value: fmtInr(monthlyAvg),
+              sub: "Per class, blended",
+              color: ORANGE,
+              subColor: ORANGE_D,
+              icon: <Clock size={13} color={ORANGE} strokeWidth={2.4} />,
+              bg: "rgba(255,136,0,.10)",
+              border: "rgba(255,136,0,.22)",
+              glow: "rgba(255,136,0,.10)",
+            },
+          ].map((c, i) => (
+            <div
+              key={i}
+              style={{
+                background: "#fff",
+                borderRadius: 20,
+                padding: 15,
+                boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 18px 44px rgba(0,85,255,.13)",
+                border: "0.5px solid rgba(0,85,255,.10)",
+                position: "relative",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: -18,
+                  right: -14,
+                  width: 65,
+                  height: 65,
+                  background: `radial-gradient(circle, ${c.glow} 0%, transparent 70%)`,
+                  borderRadius: "50%",
+                  pointerEvents: "none",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  top: 13,
+                  right: 13,
+                  width: 28,
+                  height: 28,
+                  borderRadius: 9,
+                  background: c.bg,
+                  border: `0.5px solid ${c.border}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {c.icon}
+              </div>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: T4, marginBottom: 9 }}>
+                {c.label}
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.8px", lineHeight: 1, marginBottom: 4, color: c.color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {c.value}
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: c.subColor, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {c.sub}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Upload form card */}
+        <div
+          style={{
+            margin: "14px 20px 0",
+            background: "#fff",
+            borderRadius: 20,
+            padding: 16,
+            boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 18px 44px rgba(0,85,255,.13)",
+            border: "0.5px solid rgba(0,85,255,.10)",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 10,
+                background: `linear-gradient(135deg, ${B1}, ${B2})`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 4px 12px rgba(0,85,255,.32)",
+              }}
+            >
+              <Upload size={16} color="#fff" strokeWidth={2.3} />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T1, letterSpacing: "-0.2px" }}>
+                {allStructures.length > 0 ? "Upload New Version" : "Upload Fee Structure"}
+              </div>
+              <div style={{ fontSize: 10, color: T3, fontWeight: 500 }}>
+                {allStructures.length > 0 ? "Add a revised fee plan for this AY" : "Upload your branch's fee plan"}
+              </div>
+            </div>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: T4, marginBottom: 5 }}>
+              Academic Year
+            </div>
+            <input
+              value={academicYear}
+              onChange={(e) => setAcademicYear(e.target.value)}
+              placeholder="e.g., 2026-27"
+              style={{
+                width: "100%",
+                padding: "10px 14px",
+                background: "#EEF4FF",
+                borderRadius: 12,
+                border: "0.5px solid rgba(0,85,255,.14)",
+                fontFamily: "inherit",
+                fontSize: 12,
+                color: T1,
+                fontWeight: 500,
+                outline: "none",
+              }}
+            />
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: T4, marginBottom: 5 }}>
+              Notes
+            </div>
+            <input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g., Revised after board meeting"
+              style={{
+                width: "100%",
+                padding: "10px 14px",
+                background: "#EEF4FF",
+                borderRadius: 12,
+                border: "0.5px solid rgba(0,85,255,.14)",
+                fontFamily: "inherit",
+                fontSize: 12,
+                color: T1,
+                fontWeight: 500,
+                outline: "none",
+              }}
+            />
+          </div>
+          <button
+            onClick={handleMobileUpload}
+            style={{
+              width: "100%",
+              height: 44,
+              borderRadius: 13,
+              background: `linear-gradient(135deg, ${B1}, ${B2})`,
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 7,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              border: "none",
+              boxShadow: "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)",
+              marginTop: 4,
+              letterSpacing: "0.02em",
+            }}
+          >
+            <Plus size={14} strokeWidth={2.4} />
+            {allStructures.length > 0 ? "Upload New Version" : "Upload Excel"}
+          </button>
+          <button
+            onClick={downloadTemplate}
+            style={{
+              width: "100%",
+              marginTop: 8,
+              height: 36,
+              borderRadius: 11,
+              background: "#EEF4FF",
+              color: B1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              border: "0.5px dashed rgba(0,85,255,.3)",
+              letterSpacing: "0.02em",
+            }}
+          >
+            <Download size={12} strokeWidth={2.4} />
+            Download Template
+          </button>
+        </div>
+
+        {/* Draft review banner (if draft exists) */}
+        {draft && (
+          <div
+            style={{
+              margin: "14px 20px 0",
+              background: "linear-gradient(140deg,#FFF6D6 0%,#FFE58A 42%,#FFCC44 100%)",
+              borderRadius: 18,
+              padding: "14px 16px",
+              border: "0.5px solid rgba(255,170,0,.35)",
+              boxShadow: "0 6px 20px rgba(255,170,0,.24)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <FileSpreadsheet size={16} color="#885500" strokeWidth={2.3} />
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#331F00" }}>Review & Publish</div>
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: "#885500",
+                  background: "rgba(255,255,255,.65)",
+                  padding: "2px 7px",
+                  borderRadius: 100,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.10em",
+                  marginLeft: "auto",
+                }}
+              >
+                Unsaved
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: "#663300", fontWeight: 500, marginBottom: 12, lineHeight: 1.5 }}>
+              {draft.mode === "student"
+                ? `${draft.studentRows?.length || 0} students · ${draft.rows.length} classes · ${draft.termTypes.length} terms parsed.`
+                : `${draft.rows.length} classes × ${draft.termTypes.length} terms parsed.`}
+              {" "}Publish to make it live.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setDraft(null)}
+                disabled={saving}
+                style={{
+                  flex: 1,
+                  height: 40,
+                  borderRadius: 12,
+                  background: "rgba(255,255,255,.75)",
+                  color: "#885500",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  border: "0.5px solid rgba(255,170,0,.35)",
+                  cursor: saving ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                  opacity: saving ? 0.55 : 1,
+                }}
+              >
+                <Minus size={13} strokeWidth={2.4} />
+                Discard
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                style={{
+                  flex: 1.2,
+                  height: 40,
+                  borderRadius: 12,
+                  background: `linear-gradient(135deg, ${B1}, ${B2})`,
+                  color: "#fff",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  border: "none",
+                  cursor: saving ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  boxShadow: "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)",
+                  opacity: saving ? 0.65 : 1,
+                }}
+              >
+                {saving ? (
+                  <Loader2 size={13} strokeWidth={2.4} style={{ animation: "spin 1s linear infinite" }} />
+                ) : (
+                  <Save size={13} strokeWidth={2.4} />
+                )}
+                Publish
+                <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Status Card (shows when latest structure exists) */}
+        {latestStructure && (
+          <div
+            style={{
+              margin: "14px 20px 0",
+              padding: "13px 14px",
+              background: "linear-gradient(135deg,#E5FCEE 0%,#C8F5DA 100%)",
+              borderRadius: 16,
+              border: "0.5px solid rgba(0,200,83,.3)",
+              boxShadow: "0 6px 18px rgba(0,200,83,.10)",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: -20,
+                right: -20,
+                width: 80,
+                height: 80,
+                borderRadius: "50%",
+                background: "radial-gradient(circle, rgba(255,255,255,.6) 0%, transparent 70%)",
+                pointerEvents: "none",
+              }}
+            />
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 11,
+                background: `linear-gradient(135deg, ${GREEN}, #22DD77)`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                boxShadow: "0 4px 12px rgba(0,200,83,.35)",
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              <CheckCircle2 size={16} color="#fff" strokeWidth={2.5} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0, position: "relative", zIndex: 1 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: GREEN_D, marginBottom: 2 }}>
+                Status
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#003D18", letterSpacing: "-0.3px", marginBottom: 2 }}>
+                {allStructures.length} upload{allStructures.length === 1 ? "" : "s"} saved
+              </div>
+              <div style={{ fontSize: 10, color: "#005A2A", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {latestStructure.uploadedBy
+                  ? `Last by ${latestStructure.uploadedBy}`
+                  : "Latest version live"}
+              </div>
+            </div>
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: GREEN,
+                boxShadow: "0 0 0 3px rgba(0,200,83,.25), 0 0 12px rgba(0,200,83,.6)",
+                flexShrink: 0,
+                position: "relative",
+                zIndex: 1,
+              }}
+            />
+          </div>
+        )}
+
+        {/* --- Class-wise Breakdown section removed; fee table now embedded inside version cards below --- */}
+        {false && latestStructure && (
+          <>
+            {/* placeholder to keep mobileShowAllClasses referenced — toggle kept for potential future use */}
+            {(mobileShowAllClasses
+              ? latestStructure.rows
+              : latestStructure.rows.slice(0, 4)
+            ).map((row, ri) => {
+              const classTotal = latestStructure.termTypes.reduce(
+                (sum, t) => sum + (row.amounts[t] || 0),
+                0
+              );
+              const initial = (row.className.match(/\d+|[A-Z]/g)?.[0] || row.className[0] || "?")
+                .toUpperCase()
+                .slice(0, row.className.match(/\d+[A-Z]/) ? 3 : 2);
+              const quarterTerms = latestStructure.termTypes.filter((t) => /^q\d/i.test(t)).slice(0, 4);
+              const nonQuarterTerms = latestStructure.termTypes.filter((t) => !/^q\d/i.test(t));
+              return (
+                <div
+                  key={ri}
+                  style={{
+                    margin: "10px 20px 0",
+                    background: "#fff",
+                    borderRadius: 20,
+                    boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08), 0 10px 26px rgba(0,85,255,.10)",
+                    border: "0.5px solid rgba(0,85,255,.08)",
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 4,
+                      background: classAccents[ri % classAccents.length],
+                    }}
+                  />
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px 12px 20px", borderBottom: `0.5px solid ${SEP}` }}>
+                    <div
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 13,
+                        background: classAvGrads[ri % classAvGrads.length],
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: initial.length > 2 ? 11 : 14,
+                        fontWeight: 700,
+                        color: "#fff",
+                        flexShrink: 0,
+                        boxShadow: classAvShadows[ri % classAvShadows.length],
+                      }}
+                    >
+                      {initial}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: T1, letterSpacing: "-0.2px", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {row.className}
+                      </div>
+                      <div style={{ fontSize: 10, color: T4, fontWeight: 500 }}>
+                        {latestStructure.termTypes.length} term{latestStructure.termTypes.length === 1 ? "" : "s"}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 17, fontWeight: 700, color: B1, letterSpacing: "-0.4px", lineHeight: 1 }}>
+                        {fmtInr(classTotal)}
+                      </div>
+                      <div style={{ fontSize: 9, color: T4, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 2 }}>
+                        Total / yr
+                      </div>
+                    </div>
+                  </div>
+                  {quarterTerms.length > 0 && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: `repeat(${quarterTerms.length}, 1fr)`,
+                        gap: 1,
+                        background: "rgba(0,85,255,.10)",
+                        borderBottom: `0.5px solid ${SEP}`,
+                      }}
+                    >
+                      {quarterTerms.map((t) => (
+                        <div key={t} style={{ background: "#fff", padding: "9px 6px", textAlign: "center" }}>
+                          <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: T4, marginBottom: 2 }}>
+                            {t}
+                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: T2, letterSpacing: "-0.1px", lineHeight: 1 }}>
+                            {fmtInr(row.amounts[t] || 0)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {nonQuarterTerms.length > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-around",
+                        padding: "10px 14px",
+                        background: "rgba(0,85,255,.03)",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: T3,
+                        gap: 4,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {nonQuarterTerms.slice(0, 3).map((t) => (
+                        <span key={t} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          {t} <strong style={{ color: T2, fontWeight: 700 }}>{fmtInr(row.amounts[t] || 0)}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {latestStructure.rows.length > 4 && (
+              <button
+                onClick={() => setMobileShowAllClasses(!mobileShowAllClasses)}
+                style={{
+                  margin: "10px 20px 0",
+                  width: "calc(100% - 40px)",
+                  height: 40,
+                  borderRadius: 13,
+                  background: "#fff",
+                  color: B1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                  border: "0.5px dashed rgba(0,85,255,.3)",
+                }}
+              >
+                {mobileShowAllClasses ? (
+                  <>
+                    <ChevronLeft size={13} strokeWidth={2.3} />
+                    Show less
+                  </>
+                ) : (
+                  <>
+                    <Plus size={13} strokeWidth={2.3} />
+                    View all {latestStructure.rows.length} classes
+                  </>
+                )}
+              </button>
+            )}
+          </>
+        )}
+
+        {/* Version history */}
+        {allStructures.length > 0 && (
+          <>
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: "0.10em",
+                textTransform: "uppercase",
+                color: T4,
+                padding: "16px 20px 0",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span>Version History</span>
+              <span
+                style={{
+                  padding: "3px 9px",
+                  borderRadius: 100,
+                  background: "rgba(0,85,255,.10)",
+                  border: "0.5px solid rgba(0,85,255,.16)",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: B1,
+                  textTransform: "none",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {allStructures.length} version{allStructures.length === 1 ? "" : "s"}
+              </span>
+              <span style={{ flex: 1, height: "0.5px", background: "rgba(0,85,255,.12)" }} />
+            </div>
+
+            {allStructures.map((s, i) => {
+              const { branchTotal, perTerm } = totalsFor(s);
+              const uploadedLabel = s.uploadedAt?.toDate?.()
+                ? s.uploadedAt.toDate().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
+                : "—";
+              const studentCount = s.studentRows?.length || 0;
+              const isLatest = i === 0;
+              const isExpanded = s.id ? expandedIds.has(s.id) : false;
+
+              // Pick representative terms for the table columns
+              const quarterTerms = s.termTypes.filter((t) => /^q\d/i.test(t));
+              const repQuarter = quarterTerms[0];
+              const annualTerm = s.termTypes.find((t) => /annual|yearly/i.test(t) && !/half/i.test(t));
+              const monthlyTerm = s.termTypes.find((t) => /monthly|month/i.test(t));
+              const halfYearlyTerm = s.termTypes.find((t) => /half/i.test(t));
+              const halfYearlyTotal = halfYearlyTerm ? perTerm[halfYearlyTerm] || 0 : 0;
+
+              const classDotColors = [B1, GREEN, "#00CCDD", B2, B2, B2, B2, B2, ORANGE, ORANGE, ORANGE, ORANGE, RED, GOLD, GOLD, VIOLET, VIOLET];
+
+              return (
+                <div
+                  key={s.id}
+                  style={{
+                    margin: "12px 20px 0",
+                    background: isLatest ? "linear-gradient(135deg,#E5FCEE 0%,#F4FFF8 60%,#FFFFFF 100%)" : "#fff",
+                    borderRadius: 20,
+                    boxShadow: isLatest
+                      ? "0 10px 28px rgba(0,200,83,.14), 0 0 0 .5px rgba(0,200,83,.22)"
+                      : "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 18px 44px rgba(0,85,255,.13)",
+                    border: `0.5px solid ${isLatest ? "rgba(0,200,83,.3)" : "rgba(0,85,255,.10)"}`,
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                >
+                  <button
+                    onClick={() => s.id && toggleCard(s.id)}
+                    style={{
+                      padding: "14px 16px",
+                      borderBottom: isExpanded ? `0.5px solid ${isLatest ? "rgba(0,200,83,.15)" : SEP}` : "none",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 11,
+                      width: "100%",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 11,
+                        background: isLatest
+                          ? `linear-gradient(135deg, ${GREEN}, #22DD77)`
+                          : "rgba(99,99,99,.10)",
+                        border: isLatest ? "none" : "0.5px solid rgba(99,99,99,.2)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        boxShadow: isLatest ? "0 4px 12px rgba(0,200,83,.35)" : "none",
+                      }}
+                    >
+                      {isLatest ? (
+                        <CheckCircle2 size={16} color="#fff" strokeWidth={2.5} />
+                      ) : (
+                        <Clock size={14} color={T4} strokeWidth={2.4} />
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 3 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: T1, letterSpacing: "-0.2px" }}>
+                          Fee Structure
+                        </div>
+                        {isLatest && (
+                          <span
+                            style={{
+                              padding: "3px 8px",
+                              borderRadius: 100,
+                              background: `linear-gradient(135deg, ${GREEN}, #22DD77)`,
+                              fontSize: 8,
+                              fontWeight: 700,
+                              color: "#fff",
+                              letterSpacing: "0.08em",
+                              boxShadow: "0 3px 8px rgba(0,200,83,.35)",
+                            }}
+                          >
+                            LATEST · LIVE
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 5 }}>
+                        {studentCount > 0 && (
+                          <span style={{ padding: "3px 7px", borderRadius: 100, background: "rgba(123,63,244,.08)", color: VIOLET, border: "0.5px solid rgba(123,63,244,.16)", fontSize: 9, fontWeight: 700 }}>
+                            {studentCount} students
+                          </span>
+                        )}
+                        <span style={{ padding: "3px 7px", borderRadius: 100, background: "rgba(0,85,255,.08)", color: B1, border: "0.5px solid rgba(0,85,255,.14)", fontSize: 9, fontWeight: 700 }}>
+                          {s.rows.length} classes
+                        </span>
+                        <span style={{ padding: "3px 7px", borderRadius: 100, background: "rgba(0,85,255,.08)", color: B1, border: "0.5px solid rgba(0,85,255,.14)", fontSize: 9, fontWeight: 700 }}>
+                          {s.termTypes.length} terms
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 10, color: T3, fontWeight: 500, marginBottom: 2 }}>{uploadedLabel}</div>
+                      <div style={{ fontSize: 9, color: T4, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {s.uploadedBy ? `by ${s.uploadedBy}` : ""}
+                        {s.academicYear ? ` · AY ${s.academicYear}` : ""}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: isLatest ? GREEN_D : B1, letterSpacing: "-0.3px", lineHeight: 1, marginBottom: 4 }}>
+                        {fmtInr(branchTotal)}
+                      </div>
+                      {!isLatest && s.id && (
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteOne(s.id!, `v${allStructures.length - i}`);
+                          }}
+                          style={{
+                            padding: "3px 9px",
+                            borderRadius: 100,
+                            background: "rgba(255,51,85,.10)",
+                            border: "0.5px solid rgba(255,51,85,.22)",
+                            fontSize: 9,
+                            fontWeight: 700,
+                            color: RED_D,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            cursor: saving ? "not-allowed" : "pointer",
+                            opacity: saving ? 0.55 : 1,
+                          }}
+                        >
+                          <Trash2 size={9} strokeWidth={2.5} />
+                          Delete
+                        </div>
+                      )}
+                      <ChevronDown
+                        size={14}
+                        color={T4}
+                        strokeWidth={2.4}
+                        style={{
+                          marginTop: 4,
+                          display: "block",
+                          marginLeft: "auto",
+                          transition: "transform .25s ease",
+                          transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                        }}
+                      />
+                    </div>
+                  </button>
+
+                  {/* Full fee table — shown when expanded */}
+                  {isExpanded && s.rows.length > 0 && (
+                    <div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "74px 1fr 1fr 1fr 1fr",
+                          gap: 2,
+                          padding: "10px 14px",
+                          background: "linear-gradient(90deg, rgba(0,85,255,.08), rgba(0,85,255,.04))",
+                          borderBottom: `0.5px solid ${SEP}`,
+                        }}
+                      >
+                        <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: B1, textAlign: "left" }}>Class</div>
+                        <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: B1, textAlign: "right" }}>
+                          {repQuarter || "Term"}
+                        </div>
+                        <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: B1, textAlign: "right" }}>
+                          {annualTerm ? "Annual" : (s.termTypes[1] || "—")}
+                        </div>
+                        <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: B1, textAlign: "right" }}>
+                          {monthlyTerm ? "Monthly" : (s.termTypes[2] || "—")}
+                        </div>
+                        <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: B1, textAlign: "right" }}>Total</div>
+                      </div>
+
+                      {s.rows.map((row, ri) => {
+                        const rowTotal = s.termTypes.reduce((sum, t) => sum + (row.amounts[t] || 0), 0);
+                        const dotColor = classDotColors[ri % classDotColors.length];
+                        return (
+                          <div
+                            key={ri}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "74px 1fr 1fr 1fr 1fr",
+                              gap: 2,
+                              padding: "9px 14px",
+                              borderBottom: `0.5px solid ${SEP}`,
+                              alignItems: "center",
+                            }}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 700, color: T1, letterSpacing: "-0.1px", display: "flex", alignItems: "center", gap: 5, overflow: "hidden" }}>
+                              <div style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {row.className}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: T2, textAlign: "right" }}>
+                              {repQuarter ? fmtInr(row.amounts[repQuarter] || 0) : "—"}
+                            </div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: T2, textAlign: "right" }}>
+                              {annualTerm ? fmtInr(row.amounts[annualTerm] || 0) : s.termTypes[1] ? fmtInr(row.amounts[s.termTypes[1]] || 0) : "—"}
+                            </div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: T2, textAlign: "right" }}>
+                              {monthlyTerm ? fmtInr(row.amounts[monthlyTerm] || 0) : s.termTypes[2] ? fmtInr(row.amounts[s.termTypes[2]] || 0) : "—"}
+                            </div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: B1, textAlign: "right" }}>
+                              {fmtInr(rowTotal)}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Branch Total row */}
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "74px 1fr 1fr 1fr 1fr",
+                          gap: 2,
+                          padding: "10px 14px",
+                          background: "linear-gradient(90deg, rgba(0,85,255,.10), rgba(0,85,255,.05))",
+                          borderTop: "0.5px solid rgba(0,85,255,.20)",
+                          alignItems: "center",
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 700, color: B1, letterSpacing: "-0.1px" }}>Branch Total</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: B1, textAlign: "right" }}>
+                          {repQuarter ? fmtInr(perTerm[repQuarter] || 0) : "—"}
+                        </div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: B1, textAlign: "right" }}>
+                          {annualTerm ? fmtInr(perTerm[annualTerm] || 0) : s.termTypes[1] ? fmtInr(perTerm[s.termTypes[1]] || 0) : "—"}
+                        </div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: B1, textAlign: "right" }}>
+                          {monthlyTerm ? fmtInr(perTerm[monthlyTerm] || 0) : s.termTypes[2] ? fmtInr(perTerm[s.termTypes[2]] || 0) : "—"}
+                        </div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: VIOLET_D, textAlign: "right" }}>
+                          {fmtInr(branchTotal)}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          padding: "10px 14px",
+                          background: "rgba(0,85,255,.03)",
+                          fontSize: 9,
+                          fontWeight: 600,
+                          color: T3,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        {halfYearlyTerm ? (
+                          <span>
+                            Half-Yearly total:{" "}
+                            <strong style={{ color: B1, fontWeight: 700 }}>{fmtInr(halfYearlyTotal)}</strong>
+                          </span>
+                        ) : (
+                          <span>
+                            {s.termTypes.length} term{s.termTypes.length === 1 ? "" : "s"} tracked
+                          </span>
+                        )}
+                        <span>
+                          {s.rows.length} classes · {s.termTypes.length} terms
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )}
+
+        {/* AI card */}
+        <div
+          style={{
+            margin: "12px 20px 0",
+            background: "linear-gradient(140deg,#001888 0%,#0033CC 48%,#0055FF 100%)",
+            borderRadius: 22,
+            padding: "18px 20px",
+            boxShadow: "0 8px 28px rgba(0,51,204,.28), 0 0 0 .5px rgba(255,255,255,.14)",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: -34,
+              right: -22,
+              width: 140,
+              height: 140,
+              background: "radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 65%)",
+              borderRadius: "50%",
+              pointerEvents: "none",
+            }}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, position: "relative", zIndex: 1 }}>
+            <div
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 8,
+                background: "rgba(255,255,255,.18)",
+                border: "0.5px solid rgba(255,255,255,.26)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Sparkles size={13} color="rgba(255,255,255,.90)" strokeWidth={2.3} />
+            </div>
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,.55)" }}>
+              AI Fee Intelligence
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,.85)", lineHeight: 1.72, position: "relative", zIndex: 1 }}>
+            {latestStructure ? (
+              <>
+                Current structure spans{" "}
+                <strong style={{ color: "#fff", fontWeight: 700 }}>
+                  {latestClassCount} class{latestClassCount === 1 ? "" : "es"}
+                </strong>{" "}
+                with annual revenue of{" "}
+                <strong style={{ color: "#fff", fontWeight: 700 }}>
+                  {fmtInrFull(latestBranchTotal)}
+                </strong>{" "}
+                across{" "}
+                <strong style={{ color: "#fff", fontWeight: 700 }}>
+                  {latestTermCount} term{latestTermCount === 1 ? "" : "s"}
+                </strong>
+                .
+                {allStudents.length > 0 && (
+                  <>
+                    {" "}Collection rate sits at{" "}
+                    <strong style={{ color: "#fff", fontWeight: 700 }}>
+                      {collectionRate.toFixed(1)}%
+                    </strong>
+                    {defaulters > 0 && (
+                      <>
+                        {" "}with{" "}
+                        <strong style={{ color: "#FF99AA", fontWeight: 700 }}>
+                          {defaulters} defaulter{defaulters === 1 ? "" : "s"}
+                        </strong>
+                      </>
+                    )}
+                    .
+                  </>
+                )}
+              </>
+            ) : (
+              <>No fee structure uploaded yet. Upload an Excel template to publish your branch's fee plan.</>
+            )}
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 1,
+              background: "rgba(255,255,255,.12)",
+              borderRadius: 14,
+              overflow: "hidden",
+              position: "relative",
+              zIndex: 1,
+              marginTop: 12,
+            }}
+          >
+            {[
+              { v: latestClassCount, l: "Classes", c: "#fff" },
+              { v: fmtInr(latestBranchTotal), l: "Annual", c: "#FFDD88" },
+              { v: latestStructure ? "LIVE" : "—", l: "Status", c: latestStructure ? "#66EE88" : "#FFDD88" },
+            ].map((s, i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,.08)", padding: "12px", textAlign: "center" }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: s.c, letterSpacing: "-0.5px", lineHeight: 1, marginBottom: 3 }}>
+                  {s.v}
+                </div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: "rgba(255,255,255,.40)" }}>
+                  {s.l}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ height: 20 }} />
+
+        {/* Hidden file input — mobile upload button uses this */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          onChange={handleFileUpload}
+          style={{ display: "none" }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-10 animate-in fade-in duration-300">
