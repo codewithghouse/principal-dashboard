@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import {
   AlertTriangle, Flame, Bell, UserPlus, ChevronRight,
-  Loader2, ShieldAlert, Filter, CalendarPlus
+  Loader2, ShieldAlert, CalendarPlus, Sparkles, Users, MessageSquare, ArrowRight
 } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
+import { useNavigate } from "react-router-dom";
 import RiskIntervention from "@/components/RiskIntervention";
 import MeetingScheduler from "@/components/MeetingScheduler";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type RiskLevel = "CRITICAL" | "WARNING" | "MONITORING";
 type FilterTab = "All" | RiskLevel;
@@ -60,6 +62,8 @@ const startOfWeekStr = () => {
 
 const RiskStudents = () => {
   const { userData } = useAuth();
+  const isMobile = useIsMobile();
+  const navigate = useNavigate();
 
   const [riskStudents,   setRiskStudents]   = useState<RiskStudent[]>([]);
   const [loading,        setLoading]        = useState(true);
@@ -312,6 +316,434 @@ const RiskStudents = () => {
         student={selectedStudent}
         onBack={() => setSelectedStudent(null)}
       />
+    );
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     MOBILE — Bright Blue Apple UI
+     ═══════════════════════════════════════════════════════════════ */
+  if (isMobile) {
+    const B1 = "#0055FF", B2 = "#1166FF";
+    const BG = "#EEF4FF", BG2 = "#E0ECFF";
+    const T1 = "#001040", T3 = "#5070B0", T4 = "#99AACC";
+    const SEP = "rgba(0,85,255,0.07)";
+    const GREEN = "#00C853", GREEN_D = "#007830", GREEN_S = "rgba(0,200,83,0.10)", GREEN_B = "rgba(0,200,83,0.22)";
+    const RED = "#FF3355";
+    const ORANGE = "#FF8800";
+    const GOLD = "#FFAA00";
+    const SH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 8px rgba(0,85,255,0.08), 0 10px 26px rgba(0,85,255,0.10)";
+    const SH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.11), 0 18px 44px rgba(0,85,255,0.13)";
+    const SH_BTN = "0 6px 22px rgba(0,85,255,0.40), 0 2px 5px rgba(0,85,255,0.20)";
+
+    const monitoringCount = riskStudents.filter(s => s.riskLevel === "MONITORING").length;
+
+    const levelTheme = (lvl: RiskLevel) => {
+      if (lvl === "CRITICAL") return {
+        accent: `linear-gradient(180deg, ${RED}, #FF6688)`,
+        avBg:   `linear-gradient(135deg, ${RED}, #FF6688)`,
+        avShadow: "0 4px 14px rgba(255,51,85,0.30)",
+        badgeBg: RED, badgeColor: "#fff", badgeShadow: "0 2px 8px rgba(255,51,85,0.28)",
+        dotColor: RED, dotRing: "rgba(255,51,85,0.20)",
+        scoreColor: RED, scoreGrad: `linear-gradient(90deg, ${RED}, #FF88AA)`,
+      };
+      if (lvl === "WARNING") return {
+        accent: `linear-gradient(180deg, ${GOLD}, #FFDD44)`,
+        avBg:   `linear-gradient(135deg, ${GOLD}, #FFDD44)`,
+        avShadow: "0 4px 14px rgba(255,170,0,0.30)",
+        badgeBg: GOLD, badgeColor: "#884400", badgeShadow: "0 2px 8px rgba(255,170,0,0.26)",
+        dotColor: GOLD, dotRing: "rgba(255,170,0,0.20)",
+        scoreColor: "#884400", scoreGrad: `linear-gradient(90deg, ${GOLD}, #FFDD44)`,
+      };
+      return {
+        accent: `linear-gradient(180deg, ${B1}, ${B2})`,
+        avBg:   `linear-gradient(135deg, ${B1}, ${B2})`,
+        avShadow: "0 4px 14px rgba(0,85,255,0.28)",
+        badgeBg: B1, badgeColor: "#fff", badgeShadow: "0 2px 8px rgba(0,85,255,0.28)",
+        dotColor: B1, dotRing: "rgba(0,85,255,0.20)",
+        scoreColor: B1, scoreGrad: `linear-gradient(90deg, ${B1}, #4499FF)`,
+      };
+    };
+
+    const getInitials = (name: string) =>
+      (name || "S").split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+
+    // Top student for contextual AI/timeline/recommended sections
+    const topStudent = filtered.find(s => s.riskLevel === "CRITICAL") || filtered[0];
+
+    return (
+      <div className="animate-in fade-in duration-500 -mx-3 -mt-3"
+        style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif", background: BG, minHeight: "100vh" }}>
+
+        {/* Page Head */}
+        <div className="px-5 pt-4">
+          <div className="text-[26px] font-bold mb-1" style={{ color: T1, letterSpacing: "-0.7px" }}>Risk Students</div>
+          <div className="text-[12px] font-normal" style={{ color: T3 }}>Monitor and intervene with at-risk students</div>
+        </div>
+
+        {/* Risk Hero Banner (red gradient) */}
+        <div className="mx-5 mt-[14px] rounded-[24px] px-5 py-[18px] relative overflow-hidden"
+          style={{
+            background: "linear-gradient(135deg, #660011 0%, #990022 35%, #CC0033 70%, #FF3355 100%)",
+            boxShadow: "0 8px 28px rgba(204,0,51,0.32), 0 0 0 0.5px rgba(255,255,255,0.12)",
+          }}>
+          <div className="absolute -top-10 -right-7 w-[170px] h-[170px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+          <div className="absolute inset-0 pointer-events-none" style={{
+            backgroundImage: "linear-gradient(rgba(255,255,255,0.016) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.016) 1px, transparent 1px)",
+            backgroundSize: "22px 22px",
+          }} />
+
+          <div className="flex items-center justify-between mb-3 relative z-10">
+            <div className="flex items-center gap-[10px]">
+              <div className="w-9 h-9 rounded-[12px] flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)", WebkitBackdropFilter: "blur(8px)", backdropFilter: "blur(8px)" }}>
+                <AlertTriangle className="w-[18px] h-[18px]" style={{ color: "rgba(255,255,255,0.92)" }} strokeWidth={2.2} />
+              </div>
+              <div>
+                <div className="text-[8px] font-bold uppercase tracking-[0.12em] mb-[3px]" style={{ color: "rgba(255,255,255,0.55)" }}>Total At-Risk</div>
+                <div className="text-[30px] font-bold leading-none text-white" style={{ letterSpacing: "-1px" }}>{loading ? "—" : riskStudents.length}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-[5px] px-[13px] py-[6px] rounded-full text-[11px] font-bold text-white"
+              style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.28)", WebkitBackdropFilter: "blur(8px)", backdropFilter: "blur(8px)" }}>
+              <Sparkles className="w-[11px] h-[11px] text-white" strokeWidth={2.5} />
+              Needs Action
+            </div>
+          </div>
+          <div className="flex items-center gap-1 mt-1 text-[11px] font-bold relative z-10" style={{ color: "rgba(255,255,255,0.65)" }}>
+            <span className="mr-[2px]">{newThisWeek >= 0 ? `${newThisWeek} new` : "0"} this week</span>
+            <span>· Monitoring Active</span>
+          </div>
+        </div>
+
+        {/* Stat Grid 2x2 — each filters */}
+        <div className="grid grid-cols-2 gap-[10px] px-5 pt-[14px]">
+          {[
+            { key: "CRITICAL",   label: "Critical",        val: criticalCount,                                sub: "Immediate action", subColor: RED,     iconColor: RED,    iconBg: "rgba(255,51,85,0.12)",  iconBorder: "rgba(255,51,85,0.22)", Icon: Flame,      valColor: RED },
+            { key: "WARNING",    label: "Warning",         val: warningCount,                                 sub: "Monitor closely",  subColor: "#884400", iconColor: GOLD,   iconBg: "rgba(255,170,0,0.12)", iconBorder: "rgba(255,170,0,0.22)", Icon: Bell,       valColor: GOLD },
+            { key: "All",        label: "New This Week",   val: newThisWeek,                                  sub: "Since Monday",     subColor: T3,      iconColor: B1,     iconBg: "rgba(0,85,255,0.10)",  iconBorder: "rgba(0,85,255,0.18)",  Icon: UserPlus,   valColor: B1 },
+            { key: "MONITORING", label: "Monitoring",      val: monitoringCount,                              sub: "Under watch",      subColor: GREEN_D, iconColor: GREEN,  iconBg: "rgba(0,200,83,0.10)",  iconBorder: "rgba(0,200,83,0.20)",  Icon: ShieldAlert, valColor: GREEN_D },
+          ].map(({ key, label, val, sub, subColor, iconColor, iconBg, iconBorder, Icon, valColor }) => (
+            <button
+              key={label}
+              onClick={() => setFilterTab(key as FilterTab)}
+              className="bg-white rounded-[20px] px-4 py-[15px] relative overflow-hidden cursor-pointer active:scale-[0.96] transition-transform text-left"
+              style={{ boxShadow: SH_LG, border: `0.5px solid ${filterTab === key ? iconColor + "66" : "rgba(0,85,255,0.10)"}`, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+              <div className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center absolute top-[14px] right-[14px]"
+                style={{ background: iconBg, border: `0.5px solid ${iconBorder}` }}>
+                <Icon className="w-[14px] h-[14px]" style={{ color: iconColor }} strokeWidth={2.4} />
+              </div>
+              <div className="text-[9px] font-bold uppercase tracking-[0.08em] mb-2" style={{ color: T4 }}>{label}</div>
+              <div className="text-[28px] font-bold leading-none mb-1" style={{ color: valColor, letterSpacing: "-1px" }}>{loading ? "—" : val}</div>
+              <div className="text-[11px] font-medium truncate" style={{ color: subColor }}>{sub}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex gap-[7px] px-5 pt-[14px] overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+          {([
+            { key: "All" as FilterTab,         label: "All",        count: riskStudents.length },
+            { key: "CRITICAL" as FilterTab,    label: "Critical",   count: criticalCount },
+            { key: "WARNING" as FilterTab,     label: "Warning",    count: warningCount },
+            { key: "MONITORING" as FilterTab,  label: "Monitoring", count: monitoringCount },
+          ]).map(({ key, label, count }) => {
+            const active = filterTab === key;
+            return (
+              <button key={key} onClick={() => setFilterTab(key)}
+                className="px-4 py-[9px] rounded-[13px] text-[12px] font-bold whitespace-nowrap flex-shrink-0 active:scale-[0.94] transition-transform"
+                style={{
+                  background: active ? `linear-gradient(135deg, ${B1}, ${B2})` : "#FFFFFF",
+                  color: active ? "#fff" : T3,
+                  border: active ? "0.5px solid transparent" : "0.5px solid rgba(0,85,255,0.12)",
+                  boxShadow: active ? SH_BTN : SH,
+                  transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
+                }}>
+                {label} ({count})
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Section label */}
+        <div className="px-5 pt-4 text-[9px] font-bold uppercase tracking-[0.10em] flex items-center gap-2" style={{ color: T4 }}>
+          <span>Student Risk Profiles</span>
+          <span className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
+        </div>
+
+        {/* Loading / Empty / Risk cards */}
+        {loading ? (
+          <div className="flex flex-col items-center gap-3 py-14">
+            <Loader2 className="w-10 h-10 animate-spin" style={{ color: B1 }} />
+            <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: T4 }}>Analyzing Student Risk Data…</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="mx-5 mt-3 bg-white rounded-[24px] py-10 flex flex-col items-center gap-[10px]"
+            style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+            <div className="w-[60px] h-[60px] rounded-[20px] flex items-center justify-center"
+              style={{ background: GREEN_S, border: `0.5px solid ${GREEN_B}`, boxShadow: "0 0 0 8px rgba(0,200,83,0.05)" }}>
+              <ShieldAlert className="w-7 h-7" style={{ color: GREEN }} strokeWidth={2.2} />
+            </div>
+            <div className="text-[14px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>
+              {filterTab === "All" ? "No at-risk students detected" : `No ${filterTab.toLowerCase()} students`}
+            </div>
+            <div className="text-[11px] text-center max-w-[220px] font-normal leading-[1.55]" style={{ color: T4 }}>
+              {filterTab === "All" ? "Risk factors appear when attendance or results data is recorded." : "Try switching to All to see the full list."}
+            </div>
+          </div>
+        ) : (
+          filtered.map(s => {
+            const theme = levelTheme(s.riskLevel);
+            const initials = getInitials(s.name);
+            return (
+              <div key={s.id} className="mx-5 mt-3 bg-white rounded-[24px] overflow-hidden relative"
+                style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+                {/* Accent bar */}
+                <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-[2px]" style={{ background: theme.accent }} />
+
+                {/* Top row — tap opens detail view */}
+                <button
+                  onClick={() => setSelectedStudent(s)}
+                  className="w-full flex items-start gap-[13px] pl-[22px] pr-[18px] pt-[18px] pb-[14px] text-left active:bg-[#F5F9FF] transition-colors"
+                  style={{ borderBottom: `0.5px solid ${SEP}` }}>
+                  <div className="w-12 h-12 rounded-[15px] flex items-center justify-center text-[17px] font-bold text-white shrink-0"
+                    style={{ background: theme.avBg, boxShadow: theme.avShadow }}>
+                    {initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <div className="text-[16px] font-bold truncate" style={{ color: T1, letterSpacing: "-0.3px" }}>{s.name}</div>
+                      <div className="px-[11px] py-[5px] rounded-full text-[10px] font-bold uppercase tracking-[0.08em]"
+                        style={{ background: theme.badgeBg, color: theme.badgeColor, boxShadow: theme.badgeShadow }}>
+                        {s.riskLevel}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-[5px] text-[11px] font-medium" style={{ color: T3 }}>
+                      <Users className="w-[11px] h-[11px]" strokeWidth={2.5} />
+                      {s.className || "—"}
+                      {s.attPct !== null && ` · Att: ${s.attPct}%`}
+                    </div>
+                  </div>
+                  <div className="w-2 h-2 rounded-full shrink-0 mt-1"
+                    style={{ background: theme.dotColor, boxShadow: `0 0 0 2.5px ${theme.dotRing}` }} />
+                </button>
+
+                {/* Meta grid 2x2 */}
+                <div className="grid grid-cols-2">
+                  <div className="px-[14px] py-[13px] flex flex-col gap-1"
+                    style={{ borderRight: `0.5px solid ${SEP}`, borderBottom: `0.5px solid ${SEP}` }}>
+                    <div className="text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: T4 }}>Risk Level</div>
+                    <div className="flex items-center gap-[5px] text-[13px] font-bold" style={{ color: T1, letterSpacing: "-0.1px" }}>
+                      <span className="w-[7px] h-[7px] rounded-full animate-pulse" style={{ background: theme.dotColor, boxShadow: `0 0 0 2.5px ${theme.dotRing}` }} />
+                      {s.riskLevel === "CRITICAL" ? "Critical" : s.riskLevel === "WARNING" ? "Warning" : "Monitoring"}
+                    </div>
+                  </div>
+                  <div className="px-[14px] py-[13px] flex flex-col gap-1" style={{ borderBottom: `0.5px solid ${SEP}` }}>
+                    <div className="text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: T4 }}>Days Flagged</div>
+                    <div className="flex items-center gap-[4px] text-[14px] font-bold" style={{ color: ORANGE }}>
+                      <Loader2 className="w-3 h-3" style={{ display: "none" }} />
+                      <CalendarPlus className="w-[12px] h-[12px]" strokeWidth={2.4} />
+                      {s.daysFlagged > 0 ? `${s.daysFlagged} day${s.daysFlagged === 1 ? "" : "s"}` : "Today"}
+                    </div>
+                  </div>
+                  <div className="px-[14px] py-[13px] flex flex-col gap-1" style={{ borderRight: `0.5px solid ${SEP}` }}>
+                    <div className="text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: T4 }}>Risk Factors</div>
+                    <div className="flex flex-wrap gap-1">
+                      {s.riskFactors.slice(0, 2).map((f, i) => (
+                        <span key={i} className="inline-flex items-center px-[9px] py-[3px] rounded-full text-[10px] font-bold"
+                          style={{ background: "rgba(255,51,85,0.09)", color: RED, border: "0.5px solid rgba(255,51,85,0.20)" }}>
+                          {f}
+                        </span>
+                      ))}
+                      {s.riskFactors.length > 2 && (
+                        <span className="text-[10px] font-bold" style={{ color: T3 }}>+{s.riskFactors.length - 2}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="px-[14px] py-[13px] flex flex-col gap-1">
+                    <div className="text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: T4 }}>Assigned To</div>
+                    <div className="flex items-center gap-[5px] text-[13px] font-bold" style={{ color: T1, letterSpacing: "-0.1px" }}>
+                      {s.assignedTo && s.assignedTo !== "—" ? (
+                        <>
+                          <span className="w-[22px] h-[22px] rounded-[7px] flex items-center justify-center text-[9px] font-bold text-white"
+                            style={{ background: `linear-gradient(135deg, ${B1}, ${B2})` }}>
+                            {getInitials(s.assignedTo)}
+                          </span>
+                          <span className="truncate">{s.assignedTo}</span>
+                        </>
+                      ) : (
+                        <span style={{ color: T4 }}>Unassigned</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Score strip */}
+                <div className="flex">
+                  <div className="flex-1 px-[14px] py-3" style={{ borderRight: `0.5px solid ${SEP}` }}>
+                    <div className="text-[9px] font-bold uppercase tracking-[0.09em] mb-1" style={{ color: T4 }}>AVG Score</div>
+                    <div className="text-[22px] font-bold leading-none mb-1" style={{ color: s.avgScore != null && s.avgScore < 40 ? RED : s.avgScore != null && s.avgScore < 55 ? ORANGE : GREEN_D, letterSpacing: "-0.5px" }}>
+                      {s.avgScore != null ? `${s.avgScore}%` : "—"}
+                    </div>
+                    <div className="h-1 rounded-[2px] overflow-hidden" style={{ background: BG2 }}>
+                      <div className="h-full rounded-[2px]" style={{ width: `${Math.min(100, Math.max(0, s.avgScore || 0))}%`, background: s.avgScore != null && s.avgScore < 40 ? `linear-gradient(90deg, ${RED}, #FF88AA)` : s.avgScore != null && s.avgScore < 55 ? `linear-gradient(90deg, ${ORANGE}, #FFDD44)` : `linear-gradient(90deg, ${GREEN}, #66EE88)` }} />
+                    </div>
+                  </div>
+                  <div className="flex-1 px-[14px] py-3" style={{ borderRight: `0.5px solid ${SEP}` }}>
+                    <div className="text-[9px] font-bold uppercase tracking-[0.09em] mb-1" style={{ color: T4 }}>Attendance</div>
+                    <div className="text-[22px] font-bold leading-none mb-1" style={{ color: s.attPct != null && s.attPct >= 85 ? GREEN_D : s.attPct != null && s.attPct >= 70 ? ORANGE : RED, letterSpacing: "-0.5px" }}>
+                      {s.attPct != null ? `${s.attPct}%` : "—"}
+                    </div>
+                    <div className="h-1 rounded-[2px] overflow-hidden" style={{ background: BG2 }}>
+                      <div className="h-full rounded-[2px]" style={{ width: `${Math.min(100, Math.max(0, s.attPct || 0))}%`, background: s.attPct != null && s.attPct >= 85 ? `linear-gradient(90deg, ${GREEN}, #66EE88)` : s.attPct != null && s.attPct >= 70 ? `linear-gradient(90deg, ${ORANGE}, #FFDD44)` : `linear-gradient(90deg, ${RED}, #FF88AA)` }} />
+                    </div>
+                  </div>
+                  <div className="flex-1 px-[14px] py-3">
+                    <div className="text-[9px] font-bold uppercase tracking-[0.09em] mb-1" style={{ color: T4 }}>Last Action</div>
+                    <div className="text-[13px] font-bold leading-tight mb-1 truncate" style={{ color: s.lastAction && s.lastAction !== "—" ? T1 : T3, letterSpacing: "-0.1px" }}>
+                      {s.lastAction && s.lastAction !== "—" ? s.lastAction : "None yet"}
+                    </div>
+                    <div className="h-1 rounded-[2px]" style={{ background: BG2 }} />
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-2 px-4 py-[13px]" style={{ background: "rgba(238,244,255,0.50)" }}>
+                  <button onClick={() => setMeetingStudent(s)}
+                    className="flex-1 h-[42px] rounded-[13px] flex items-center justify-center gap-[7px] text-[12px] font-bold text-white active:scale-[0.95] transition-transform relative overflow-hidden"
+                    style={{ background: `linear-gradient(135deg, ${B1}, ${B2})`, boxShadow: SH_BTN, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+                    <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+                    <CalendarPlus className="w-[13px] h-[13px] relative z-10" strokeWidth={2.3} />
+                    <span className="relative z-10">Meet</span>
+                  </button>
+                  <button onClick={() => setSelectedStudent(s)}
+                    className="flex-1 h-[42px] rounded-[13px] flex items-center justify-center gap-[7px] text-[12px] font-bold text-white active:scale-[0.95] transition-transform"
+                    style={{ background: "linear-gradient(135deg, #001040, #001888)", boxShadow: "0 4px 14px rgba(0,8,64,0.26)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+                    <ArrowRight className="w-[13px] h-[13px]" strokeWidth={2.3} />
+                    View Action
+                  </button>
+                  <button onClick={() => navigate("/parent-communication")}
+                    className="flex-1 h-[42px] rounded-[13px] flex items-center justify-center gap-[7px] text-[12px] font-bold active:scale-[0.95] transition-transform bg-white"
+                    style={{ border: "0.5px solid rgba(0,85,255,0.16)", color: "#002080", boxShadow: SH, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+                    <MessageSquare className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
+                    Notify
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+
+        {/* AI Risk Intelligence — contextual on top student */}
+        {!loading && topStudent && (
+          <div className="mx-5 mt-3 rounded-[24px] px-[22px] py-5 relative overflow-hidden"
+            style={{
+              background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
+              boxShadow: "0 8px 28px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.14)",
+            }}>
+            <div className="absolute -top-[38px] -right-[26px] w-[160px] h-[160px] rounded-full pointer-events-none"
+              style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+            <div className="absolute inset-0 pointer-events-none" style={{
+              backgroundImage: "linear-gradient(rgba(255,255,255,0.014) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px)",
+              backgroundSize: "24px 24px",
+            }} />
+            <div className="flex items-center gap-[6px] mb-3 relative z-10">
+              <div className="w-7 h-7 rounded-[9px] flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                <Sparkles className="w-[14px] h-[14px]" style={{ color: "rgba(255,255,255,0.90)" }} strokeWidth={2.3} />
+              </div>
+              <span className="text-[9px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI Risk Intelligence</span>
+            </div>
+            <p className="text-[13px] leading-[1.72] font-normal relative z-10" style={{ color: "rgba(255,255,255,0.85)" }}>
+              <strong style={{ color: "#fff", fontWeight: 700 }}>{topStudent.name}</strong> has been flagged as <strong style={{ color: "#fff", fontWeight: 700 }}>{topStudent.riskLevel.toLowerCase()}</strong> for <strong style={{ color: "#fff", fontWeight: 700 }}>{topStudent.daysFlagged} day{topStudent.daysFlagged === 1 ? "" : "s"}</strong>.
+              {topStudent.avgScore != null && topStudent.avgScore < 40 && <> Average score of <strong style={{ color: "#fff", fontWeight: 700 }}>{topStudent.avgScore}%</strong> is significantly below the passing threshold.</>}
+              {topStudent.attPct != null && <> Attendance {topStudent.attPct >= 85 ? "remains strong" : "needs improvement"} at {topStudent.attPct}%.</>}
+              {topStudent.assignedTo && topStudent.assignedTo !== "—" && <> Intervention by <strong style={{ color: "#fff", fontWeight: 700 }}>{topStudent.assignedTo}</strong> recommended.</>}
+            </p>
+            <div className="flex items-center gap-2 mt-[14px] pt-3 relative z-10" style={{ borderTop: "0.5px solid rgba(255,255,255,0.12)" }}>
+              <div className="w-[6px] h-[6px] rounded-full" style={{ background: "#4499FF" }} />
+              <span className="text-[9px] font-bold uppercase tracking-[0.08em]" style={{ color: "rgba(255,255,255,0.40)" }}>Auto-generated · Real-time data</span>
+            </div>
+          </div>
+        )}
+
+        {/* Intervention Timeline */}
+        {!loading && topStudent && (
+          <div className="mx-5 mt-3 bg-white rounded-[22px] px-[18px] py-[18px]"
+            style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+            <div className="text-[15px] font-bold mb-[14px]" style={{ color: T1, letterSpacing: "-0.2px" }}>Intervention Timeline</div>
+
+            {[
+              { color: RED,    ring: "rgba(255,51,85,0.20)",  action: `Student flagged as ${topStudent.riskLevel.charAt(0) + topStudent.riskLevel.slice(1).toLowerCase()}`, date: `${topStudent.daysFlagged || 0} days ago · Auto-detected`, connector: true },
+              { color: GOLD,   ring: "rgba(255,170,0,0.20)",  action: topStudent.assignedTo && topStudent.assignedTo !== "—" ? `Assigned to ${topStudent.assignedTo}` : "Awaiting counselor assignment", date: topStudent.assignedTo && topStudent.assignedTo !== "—" ? `${topStudent.daysFlagged || 0} days ago · Admin` : "Needs admin review", connector: true },
+              { color: topStudent.lastAction && topStudent.lastAction !== "—" ? B1 : "rgba(0,85,255,0.35)", ring: "rgba(0,85,255,0.12)", action: topStudent.lastAction && topStudent.lastAction !== "—" ? topStudent.lastAction : "No action taken yet", date: topStudent.lastAction && topStudent.lastAction !== "—" ? "Recorded intervention" : "Waiting for teacher intervention", connector: false, muted: !(topStudent.lastAction && topStudent.lastAction !== "—") },
+            ].map((row, i) => (
+              <div key={i} className="flex gap-3 mb-[14px] last:mb-0">
+                <div className="flex flex-col items-center gap-0 w-4 shrink-0 mt-[2px]">
+                  <div className="w-[10px] h-[10px] rounded-full shrink-0" style={{ background: row.color, boxShadow: `0 0 0 2.5px ${row.ring}` }} />
+                  {row.connector && <div className="w-[1.5px] flex-1 min-h-[22px] mt-[3px]" style={{ background: `linear-gradient(180deg, ${row.color}55, rgba(0,85,255,0.10))` }} />}
+                </div>
+                <div className="flex-1">
+                  <div className="text-[13px] font-bold leading-tight mb-[2px]"
+                    style={{ color: row.muted ? T4 : T1, letterSpacing: "-0.1px", fontWeight: row.muted ? 600 : 700 }}>
+                    {row.action}
+                  </div>
+                  <div className="text-[10px] font-semibold" style={{ color: T4 }}>{row.date}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Recommended Actions */}
+        {!loading && topStudent && (
+          <div className="mx-5 mt-3 bg-white rounded-[22px] p-[18px]"
+            style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+            <div className="flex items-center gap-[10px] mb-[13px]">
+              <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                style={{ background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.18)" }}>
+                <Sparkles className="w-4 h-4" style={{ color: B1 }} strokeWidth={2.3} />
+              </div>
+              <div className="text-[14px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>Recommended Actions</div>
+            </div>
+            <div className="flex flex-col gap-2">
+              {[
+                { label: "Schedule a parent-teacher meeting", sub: "High priority · Within 3 days", ico: CalendarPlus, grad: `linear-gradient(135deg, ${B1}, ${B2})`, onClick: () => setMeetingStudent(topStudent) },
+                { label: "Assign additional practice work",   sub: "Medium priority · This week",   ico: Users,        grad: `linear-gradient(135deg, ${RED}, #FF6688)`, onClick: () => navigate("/assignments") },
+                { label: "Send alert to parent",              sub: "Low priority · Optional",       ico: MessageSquare,grad: `linear-gradient(135deg, ${GREEN}, #22EE66)`, onClick: () => navigate("/parent-communication") },
+              ].map(({ label, sub, ico: Icon, grad, onClick }) => (
+                <button key={label} onClick={onClick}
+                  className="flex items-center gap-[10px] px-[14px] py-3 rounded-[14px] active:scale-[0.98] transition-transform text-left"
+                  style={{ background: BG, border: "0.5px solid rgba(0,85,255,0.12)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+                  <div className="w-7 h-7 rounded-[9px] flex items-center justify-center shrink-0" style={{ background: grad }}>
+                    <Icon className="w-[13px] h-[13px] text-white" strokeWidth={2.3} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-bold truncate" style={{ color: T1, letterSpacing: "-0.1px" }}>{label}</div>
+                    <div className="text-[11px] font-medium mt-[2px] truncate" style={{ color: T3 }}>{sub}</div>
+                  </div>
+                  <ChevronRight className="w-[13px] h-[13px]" style={{ color: T4 }} strokeWidth={2.5} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="h-6" />
+
+        {/* Meeting Scheduler — shared with desktop state */}
+        <MeetingScheduler
+          open={!!meetingStudent}
+          onClose={() => setMeetingStudent(null)}
+          context={meetingStudent ? {
+            type: "student",
+            name: meetingStudent.name,
+            id: meetingStudent.id,
+            email: meetingStudent.email,
+            reason: `Risk level: ${meetingStudent.riskLevel}. Factors: ${meetingStudent.riskFactors.join(", ")}`,
+          } : undefined}
+        />
+      </div>
     );
   }
 
