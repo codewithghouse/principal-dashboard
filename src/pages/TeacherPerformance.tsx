@@ -2,11 +2,15 @@ import { useState, useEffect } from "react";
 import {
   GraduationCap, TrendingUp, TrendingDown, Minus,
   BarChart3, ChevronRight, Loader2,
+  Users, Star, AlertTriangle, Sparkles, Search,
+  MessageSquare, ArrowRight,
 } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, getDocs } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import TeacherProfile from "@/components/TeacherProfile";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useNavigate } from "react-router-dom";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const grade = (pct: number) => pct >= 85 ? "A" : pct >= 75 ? "B" : pct >= 60 ? "C" : "D";
@@ -64,6 +68,8 @@ const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct"
 
 const TeacherPerformance = () => {
   const { userData } = useAuth();
+  const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const [teachers,    setTeachers]    = useState<TeacherStat[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [selected,    setSelected]    = useState<TeacherStat | null>(null);
@@ -278,6 +284,913 @@ const TeacherPerformance = () => {
     return (
       <div className="animate-in fade-in duration-200">
         <TeacherProfile teacher={selected.raw} onBack={() => setSelected(null)} />
+      </div>
+    );
+  }
+
+  // ───────────────────────── MOBILE RETURN ─────────────────────────────────
+  if (isMobile) {
+    const B1 = "#0055FF";
+    const B2 = "#1166FF";
+    const B3 = "#2277FF";
+    const B4 = "#4499FF";
+    const GREEN = "#00C853";
+    const RED = "#FF3355";
+    const ORANGE = "#FF8800";
+    const GOLD = "#FFAA00";
+    const T1 = "#001040";
+    const T2 = "#002080";
+    const T3 = "#5070B0";
+    const T4 = "#99AACC";
+    const SEP = "rgba(0,85,255,.07)";
+
+    const topPerformersCount = teachers.filter((t) => (t.avgScore ?? 0) >= 80).length;
+    const needsSupportCount = teachers.filter((t) => t.avgScore != null && t.avgScore < 60).length;
+
+    const avgTierInfo =
+      schoolAvg >= 85
+        ? { label: "Excellent Tier", bg: "rgba(0,200,83,.20)", border: "rgba(0,200,83,.35)", color: "#66EE88" }
+        : schoolAvg >= 75
+        ? { label: "Strong Tier", bg: "rgba(0,85,255,.20)", border: "rgba(0,85,255,.35)", color: "#99BBFF" }
+        : schoolAvg >= 60
+        ? { label: "Average Tier", bg: "rgba(255,136,0,.20)", border: "rgba(255,136,0,.35)", color: "#FFCC44" }
+        : schoolAvg > 0
+        ? { label: "Needs Attention", bg: "rgba(255,51,85,.20)", border: "rgba(255,51,85,.35)", color: "#FF99AA" }
+        : { label: "No Data", bg: "rgba(153,170,204,.18)", border: "rgba(153,170,204,.32)", color: "#CCDDEE" };
+
+    const schoolAvgColor = schoolAvg >= 75 ? GREEN : schoolAvg >= 60 ? ORANGE : schoolAvg > 0 ? RED : T4;
+
+    const subjectTagStyle = (subject: string) => {
+      const s = (subject || "").toLowerCase();
+      if (s.includes("math")) return { bg: "rgba(255,136,0,.10)", color: "#884400", border: "0.5px solid rgba(255,136,0,.22)" };
+      if (s.includes("english") || s.includes("lang")) return { bg: "rgba(0,85,255,.10)", color: B1, border: "0.5px solid rgba(0,85,255,.20)" };
+      if (s.includes("sci") || s.includes("chem") || s.includes("phy") || s.includes("bio")) return { bg: "rgba(123,63,244,.10)", color: "#7B3FF4", border: "0.5px solid rgba(123,63,244,.22)" };
+      if (s.includes("social") || s.includes("hist") || s.includes("geo")) return { bg: "rgba(255,170,0,.10)", color: "#884400", border: "0.5px solid rgba(255,170,0,.22)" };
+      return { bg: "rgba(0,85,255,.10)", color: B1, border: "0.5px solid rgba(0,85,255,.20)" };
+    };
+
+    const avatarGradFor = (name: string, hasData: boolean, avg: number | null) => {
+      if (!hasData) return `linear-gradient(135deg, ${ORANGE}, #FFCC22)`;
+      if (avg! >= 80) return `linear-gradient(135deg, ${GREEN}, #22EE66)`;
+      if (avg! >= 60) return `linear-gradient(135deg, ${B1}, ${B3})`;
+      return `linear-gradient(135deg, ${RED}, #FF6688)`;
+    };
+
+    const accentFor = (hasData: boolean, avg: number | null) => {
+      if (!hasData) return `linear-gradient(180deg, ${ORANGE}, #FFCC22)`;
+      if (avg! >= 80) return `linear-gradient(180deg, ${GREEN}, #66EE88)`;
+      if (avg! >= 60) return `linear-gradient(180deg, ${B1}, ${B4})`;
+      return `linear-gradient(180deg, ${RED}, #FF88AA)`;
+    };
+
+    const avShadowFor = (hasData: boolean, avg: number | null) => {
+      if (!hasData) return "0 4px 14px rgba(255,136,0,.28)";
+      if (avg! >= 80) return "0 4px 14px rgba(0,200,83,.28)";
+      if (avg! >= 60) return "0 4px 14px rgba(0,85,255,.28)";
+      return "0 4px 14px rgba(255,51,85,.28)";
+    };
+
+    return (
+      <div
+        style={{
+          fontFamily: "'DM Sans', -apple-system, sans-serif",
+          background: "#EEF4FF",
+          minHeight: "100vh",
+          paddingBottom: 24,
+        }}
+      >
+        {/* PAGE HEAD */}
+        <div style={{ padding: "14px 20px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: T1, letterSpacing: "-0.6px", marginBottom: 3 }}>
+              Teacher Performance
+            </div>
+            <div style={{ fontSize: 11, color: T3, fontWeight: 400, lineHeight: 1.5 }}>
+              Impact analysis — same subject across teachers,<br />same teacher across classes
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              document.getElementById("mobile-tp-search")?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 13px",
+              borderRadius: 14,
+              background: "#fff",
+              border: "0.5px solid rgba(0,85,255,.14)",
+              boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+              flexShrink: 0,
+              marginTop: 4,
+              cursor: "pointer",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: T4, marginBottom: 2 }}>
+                School Avg
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: schoolAvgColor, letterSpacing: "-0.3px", lineHeight: 1 }}>
+                {schoolAvg}%
+              </div>
+            </div>
+            <BarChart3 size={14} color={schoolAvgColor} strokeWidth={2.4} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
+            <Loader2 size={28} color={B1} style={{ animation: "spin 1s linear infinite" }} />
+            <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+          </div>
+        ) : (
+          <>
+            {/* HERO */}
+            <div
+              style={{
+                margin: "14px 20px 0",
+                background: "linear-gradient(135deg,#001040 0%,#001888 35%,#0033CC 70%,#0055FF 100%)",
+                borderRadius: 22,
+                padding: "16px 18px",
+                position: "relative",
+                overflow: "hidden",
+                boxShadow: "0 8px 26px rgba(0,8,60,.28), 0 0 0 .5px rgba(255,255,255,.12)",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: -36,
+                  right: -24,
+                  width: 150,
+                  height: 150,
+                  background: "radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 65%)",
+                  borderRadius: "50%",
+                  pointerEvents: "none",
+                }}
+              />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, position: "relative", zIndex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 12,
+                      background: "rgba(255,255,255,.16)",
+                      border: "0.5px solid rgba(255,255,255,.24)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <GraduationCap size={18} color="rgba(255,255,255,.92)" strokeWidth={2.1} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,.50)", marginBottom: 3 }}>
+                      Avg Class Score
+                    </div>
+                    <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: "-0.8px", lineHeight: 1 }}>
+                      {schoolAvg}%
+                    </div>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    padding: "5px 12px",
+                    borderRadius: 100,
+                    background: avgTierInfo.bg,
+                    border: `0.5px solid ${avgTierInfo.border}`,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: avgTierInfo.color,
+                  }}
+                >
+                  <BarChart3 size={11} strokeWidth={2.5} />
+                  {avgTierInfo.label}
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: 1,
+                  background: "rgba(255,255,255,.12)",
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  position: "relative",
+                  zIndex: 1,
+                }}
+              >
+                {[
+                  { v: teachers.length, l: "Teachers", c: "#fff" },
+                  { v: topPerformersCount, l: "Top Perf.", c: "#66EE88" },
+                  { v: needsSupportCount, l: "Needs Support", c: needsSupportCount > 0 ? "#FF8899" : "#fff" },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: "rgba(255,255,255,.08)", padding: "11px 12px", textAlign: "center" }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: s.c, letterSpacing: "-0.4px", lineHeight: 1, marginBottom: 3 }}>
+                      {s.v}
+                    </div>
+                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: "rgba(255,255,255,.40)" }}>
+                      {s.l}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* STAT GRID */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 20px 0" }}>
+              {[
+                {
+                  label: "Total Teachers",
+                  value: teachers.length,
+                  sub: "Active faculty",
+                  color: B1,
+                  subColor: T4,
+                  icon: <Users size={13} color={B1} strokeWidth={2.4} />,
+                  bg: "rgba(0,85,255,.10)",
+                  border: "rgba(0,85,255,.18)",
+                  glow: "rgba(0,85,255,.10)",
+                },
+                {
+                  label: "Avg Class Score",
+                  value: `${schoolAvg}%`,
+                  sub: avgTierInfo.label,
+                  color: schoolAvgColor,
+                  subColor: schoolAvg >= 75 ? "#007830" : schoolAvg >= 60 ? "#884400" : schoolAvg > 0 ? RED : T4,
+                  icon: <BarChart3 size={13} color={schoolAvgColor} strokeWidth={2.4} />,
+                  bg: schoolAvg >= 75 ? "rgba(0,200,83,.10)" : schoolAvg >= 60 ? "rgba(255,136,0,.10)" : schoolAvg > 0 ? "rgba(255,51,85,.10)" : "rgba(153,170,204,.12)",
+                  border: schoolAvg >= 75 ? "rgba(0,200,83,.22)" : schoolAvg >= 60 ? "rgba(255,136,0,.22)" : schoolAvg > 0 ? "rgba(255,51,85,.22)" : "rgba(153,170,204,.22)",
+                  glow: schoolAvg >= 75 ? "rgba(0,200,83,.10)" : schoolAvg >= 60 ? "rgba(255,136,0,.10)" : schoolAvg > 0 ? "rgba(255,51,85,.10)" : "rgba(153,170,204,.10)",
+                },
+                {
+                  label: "Top Performers",
+                  value: topPerformersCount,
+                  sub: topPerformersCount === 0 ? "No records" : topPerformersCount === 1 ? "1 standout" : `${topPerformersCount} standouts`,
+                  color: topPerformersCount > 0 ? "#007830" : T3,
+                  subColor: topPerformersCount > 0 ? "#007830" : T4,
+                  icon: <Star size={13} color={GREEN} strokeWidth={2.4} />,
+                  bg: "rgba(0,200,83,.10)",
+                  border: "rgba(0,200,83,.22)",
+                  glow: "rgba(0,200,83,.10)",
+                },
+                {
+                  label: "Needs Support",
+                  value: needsSupportCount,
+                  sub: needsSupportCount === 0 ? "All clear" : needsSupportCount === 1 ? "1 teacher" : `${needsSupportCount} teachers`,
+                  color: needsSupportCount > 0 ? RED : T3,
+                  subColor: needsSupportCount > 0 ? RED : T4,
+                  icon: <AlertTriangle size={13} color={RED} strokeWidth={2.4} />,
+                  bg: "rgba(255,51,85,.10)",
+                  border: "rgba(255,51,85,.22)",
+                  glow: "rgba(255,51,85,.10)",
+                },
+              ].map((c, i) => (
+                <div
+                  key={i}
+                  style={{
+                    background: "#fff",
+                    borderRadius: 20,
+                    padding: 15,
+                    boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 18px 44px rgba(0,85,255,.13)",
+                    border: "0.5px solid rgba(0,85,255,.10)",
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: -18,
+                      right: -14,
+                      width: 65,
+                      height: 65,
+                      background: `radial-gradient(circle, ${c.glow} 0%, transparent 70%)`,
+                      borderRadius: "50%",
+                      pointerEvents: "none",
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 13,
+                      right: 13,
+                      width: 28,
+                      height: 28,
+                      borderRadius: 9,
+                      background: c.bg,
+                      border: `0.5px solid ${c.border}`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {c.icon}
+                  </div>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: T4, marginBottom: 9 }}>
+                    {c.label}
+                  </div>
+                  <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-1px", lineHeight: 1, marginBottom: 4, color: c.color }}>
+                    {c.value}
+                  </div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: c.subColor }}>{c.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* SEARCH */}
+            <div style={{ margin: "12px 20px 0", position: "relative" }}>
+              <div style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", display: "flex" }}>
+                <Search size={15} color="rgba(0,85,255,.42)" strokeWidth={2.2} />
+              </div>
+              <input
+                id="mobile-tp-search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by teacher or subject..."
+                style={{
+                  width: "100%",
+                  padding: "12px 16px 12px 42px",
+                  background: "#fff",
+                  borderRadius: 14,
+                  border: "0.5px solid rgba(0,85,255,.12)",
+                  fontFamily: "inherit",
+                  fontSize: 13,
+                  color: T1,
+                  fontWeight: 400,
+                  outline: "none",
+                  boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                }}
+              />
+            </div>
+
+            {/* SECTION LABEL */}
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: "0.10em",
+                textTransform: "uppercase",
+                color: T4,
+                padding: "16px 20px 0",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span>Faculty Performance</span>
+              <span
+                style={{
+                  padding: "3px 9px",
+                  borderRadius: 100,
+                  background: "rgba(0,85,255,.10)",
+                  border: "0.5px solid rgba(0,85,255,.16)",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: B1,
+                  textTransform: "none",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {filtered.length} teacher{filtered.length === 1 ? "" : "s"}
+              </span>
+              <span style={{ flex: 1, height: "0.5px", background: "rgba(0,85,255,.12)" }} />
+            </div>
+
+            {/* TEACHER CARDS */}
+            {filtered.length === 0 ? (
+              <div
+                style={{
+                  margin: "12px 20px 0",
+                  background: "#fff",
+                  borderRadius: 22,
+                  padding: "32px 20px",
+                  boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <GraduationCap size={44} color="rgba(0,85,255,.22)" strokeWidth={1.8} />
+                <div style={{ fontSize: 14, fontWeight: 700, color: T1 }}>No teacher data found</div>
+                <div style={{ fontSize: 11, color: T4, textAlign: "center", maxWidth: 260, lineHeight: 1.5 }}>
+                  Assign teachers to classes to see performance metrics.
+                </div>
+              </div>
+            ) : (
+              filtered.map((t) => {
+                const hasScoreData = t.avgScore != null;
+                const tr = trend(t);
+                const tLetter = hasScoreData ? grade(t.avgScore!) : "—";
+                const primarySubject = t.subjects[0] || "Teacher";
+                const subjStyle = subjectTagStyle(primarySubject);
+                const initText = t.name.substring(0, 2).toUpperCase();
+
+                const avgBarColor = !hasScoreData
+                  ? `linear-gradient(90deg, ${ORANGE}, #FFCC22)`
+                  : t.avgScore! >= 80
+                  ? `linear-gradient(90deg, ${GREEN}, #66EE88)`
+                  : t.avgScore! >= 60
+                  ? `linear-gradient(90deg, ${ORANGE}, #FFCC22)`
+                  : `linear-gradient(90deg, ${RED}, #FF88AA)`;
+                const avgValColor = !hasScoreData
+                  ? T4
+                  : t.avgScore! >= 80
+                  ? GREEN
+                  : t.avgScore! >= 60
+                  ? ORANGE
+                  : RED;
+
+                let trendIconEl = <Minus size={12} color={T4} strokeWidth={2.4} />;
+                let trendColor = T4;
+                let trendLabel = "—";
+                let trendBg = "#EEF4FF";
+                let trendBorder = "rgba(153,170,204,.22)";
+                if (tr) {
+                  trendLabel = tr.label;
+                  if (tr.label.startsWith("+")) {
+                    trendColor = GREEN;
+                    trendBg = "rgba(0,200,83,.10)";
+                    trendBorder = "rgba(0,200,83,.22)";
+                    trendIconEl = <TrendingUp size={12} color={GREEN} strokeWidth={2.4} />;
+                  } else if (tr.label.startsWith("-")) {
+                    trendColor = RED;
+                    trendBg = "rgba(255,51,85,.10)";
+                    trendBorder = "rgba(255,51,85,.22)";
+                    trendIconEl = <TrendingDown size={12} color={RED} strokeWidth={2.4} />;
+                  } else {
+                    trendColor = T3;
+                    trendBg = "rgba(153,170,204,.12)";
+                    trendBorder = "rgba(153,170,204,.22)";
+                    trendIconEl = <Minus size={12} color={T3} strokeWidth={2.4} />;
+                  }
+                }
+
+                return (
+                  <div
+                    key={t.id}
+                    style={{
+                      margin: "12px 20px 0",
+                      background: "#fff",
+                      borderRadius: 24,
+                      overflow: "hidden",
+                      boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 18px 44px rgba(0,85,255,.13)",
+                      border: "0.5px solid rgba(0,85,255,.10)",
+                      position: "relative",
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: 4,
+                        background: accentFor(hasScoreData, t.avgScore),
+                      }}
+                    />
+
+                    {/* Card top */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 13, padding: "17px 18px 15px 22px", borderBottom: `0.5px solid ${SEP}` }}>
+                      <div
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 15,
+                          background: avatarGradFor(t.name, hasScoreData, t.avgScore),
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 16,
+                          fontWeight: 700,
+                          color: "#fff",
+                          flexShrink: 0,
+                          boxShadow: avShadowFor(hasScoreData, t.avgScore),
+                        }}
+                      >
+                        {initText}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: T1, letterSpacing: "-0.3px", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {t.name}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                          {t.subjects.slice(0, 2).map((s, si) => {
+                            const sst = subjectTagStyle(s);
+                            return (
+                              <span
+                                key={si}
+                                style={{
+                                  padding: "4px 11px",
+                                  borderRadius: 100,
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  background: sst.bg,
+                                  color: sst.color,
+                                  border: sst.border,
+                                }}
+                              >
+                                {s}
+                              </span>
+                            );
+                          })}
+                          {t.subjects.length > 2 && (
+                            <span style={{ fontSize: 9, color: T4, fontWeight: 700 }}>+{t.subjects.length - 2}</span>
+                          )}
+                          {t.subjects.length === 0 && (
+                            <span
+                              style={{
+                                padding: "4px 11px",
+                                borderRadius: 100,
+                                fontSize: 10,
+                                fontWeight: 700,
+                                background: "rgba(0,85,255,.10)",
+                                color: B1,
+                                border: "0.5px solid rgba(0,85,255,.20)",
+                              }}
+                            >
+                              Teacher
+                            </span>
+                          )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: "#007830" }}>
+                            <div style={{ width: 5, height: 5, borderRadius: "50%", background: GREEN }} />
+                            Active
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
+                        <div
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: 100,
+                            background: t.classCount > 0 ? `linear-gradient(135deg, ${B1}, ${B2})` : "rgba(0,85,255,.10)",
+                            border: t.classCount > 0 ? "none" : "0.5px solid rgba(0,85,255,.18)",
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: t.classCount > 0 ? "#fff" : B1,
+                            boxShadow: t.classCount > 0 ? "0 2px 7px rgba(0,85,255,.26)" : "none",
+                          }}
+                        >
+                          {t.classCount} {t.classCount === 1 ? "Class" : "Classes"}
+                        </div>
+                        {hasScoreData && tr ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              padding: "4px 10px",
+                              borderRadius: 100,
+                              background: trendBg,
+                              border: `0.5px solid ${trendBorder}`,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              color: trendColor,
+                            }}
+                          >
+                            {trendIconEl}
+                            {trendLabel}
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              padding: "4px 10px",
+                              borderRadius: 100,
+                              background: "rgba(255,136,0,.10)",
+                              border: "0.5px solid rgba(255,136,0,.22)",
+                              fontSize: 10,
+                              fontWeight: 700,
+                              color: "#884400",
+                            }}
+                          >
+                            No data yet
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Metrics strip */}
+                    <div style={{ display: "flex", borderBottom: `0.5px solid ${SEP}` }}>
+                      {[
+                        {
+                          val: t.classCount > 0 ? t.classCount : "—",
+                          lbl: "Classes",
+                          color: t.classCount > 0 ? B1 : T4,
+                        },
+                        {
+                          val: t.studentCount > 0 ? t.studentCount : "—",
+                          lbl: "Students",
+                          color: t.studentCount > 0 ? B1 : T4,
+                        },
+                        {
+                          val: hasScoreData ? `${t.avgScore}%` : "—",
+                          lbl: "Avg Score",
+                          color: avgValColor,
+                          sub: hasScoreData ? `Grade ${tLetter}` : null,
+                        },
+                        {
+                          val: hasScoreData && tr ? tr.label : "—",
+                          lbl: "Trend",
+                          color: hasScoreData && tr ? trendColor : T4,
+                          trendIcon: hasScoreData && tr ? trendIconEl : null,
+                        },
+                      ].map((m, mi) => (
+                        <div
+                          key={mi}
+                          style={{
+                            flex: 1,
+                            padding: "12px 10px",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: 4,
+                            position: "relative",
+                            borderRight: mi < 3 ? "0.5px solid rgba(0,85,255,.10)" : "none",
+                          }}
+                        >
+                          {m.trendIcon ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                              {m.trendIcon}
+                              <div style={{ fontSize: 14, fontWeight: 700, color: m.color, letterSpacing: "-0.4px", lineHeight: 1 }}>
+                                {m.val}
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 18, fontWeight: 700, color: m.color, letterSpacing: "-0.4px", lineHeight: 1 }}>
+                              {m.val}
+                            </div>
+                          )}
+                          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: T4 }}>
+                            {m.lbl}
+                          </div>
+                          {m.sub && (
+                            <div style={{ fontSize: 9, fontWeight: 600, color: T4, marginTop: 1 }}>{m.sub}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Progress bar (when scored) */}
+                    {hasScoreData && (
+                      <div style={{ padding: "10px 16px", borderBottom: `0.5px solid ${SEP}` }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: T4 }}>
+                          <span>Class Performance</span>
+                          <span style={{ color: avgValColor }}>{t.avgScore}%</span>
+                        </div>
+                        <div style={{ height: 8, background: "#E0ECFF", borderRadius: 4, overflow: "hidden" }}>
+                          <div
+                            style={{
+                              height: "100%",
+                              borderRadius: 4,
+                              background: avgBarColor,
+                              width: `${Math.min(100, Math.max(0, t.avgScore!))}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* vs School Avg row */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "11px 18px",
+                        borderBottom: `0.5px solid ${SEP}`,
+                        background: "rgba(0,85,255,.03)",
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 600, color: T3, display: "flex", alignItems: "center", gap: 6 }}>
+                        <BarChart3 size={12} strokeWidth={2.3} />
+                        vs School Avg{hasScoreData ? ` (${schoolAvg}%)` : ""}
+                      </div>
+                      {t.vsSchoolAvg != null ? (
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 700,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 5,
+                            color: t.vsSchoolAvg > 2 ? GREEN : t.vsSchoolAvg < -2 ? RED : GOLD,
+                          }}
+                        >
+                          {t.vsSchoolAvg > 2 ? (
+                            <TrendingUp size={12} strokeWidth={2.4} />
+                          ) : t.vsSchoolAvg < -2 ? (
+                            <TrendingDown size={12} strokeWidth={2.4} />
+                          ) : (
+                            <Minus size={12} strokeWidth={2.4} />
+                          )}
+                          <span>
+                            {t.vsSchoolAvg >= 0 ? "+" : ""}
+                            {t.vsSchoolAvg}%
+                            {" "}
+                            <span style={{ fontSize: 11, fontWeight: 600, color: T3 }}>
+                              {t.vsSchoolAvg > 2 ? "Above" : t.vsSchoolAvg < -2 ? "Below" : "On Par"}
+                            </span>
+                          </span>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 13, fontWeight: 700, color: T4, display: "flex", alignItems: "center", gap: 5 }}>
+                          —{" "}
+                          <span style={{ fontSize: 11, color: T4, fontStyle: "italic", fontWeight: 500 }}>No data</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display: "flex", gap: 8, padding: "13px 16px" }}>
+                      <button
+                        onClick={() => setSelected(t)}
+                        style={{
+                          flex: 1,
+                          height: 40,
+                          borderRadius: 13,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          background: `linear-gradient(135deg, ${B1}, ${B2})`,
+                          color: "#fff",
+                          border: "none",
+                          cursor: "pointer",
+                          boxShadow: "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)",
+                        }}
+                      >
+                        <ArrowRight size={13} strokeWidth={2.2} />
+                        View Details
+                      </button>
+                      <button
+                        onClick={() => navigate("/teacher-notes")}
+                        style={{
+                          flex: 1,
+                          height: 40,
+                          borderRadius: 13,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          background: "#EEF4FF",
+                          color: "#002080",
+                          border: "0.5px solid rgba(0,85,255,.16)",
+                          cursor: "pointer",
+                          boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                        }}
+                      >
+                        <MessageSquare size={13} color="rgba(0,85,255,.6)" strokeWidth={2.2} />
+                        Note
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
+            {/* AI CARD */}
+            {filtered.length > 0 && (
+              <div
+                style={{
+                  margin: "12px 20px 0",
+                  background: "linear-gradient(140deg,#001888 0%,#0033CC 48%,#0055FF 100%)",
+                  borderRadius: 22,
+                  padding: "18px 20px",
+                  boxShadow: "0 8px 28px rgba(0,51,204,.28), 0 0 0 .5px rgba(255,255,255,.14)",
+                  position: "relative",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: -34,
+                    right: -22,
+                    width: 140,
+                    height: 140,
+                    background: "radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 65%)",
+                    borderRadius: "50%",
+                    pointerEvents: "none",
+                  }}
+                />
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, position: "relative", zIndex: 1 }}>
+                  <div
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 8,
+                      background: "rgba(255,255,255,.18)",
+                      border: "0.5px solid rgba(255,255,255,.26)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Sparkles size={13} color="rgba(255,255,255,.90)" strokeWidth={2.3} />
+                  </div>
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,.55)" }}>
+                    AI Performance Intelligence
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,.85)", lineHeight: 1.72, position: "relative", zIndex: 1 }}>
+                  {(() => {
+                    const withData = filtered.filter((t) => t.avgScore != null);
+                    const withoutData = filtered.filter((t) => t.avgScore == null);
+                    const topT =
+                      withData.length > 0
+                        ? [...withData].sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0))[0]
+                        : null;
+
+                    if (withData.length === 0) {
+                      return (
+                        <>
+                          No teacher has recorded score data yet.{" "}
+                          <strong style={{ color: "#fff", fontWeight: 700 }}>
+                            Schedule assessments
+                          </strong>{" "}
+                          to enable proper impact analysis across {filtered.length} teacher{filtered.length === 1 ? "" : "s"}.
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        {topT && (
+                          <>
+                            <strong style={{ color: "#fff", fontWeight: 700 }}>{topT.name}</strong>{" "}
+                            leads with{" "}
+                            <strong style={{ color: "#fff", fontWeight: 700 }}>
+                              {topT.avgScore}%
+                            </strong>
+                            {topT.subjects[0] ? ` in ${topT.subjects[0]}` : ""}.{" "}
+                          </>
+                        )}
+                        School averages{" "}
+                        <strong style={{ color: "#fff", fontWeight: 700 }}>{schoolAvg}%</strong>{" "}
+                        across graded teachers.{" "}
+                        {withoutData.length > 0 && (
+                          <>
+                            <strong style={{ color: "#fff", fontWeight: 700 }}>
+                              {withoutData.length} teacher{withoutData.length === 1 ? "" : "s"}
+                            </strong>{" "}
+                            have no performance data — consider scheduling assessments to enable proper impact analysis.
+                          </>
+                        )}
+                        {needsSupportCount > 0 && (
+                          <>
+                            {" "}
+                            <strong style={{ color: "#FF8899", fontWeight: 700 }}>
+                              {needsSupportCount} teacher{needsSupportCount === 1 ? "" : "s"}
+                            </strong>{" "}
+                            below 60% need support.
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: 1,
+                    background: "rgba(255,255,255,.12)",
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    position: "relative",
+                    zIndex: 1,
+                    marginTop: 12,
+                  }}
+                >
+                  {[
+                    { v: teachers.length, l: "Teachers", c: "#fff" },
+                    { v: `${schoolAvg}%`, l: "School Avg", c: "#FFDD44" },
+                    { v: needsSupportCount, l: "At Risk", c: needsSupportCount > 0 ? "#FF8899" : "#fff" },
+                  ].map((s, i) => (
+                    <div key={i} style={{ background: "rgba(255,255,255,.08)", padding: "12px", textAlign: "center" }}>
+                      <div style={{ fontSize: 19, fontWeight: 700, color: s.c, letterSpacing: "-0.5px", lineHeight: 1, marginBottom: 3 }}>
+                        {s.v}
+                      </div>
+                      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: "rgba(255,255,255,.40)" }}>
+                        {s.l}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        <div style={{ height: 20 }} />
       </div>
     );
   }
