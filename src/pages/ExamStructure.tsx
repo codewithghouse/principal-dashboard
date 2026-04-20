@@ -1362,200 +1362,360 @@ const ExamStructure = () => {
     );
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-12 text-left">
+  // ── Render (desktop) ──────────────────────────────────────────────────────
+  const dTotalWeight = examTypes.reduce((a, e) => a + e.weightPct, 0);
+  const dAvgMax = examTypes.length ? Math.round(examTypes.reduce((a, e) => a + e.maxMarks, 0) / examTypes.length) : 0;
+  const dAvgPass = examTypes.length ? Math.round(examTypes.reduce((a, e) => a + (e.passingMarks / e.maxMarks) * 100, 0) / examTypes.length) : 0;
+  const dWeightChip = dTotalWeight === 0 ? { label: "Empty", c: "#FFCC44", bg: "rgba(255,136,0,0.22)", bdr: "rgba(255,136,0,0.4)" }
+    : dTotalWeight === 100 ? { label: "Balanced", c: "#66EE88", bg: "rgba(0,200,83,0.22)", bdr: "rgba(0,200,83,0.4)" }
+    : dTotalWeight > 100 ? { label: `+${dTotalWeight - 100}% Over`, c: "#FF99AA", bg: "rgba(255,51,85,0.22)", bdr: "rgba(255,51,85,0.4)" }
+    : { label: `${100 - dTotalWeight}% Short`, c: "#FFDD88", bg: "rgba(255,170,0,0.22)", bdr: "rgba(255,170,0,0.4)" };
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight">Exam Structure</h1>
-          <p className="text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest flex items-center gap-2">
-            <ClipboardList className="w-4 h-4 text-[#1e3a8a]" /> Exam Types · Marking Schemes · Grading Scales
-          </p>
+  return (
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+
+      {/* ── Top toolbar ── */}
+      <div className="flex items-start justify-between gap-4 pt-2 mb-5">
+        <div className="min-w-0">
+          <div className="text-[28px] font-bold leading-tight tracking-[-0.7px] flex items-center gap-[10px]" style={{ color: "#001040" }}>
+            <div className="w-9 h-9 rounded-[12px] flex items-center justify-center flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 4px 12px rgba(0,85,255,0.32)" }}>
+              <ClipboardList className="w-[19px] h-[19px] text-white" strokeWidth={2.4} />
+            </div>
+            Exam Structure
+          </div>
+          <div className="text-[12px] font-normal mt-[6px] ml-[46px] flex items-center gap-[6px]" style={{ color: "#5070B0" }}>
+            <span>Exam Types</span>
+            <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
+            <span>Marking Schemes</span>
+            <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
+            <span>Grading Scales</span>
+          </div>
         </div>
-        <button
-          onClick={() => { setNewExam(emptyExam()); setShowAddModal(true); }}
-          className="flex items-center gap-2 px-8 py-4 bg-[#1e3a8a] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg"
-        >
-          <Plus className="w-4 h-4" /> Add Exam Type
+        <button onClick={() => { setNewExam(emptyExam()); setShowAddModal(true); }}
+          className="h-[44px] px-5 rounded-[12px] flex items-center gap-[7px] text-[12px] font-bold text-white uppercase tracking-[0.06em] transition-transform active:scale-[0.97] hover:scale-[1.02] relative overflow-hidden flex-shrink-0"
+          style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)" }}>
+          <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+          <Plus className="w-[14px] h-[14px] relative z-10" strokeWidth={2.4} />
+          <span className="relative z-10">Add Exam Type</span>
         </button>
       </div>
 
-      {/* Stat strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Exam Types",      value: examTypes.length,                          icon: <BookOpen className="w-4 h-4 text-blue-500" />,   bg: "bg-blue-50",   txt: "text-blue-600" },
-          { label: "Avg Max Marks",   value: examTypes.length ? Math.round(examTypes.reduce((a, e) => a + e.maxMarks, 0) / examTypes.length) : "—", icon: <Award className="w-4 h-4 text-purple-500" />, bg: "bg-purple-50", txt: "text-purple-600" },
-          { label: "Avg Pass %",      value: examTypes.length ? Math.round(examTypes.reduce((a, e) => a + (e.passingMarks / e.maxMarks) * 100, 0) / examTypes.length) + "%" : "—", icon: <Percent className="w-4 h-4 text-emerald-500" />, bg: "bg-emerald-50", txt: "text-emerald-600" },
-          { label: "Total Weight",    value: examTypes.reduce((a, e) => a + e.weightPct, 0) + "%",    icon: <ClipboardList className="w-4 h-4 text-amber-500" />, bg: "bg-amber-50",  txt: "text-amber-600" },
-        ].map(s => (
-          <div key={s.label} className={`${s.bg} rounded-2xl p-5 flex items-center gap-4`}>
-            <div className="w-10 h-10 rounded-xl bg-white/60 flex items-center justify-center shadow-sm">{s.icon}</div>
-            <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{s.label}</p>
-              <p className={`text-xl font-black ${s.txt}`}>{s.value}</p>
+      {/* ── Hero banner ── */}
+      <div className="rounded-[22px] px-6 py-5 relative overflow-hidden flex items-center justify-between gap-5 mb-4"
+        style={{
+          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+          boxShadow: "0 8px 26px rgba(0,8,60,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+        }}>
+        <div className="absolute -top-12 -right-8 w-[180px] h-[180px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+        <div className="flex items-center gap-[12px] min-w-0 relative z-10">
+          <div className="w-11 h-11 rounded-[13px] flex items-center justify-center flex-shrink-0"
+            style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.24)" }}>
+            <BookOpen className="w-[22px] h-[22px]" style={{ color: "rgba(255,255,255,0.92)" }} strokeWidth={2.1} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] mb-[5px]" style={{ color: "rgba(255,255,255,0.50)" }}>
+              Total Weight · {examTypes.length} Exam Type{examTypes.length === 1 ? "" : "s"}
+            </div>
+            <div className="text-[34px] font-bold text-white leading-none tracking-[-1px]">
+              {dTotalWeight}%
             </div>
           </div>
-        ))}
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0 relative z-10">
+          <div className="flex items-center gap-[5px] px-[14px] py-[7px] rounded-full"
+            style={{ background: dWeightChip.bg, border: `0.5px solid ${dWeightChip.bdr}` }}>
+            <span className="text-[12px] font-bold" style={{ color: dWeightChip.c }}>{dWeightChip.label}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-[1px] rounded-[13px] overflow-hidden" style={{ background: "rgba(255,255,255,0.12)" }}>
+            {[
+              { val: examTypes.length, label: "Types", color: "#fff" },
+              { val: dAvgMax || "—", label: "Avg Max", color: "#66EE88" },
+              { val: dAvgPass ? `${dAvgPass}%` : "—", label: "Avg Pass", color: "#FFDD88" },
+            ].map(({ val, label, color }) => (
+              <div key={label} className="py-[10px] px-[14px] text-center min-w-[72px]" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <div className="text-[17px] font-bold leading-none mb-[3px]" style={{ color, letterSpacing: "-0.4px" }}>{val}</div>
+                <div className="text-[8px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.40)" }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Exam type cards */}
+      {/* ── Bright stat cards 4-wide ── */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        {[
+          { label: "Exam Types", val: examTypes.length, sub: "Configured", variant: "blue", Icon: BookOpen },
+          { label: "Avg Max Marks", val: dAvgMax || "—", sub: "Per exam", variant: "violet", Icon: Award },
+          { label: "Avg Pass %", val: dAvgPass ? `${dAvgPass}%` : "—", sub: "Required to pass", variant: "green", Icon: Percent },
+          { label: "Total Weight", val: `${dTotalWeight}%`, sub: dWeightChip.label, variant: "gold", Icon: ClipboardList },
+        ].map((s, i) => {
+          const styles: Record<string, { bg: string; bdr: string; lbl: string; val: string; icoColor: string }> = {
+            blue:   { bg: "linear-gradient(140deg, #DDEAFF 0%, #A8C5FF 55%, #7AA5FF 100%)", bdr: "rgba(0,85,255,0.4)",  lbl: "#002080", val: "#001055", icoColor: "#001055" },
+            violet: { bg: "linear-gradient(140deg, #EEE0FF 0%, #C9A8FF 55%, #A880FF 100%)", bdr: "rgba(123,63,244,0.4)", lbl: "#3A1580", val: "#280C5C", icoColor: "#3A1580" },
+            green:  { bg: "linear-gradient(140deg, #DEFCE8 0%, #8CF0B0 55%, #50E088 100%)", bdr: "rgba(0,200,83,0.4)",   lbl: "#005A20", val: "#004018", icoColor: "#005A20" },
+            gold:   { bg: "linear-gradient(140deg, #FFF6D1 0%, #FFE488 55%, #FFCC33 100%)", bdr: "rgba(255,170,0,0.4)",  lbl: "#664400", val: "#472A00", icoColor: "#664400" },
+          };
+          const st = styles[s.variant];
+          const Icon = s.Icon;
+          return (
+            <div key={i} className="rounded-[20px] p-5 relative overflow-hidden"
+              style={{ background: st.bg, border: `0.5px solid ${st.bdr}`, boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
+              <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none"
+                style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
+              <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
+                style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)", boxShadow: "0 2px 6px rgba(0,0,0,0.05)" }}>
+                <Icon className="w-[15px] h-[15px]" style={{ color: st.icoColor }} strokeWidth={2.5} />
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px] relative z-[1]" style={{ color: st.lbl }}>{s.label}</div>
+              <div className="text-[34px] font-bold leading-none tracking-[-1px] mb-[5px] relative z-[1]" style={{ color: st.val }}>{s.val}</div>
+              <div className="text-[11px] font-semibold relative z-[1]" style={{ color: st.lbl }}>{s.sub}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Section label ── */}
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] mb-3" style={{ color: "#99AACC" }}>
+        Your Exam Types
+        <span className="px-[10px] py-[3px] rounded-full text-[10px] font-bold ml-1"
+          style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}>
+          {examTypes.length} {examTypes.length === 1 ? "type" : "types"}
+        </span>
+        <div className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
+      </div>
+
+      {/* ── Exam cards ── */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3">
-          <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loading exam structure...</p>
+        <div className="rounded-[22px] py-16 text-center bg-white"
+          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+          <Loader2 className="w-9 h-9 animate-spin mx-auto mb-3" style={{ color: "#0055FF" }} />
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "#99AACC" }}>Loading exam structure…</p>
         </div>
       ) : examTypes.length === 0 ? (
-        <div className="bg-white rounded-3xl border-2 border-dashed border-slate-100 p-16 text-center">
-          <BookOpen className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-          <p className="text-sm font-black text-slate-400 uppercase tracking-widest">No exam types configured</p>
-          <p className="text-xs text-slate-300 mt-1">Click "Add Exam Type" to create your first exam structure</p>
+        <div className="rounded-[22px] py-16 text-center bg-white"
+          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+          <div className="w-16 h-16 rounded-[20px] mx-auto mb-4 flex items-center justify-center"
+            style={{ background: "rgba(0,85,255,0.08)", border: "0.5px solid rgba(0,85,255,0.14)" }}>
+            <BookOpen className="w-7 h-7" style={{ color: "rgba(0,85,255,0.45)" }} strokeWidth={2} />
+          </div>
+          <p className="text-[13px] font-bold mb-1" style={{ color: "#001040" }}>No exam types configured</p>
+          <p className="text-[12px]" style={{ color: "#99AACC" }}>Click "Add Exam Type" to create your first exam structure.</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {examTypes.map(exam => (
-            <div key={exam.id} className="bg-white rounded-3xl border-2 border-slate-50 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-
-              {/* Card header */}
-              <div className="px-6 py-5 flex items-center justify-between cursor-pointer"
-                onClick={() => setExpandedId(expandedId === exam.id ? null : exam.id)}>
-                <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-2xl bg-[#1e3a8a]/10 flex items-center justify-center">
-                    <BookOpen className="w-5 h-5 text-[#1e3a8a]" />
+        <div className="space-y-3">
+          {examTypes.map(exam => {
+            const isExp = expandedId === exam.id;
+            const wChip = exam.weightPct === 0 ? { bg: "rgba(255,136,0,0.10)", c: "#884400", bdr: "rgba(255,136,0,0.22)" }
+              : exam.weightPct >= 50 ? { bg: "rgba(0,200,83,0.10)", c: "#007830", bdr: "rgba(0,200,83,0.22)" }
+              : { bg: "rgba(0,85,255,0.10)", c: "#0055FF", bdr: "rgba(0,85,255,0.22)" };
+            return (
+              <div key={exam.id} className="rounded-[22px] overflow-hidden transition-all"
+                style={{
+                  background: isExp ? "linear-gradient(180deg, #FFFFFF 0%, #F7FAFF 100%)" : "#fff",
+                  boxShadow: isExp ? "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)" : "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.09), 0 8px 24px rgba(0,85,255,.10)",
+                  border: isExp ? "1px solid rgba(0,85,255,0.25)" : "0.5px solid rgba(0,85,255,0.08)",
+                }}>
+                {/* Header */}
+                <div className="flex items-center gap-4 px-6 py-[18px] cursor-pointer"
+                  onClick={() => setExpandedId(isExp ? null : exam.id)}
+                  style={isExp ? { borderBottom: "0.5px solid rgba(0,85,255,0.07)" } : {}}>
+                  <div className="w-11 h-11 rounded-[13px] flex items-center justify-center flex-shrink-0"
+                    style={isExp
+                      ? { background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 4px 12px rgba(0,85,255,0.32)" }
+                      : { background: "linear-gradient(135deg, #E5EEFF, #D4E4FF)", border: "0.5px solid rgba(0,85,255,0.15)" }}>
+                    <BookOpen className="w-[19px] h-[19px]" style={{ color: isExp ? "#fff" : "#0055FF" }} strokeWidth={2.3} />
                   </div>
-                  <div>
-                    <p className="font-black text-slate-800 text-base">{exam.name}</p>
-                    <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Max: {exam.maxMarks}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pass: {exam.passingMarks}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Weight: {exam.weightPct}%</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Classes: {exam.applicableClasses}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[17px] font-bold tracking-[-0.3px] truncate" style={{ color: "#001040" }}>{exam.name}</div>
+                    <div className="flex items-center gap-[10px] mt-[3px] flex-wrap">
+                      <span className="text-[11px] font-semibold" style={{ color: "#5070B0" }}>Max {exam.maxMarks}</span>
+                      <span className="w-[3px] h-[3px] rounded-full" style={{ background: "#99AACC" }} />
+                      <span className="text-[11px] font-semibold" style={{ color: "#5070B0" }}>Pass {exam.passingMarks}</span>
+                      <span className="w-[3px] h-[3px] rounded-full" style={{ background: "#99AACC" }} />
+                      <span className="text-[11px] font-semibold" style={{ color: "#5070B0" }}>Classes: {exam.applicableClasses}</span>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={e => { e.stopPropagation(); handleSave(exam); }}
+                  <div className="px-[12px] py-[6px] rounded-full text-[11px] font-bold flex-shrink-0"
+                    style={{ background: wChip.bg, color: wChip.c, border: `0.5px solid ${wChip.bdr}` }}>
+                    {exam.weightPct}% weight
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); handleSave(exam); }}
                     disabled={saving === exam.id}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-[#1e3a8a] text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-800 transition-colors disabled:opacity-60"
-                  >
-                    {saving === exam.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                    Save
+                    className="h-9 px-[14px] rounded-[11px] flex items-center gap-[6px] text-[11px] font-bold text-white uppercase tracking-[0.05em] transition-transform active:scale-95 hover:scale-[1.03] disabled:opacity-60 relative overflow-hidden"
+                    style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.26)" }}>
+                    <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+                    {saving === exam.id ? <Loader2 className="w-[13px] h-[13px] relative z-10 animate-spin" /> : <Save className="w-[13px] h-[13px] relative z-10" strokeWidth={2.4} />}
+                    <span className="relative z-10">Save</span>
                   </button>
-                  <button
-                    onClick={e => { e.stopPropagation(); handleDelete(exam.id, exam.name); }}
-                    className="w-9 h-9 rounded-xl border border-rose-100 text-rose-400 hover:bg-rose-50 flex items-center justify-center transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
+                  <button onClick={e => { e.stopPropagation(); handleDelete(exam.id, exam.name); }}
+                    aria-label="Delete exam type"
+                    className="w-9 h-9 rounded-[11px] flex items-center justify-center transition-transform active:scale-90 hover:scale-105"
+                    style={{ background: "rgba(255,51,85,0.08)", border: "0.5px solid rgba(255,51,85,0.18)" }}>
+                    <Trash2 className="w-[15px] h-[15px]" style={{ color: "#FF3355" }} strokeWidth={2.2} />
                   </button>
-                  {expandedId === exam.id
-                    ? <ChevronUp className="w-4 h-4 text-slate-400" />
-                    : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                  <div className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
+                    style={isExp ? { background: "linear-gradient(135deg, #0055FF, #1166FF)" } : { background: "#EEF4FF", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+                    {isExp ? <ChevronUp className="w-[14px] h-[14px] text-white" strokeWidth={2.4} /> : <ChevronDown className="w-[14px] h-[14px]" style={{ color: "#5070B0" }} strokeWidth={2.4} />}
+                  </div>
                 </div>
-              </div>
 
-              {/* Expanded editor */}
-              {expandedId === exam.id && (
-                <div className="border-t border-slate-50 px-6 pb-6 pt-5 space-y-6">
+                {/* Expanded editor */}
+                {isExp && (
+                  <div className="px-6 py-5 space-y-5">
+                    {/* Basic fields */}
+                    <div className="grid grid-cols-4 gap-3">
+                      {[
+                        { label: "Exam Name",      key: "name" as keyof ExamType,         type: "text",   val: exam.name },
+                        { label: "Max Marks",      key: "maxMarks" as keyof ExamType,     type: "number", val: exam.maxMarks },
+                        { label: "Passing Marks",  key: "passingMarks" as keyof ExamType, type: "number", val: exam.passingMarks },
+                        { label: "Weight % of final", key: "weightPct" as keyof ExamType, type: "number", val: exam.weightPct },
+                      ].map(f => (
+                        <div key={f.key}>
+                          <label className="text-[9px] font-bold uppercase tracking-[0.09em] mb-1.5 block" style={{ color: "#99AACC" }}>{f.label}</label>
+                          <input type={f.type} value={f.val as string | number}
+                            onChange={e => updateExam(exam.id, { [f.key]: f.type === "number" ? parseInt(e.target.value) || 0 : e.target.value })}
+                            className="w-full h-10 px-3 rounded-[10px] text-[12px] font-semibold outline-none"
+                            style={{ background: "#F5F9FF", border: "0.5px solid rgba(0,85,255,0.14)", color: "#001040" }} />
+                        </div>
+                      ))}
+                    </div>
 
-                  {/* Basic fields */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {[
-                      { label: "Exam Name",         key: "name"              as keyof ExamType, type: "text",   val: exam.name },
-                      { label: "Max Marks",         key: "maxMarks"          as keyof ExamType, type: "number", val: exam.maxMarks },
-                      { label: "Passing Marks",     key: "passingMarks"      as keyof ExamType, type: "number", val: exam.passingMarks },
-                      { label: "Weight % (of final)",key:"weightPct"         as keyof ExamType, type: "number", val: exam.weightPct },
-                    ].map(f => (
-                      <div key={f.key}>
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">{f.label}</label>
-                        <input
-                          type={f.type}
-                          value={f.val as string | number}
-                          onChange={e => updateExam(exam.id, { [f.key]: f.type === "number" ? parseInt(e.target.value) || 0 : e.target.value })}
-                          className="w-full h-10 px-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-blue-300 transition-all"
-                        />
+                    <div>
+                      <label className="text-[9px] font-bold uppercase tracking-[0.09em] mb-1.5 block" style={{ color: "#99AACC" }}>Applicable Classes</label>
+                      <input type="text" value={exam.applicableClasses}
+                        onChange={e => updateExam(exam.id, { applicableClasses: e.target.value })}
+                        placeholder='e.g. "All" or "8-A, 9-B, 10-C"'
+                        className="w-1/2 h-10 px-3 rounded-[10px] text-[12px] font-semibold outline-none"
+                        style={{ background: "#F5F9FF", border: "0.5px solid rgba(0,85,255,0.14)", color: "#001040" }} />
+                    </div>
+
+                    {/* Grading scale */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Layers className="w-[15px] h-[15px]" style={{ color: "#0055FF" }} strokeWidth={2.3} />
+                          <label className="text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: "#002080" }}>Grading Scale</label>
+                          <span className="px-[8px] py-[2px] rounded-full text-[9px] font-bold"
+                            style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}>
+                            {exam.gradingScale.length} rows
+                          </span>
+                        </div>
+                        <button onClick={() => addGradeRow(exam.id)}
+                          className="h-8 px-[12px] rounded-[10px] flex items-center gap-[5px] text-[10px] font-bold uppercase tracking-[0.05em] transition-transform active:scale-95 hover:scale-[1.03]"
+                          style={{ background: "linear-gradient(135deg, #EEF4FF, #DDEAFF)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.22)" }}>
+                          <Plus className="w-3 h-3" strokeWidth={2.6} /> Add Row
+                        </button>
                       </div>
-                    ))}
-                  </div>
-
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Applicable Classes</label>
-                    <input
-                      type="text"
-                      value={exam.applicableClasses}
-                      onChange={e => updateExam(exam.id, { applicableClasses: e.target.value })}
-                      placeholder='e.g. "All" or "8-A, 9-B, 10-C"'
-                      className="w-full md:w-1/2 h-10 px-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-blue-300 transition-all"
-                    />
-                  </div>
-
-                  {/* Grading scale */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Grading Scale</label>
-                      <button
-                        onClick={() => addGradeRow(exam.id)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 text-[9px] font-black text-slate-500 uppercase tracking-widest hover:bg-slate-200 transition-colors"
-                      >
-                        <Plus className="w-3 h-3" /> Add Row
-                      </button>
-                    </div>
-                    <div className="rounded-2xl border border-slate-100 overflow-hidden">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="bg-slate-50">
-                            <th className="px-4 py-2.5 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Grade</th>
-                            <th className="px-4 py-2.5 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Min %</th>
-                            <th className="px-4 py-2.5 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Max %</th>
-                            <th className="px-4 py-2.5 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest">Color</th>
-                            <th className="px-4 py-2.5 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest">Preview</th>
-                            <th className="px-4 py-2.5"></th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {exam.gradingScale.map(g => (
-                            <tr key={g.id}>
-                              <td className="px-3 py-2">
-                                <input value={g.label} onChange={e => updateGrade(exam.id, g.id, { label: e.target.value })}
-                                  className="w-14 h-8 px-2 bg-slate-50 border border-slate-100 rounded-lg text-xs font-black text-center outline-none focus:border-blue-300" />
-                              </td>
-                              <td className="px-3 py-2">
-                                <input type="number" value={g.minPct} onChange={e => updateGrade(exam.id, g.id, { minPct: parseInt(e.target.value) || 0 })}
-                                  className="w-16 h-8 px-2 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-center outline-none focus:border-blue-300" />
-                              </td>
-                              <td className="px-3 py-2">
-                                <input type="number" value={g.maxPct} onChange={e => updateGrade(exam.id, g.id, { maxPct: parseInt(e.target.value) || 0 })}
-                                  className="w-16 h-8 px-2 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold text-center outline-none focus:border-blue-300" />
-                              </td>
-                              <td className="px-3 py-2">
-                                <input type="color" value={g.color} onChange={e => updateGrade(exam.id, g.id, { color: e.target.value })}
-                                  className="w-10 h-8 rounded-lg border border-slate-100 cursor-pointer p-0.5 bg-white" />
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                <span className="px-3 py-1 rounded-lg text-[10px] font-black" style={{ background: g.color + "20", color: g.color }}>
-                                  {g.label || "—"}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2 text-right">
-                                <button onClick={() => removeGradeRow(exam.id, g.id)}
-                                  className="w-7 h-7 rounded-lg hover:bg-rose-50 text-rose-400 flex items-center justify-center transition-colors">
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              </td>
+                      <div className="rounded-[14px] overflow-hidden" style={{ border: "0.5px solid rgba(0,85,255,0.10)", background: "#fff" }}>
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr style={{ background: "rgba(0,85,255,0.04)", borderBottom: "0.5px solid rgba(0,85,255,0.07)" }}>
+                              {["Grade", "Min %", "Max %", "Color", "Preview", ""].map(h => (
+                                <th key={h} className="px-3 py-[10px] text-left text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: "#99AACC" }}>{h}</th>
+                              ))}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {exam.gradingScale.map((g, i, arr) => (
+                              <tr key={g.id} style={i < arr.length - 1 ? { borderBottom: "0.5px solid rgba(0,85,255,0.05)" } : {}}>
+                                <td className="px-3 py-[10px]">
+                                  <input value={g.label} onChange={e => updateGrade(exam.id, g.id, { label: e.target.value })}
+                                    className="w-14 h-8 px-2 rounded-[8px] text-[11px] font-bold text-center outline-none"
+                                    style={{ background: "#F5F9FF", border: "0.5px solid rgba(0,85,255,0.14)", color: "#001040" }} />
+                                </td>
+                                <td className="px-3 py-[10px]">
+                                  <input type="number" value={g.minPct} onChange={e => updateGrade(exam.id, g.id, { minPct: parseInt(e.target.value) || 0 })}
+                                    className="w-16 h-8 px-2 rounded-[8px] text-[11px] font-semibold text-center outline-none"
+                                    style={{ background: "#F5F9FF", border: "0.5px solid rgba(0,85,255,0.14)", color: "#001040" }} />
+                                </td>
+                                <td className="px-3 py-[10px]">
+                                  <input type="number" value={g.maxPct} onChange={e => updateGrade(exam.id, g.id, { maxPct: parseInt(e.target.value) || 0 })}
+                                    className="w-16 h-8 px-2 rounded-[8px] text-[11px] font-semibold text-center outline-none"
+                                    style={{ background: "#F5F9FF", border: "0.5px solid rgba(0,85,255,0.14)", color: "#001040" }} />
+                                </td>
+                                <td className="px-3 py-[10px]">
+                                  <input type="color" value={g.color} onChange={e => updateGrade(exam.id, g.id, { color: e.target.value })}
+                                    className="w-10 h-8 rounded-[8px] cursor-pointer p-0.5"
+                                    style={{ background: "#fff", border: "0.5px solid rgba(0,85,255,0.14)" }} />
+                                </td>
+                                <td className="px-3 py-[10px]">
+                                  <span className="px-3 py-1 rounded-full text-[11px] font-bold"
+                                    style={{ background: g.color + "20", color: g.color, border: `0.5px solid ${g.color}40` }}>
+                                    {g.label || "—"}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-[10px] text-right">
+                                  <button onClick={() => removeGradeRow(exam.id, g.id)}
+                                    className="w-7 h-7 rounded-[9px] flex items-center justify-center transition-transform active:scale-90"
+                                    style={{ background: "rgba(255,51,85,0.08)", border: "0.5px solid rgba(255,51,85,0.18)" }}>
+                                    <X className="w-[13px] h-[13px]" style={{ color: "#FF3355" }} strokeWidth={2.3} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-[10px] mt-2" style={{ color: "#99AACC" }}>Ranges should cover 0–100 without gaps. Lower grades should have lower min %.</p>
                     </div>
-                    <p className="text-[9px] text-slate-300 mt-1.5">Ranges should cover 0–100 without gaps. Lower grades should have lower min %.</p>
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
+
+      {/* ── AI Intelligence ── */}
+      {!loading && examTypes.length > 0 && (
+        <div className="mt-6 rounded-[22px] px-6 py-5 relative overflow-hidden"
+          style={{
+            background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
+            boxShadow: "0 8px 28px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.14)",
+          }}>
+          <div className="absolute -top-12 -right-8 w-[180px] h-[180px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+          <div className="flex items-center justify-between gap-6 relative z-10">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-[6px] mb-[10px]">
+                <div className="w-[28px] h-[28px] rounded-[9px] flex items-center justify-center"
+                  style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                  <Sparkles className="w-[14px] h-[14px]" style={{ color: "rgba(255,255,255,0.90)" }} strokeWidth={2.3} />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: "rgba(255,255,255,0.55)" }}>
+                  AI Exam Structure Intelligence
+                </span>
+              </div>
+              <div className="text-[13px] leading-[1.72] max-w-[720px]" style={{ color: "rgba(255,255,255,0.85)" }}>
+                {dTotalWeight === 100 ? (
+                  <><strong style={{ color: "#fff", fontWeight: 700 }}>Perfectly balanced</strong> — your {examTypes.length} exam type{examTypes.length === 1 ? "" : "s"} sum to 100%. Average pass threshold is <strong style={{ color: "#fff", fontWeight: 700 }}>{dAvgPass}%</strong>.</>
+                ) : dTotalWeight > 100 ? (
+                  <>Weights <strong style={{ color: "#fff", fontWeight: 700 }}>exceed 100% by {dTotalWeight - 100}%</strong> — reduce individual exam weights to balance. Target: 100% total.</>
+                ) : dTotalWeight === 0 ? (
+                  <>No weights assigned yet — set <strong style={{ color: "#fff", fontWeight: 700 }}>Weight %</strong> on each exam so they sum to 100%.</>
+                ) : (
+                  <>Weights are <strong style={{ color: "#fff", fontWeight: 700 }}>{100 - dTotalWeight}% short of 100%</strong> — add missing weight across exams, or create an additional exam type.</>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-[1px] rounded-[14px] overflow-hidden flex-shrink-0" style={{ background: "rgba(255,255,255,0.12)" }}>
+              {[
+                { val: `${dTotalWeight}%`, label: "Weight", color: "#fff" },
+                { val: examTypes.length, label: "Types", color: "#FFDD88" },
+                { val: dWeightChip.label, label: "Status", color: dWeightChip.c },
+              ].map(({ val, label, color }) => (
+                <div key={label} className="py-[14px] px-5 text-center min-w-[96px]" style={{ background: "rgba(255,255,255,0.08)" }}>
+                  <div className="text-[20px] font-bold leading-none mb-[3px]" style={{ color, letterSpacing: "-0.5px" }}>{val}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.40)" }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* ── Add Exam Type Modal ──────────────────────────────────────────────── */}
       {showAddModal && (

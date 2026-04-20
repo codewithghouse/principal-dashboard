@@ -2647,75 +2647,160 @@ export default function FeeStructurePage() {
     );
   }
 
-  return (
-    <div className="space-y-6 pb-10 animate-in fade-in duration-300">
+  // ── Desktop derived metrics ──
+  const dLatestTotals = latest ? totalsFor(latest) : null;
+  const dBranchTotal = dLatestTotals?.branchTotal || 0;
+  const dClassCount = latest?.rows.length || 0;
+  const dTermCount = latest?.termTypes.length || 0;
+  const dStudentCount = latest?.mode === "student" ? (latest.studentRows?.length || 0) : 0;
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold text-[#1e294b] tracking-tight flex items-center gap-2">
-            <DollarSign className="w-6 h-6 text-[#1e3a8a]" /> Fee Structure
-          </h1>
-          <p className="text-sm text-slate-500 font-medium mt-0.5">
-            Upload term-wise fee plan per class. Owner will see this branch-wise.
-          </p>
+  return (
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-300" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+
+      {/* ── Top toolbar ── */}
+      <div className="flex items-start justify-between gap-4 pt-2 mb-5">
+        <div className="min-w-0">
+          <div className="text-[28px] font-bold leading-tight tracking-[-0.7px] flex items-center gap-[10px]" style={{ color: "#001040" }}>
+            <div className="w-9 h-9 rounded-[12px] flex items-center justify-center flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 4px 12px rgba(0,85,255,0.32)" }}>
+              <DollarSign className="w-[19px] h-[19px] text-white" strokeWidth={2.4} />
+            </div>
+            Fee Structure
+          </div>
+          <div className="text-[12px] font-normal mt-[6px] ml-[46px] flex items-center gap-[6px]" style={{ color: "#5070B0" }}>
+            <span>Term-wise Plan</span>
+            <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
+            <span>Per-Class Fees</span>
+            <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
+            <span>Version History</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={downloadTemplate}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-all"
-          >
-            <Download className="w-3.5 h-3.5" /> Template
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button onClick={downloadTemplate}
+            className="h-[42px] px-4 rounded-[12px] flex items-center gap-[6px] text-[11px] font-bold uppercase tracking-[0.06em] bg-white transition-transform active:scale-95 hover:scale-[1.02]"
+            style={{ color: "#002080", border: "0.5px solid rgba(0,85,255,0.16)", boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.09)" }}>
+            <Download className="w-[13px] h-[13px]" strokeWidth={2.4} /> Template
           </button>
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1e3a8a] text-white text-xs font-bold hover:bg-[#1e294b] transition-all shadow-sm"
-          >
-            <Upload className="w-3.5 h-3.5" /> {allStructures.length > 0 ? "Upload New Version" : "Upload Excel"}
+          <button onClick={() => fileRef.current?.click()}
+            className="h-[42px] px-5 rounded-[12px] flex items-center gap-[6px] text-[11px] font-bold text-white uppercase tracking-[0.06em] transition-transform active:scale-95 hover:scale-[1.02] relative overflow-hidden"
+            style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)" }}>
+            <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+            <Upload className="w-[13px] h-[13px] relative z-10" strokeWidth={2.4} />
+            <span className="relative z-10">{allStructures.length > 0 ? "Upload New Version" : "Upload Excel"}</span>
           </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} className="hidden" />
         </div>
       </div>
 
-      {/* Status / metadata cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Status</p>
-          <div className={`flex items-center gap-2 text-sm font-bold ${latest ? "text-emerald-600" : "text-amber-600"}`}>
-            {latest ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-            {latest
-              ? `${allStructures.length} upload${allStructures.length !== 1 ? "s" : ""} saved`
-              : "Not published"}
+      {/* ── Hero banner ── */}
+      <div className="rounded-[22px] px-6 py-5 relative overflow-hidden flex items-center justify-between gap-5 mb-4"
+        style={{
+          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+          boxShadow: "0 8px 26px rgba(0,8,60,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+        }}>
+        <div className="absolute -top-12 -right-8 w-[180px] h-[180px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+        <div className="flex items-center gap-[12px] min-w-0 relative z-10">
+          <div className="w-11 h-11 rounded-[13px] flex items-center justify-center flex-shrink-0"
+            style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.24)" }}>
+            <DollarSign className="w-[22px] h-[22px]" style={{ color: "rgba(255,255,255,0.92)" }} strokeWidth={2.1} />
           </div>
-          {latest?.uploadedBy && (
-            <p className="text-[10px] text-slate-400 font-semibold mt-1.5 truncate">Last by {latest.uploadedBy}</p>
+          <div className="min-w-0">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] mb-[5px]" style={{ color: "rgba(255,255,255,0.50)" }}>
+              Branch Total · {latest?.academicYear ? `AY ${latest.academicYear}` : "Latest version"}
+            </div>
+            <div className="text-[34px] font-bold text-white leading-none tracking-[-1px]">
+              {latest ? `₹ ${currency(dBranchTotal)}` : "—"}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0 relative z-10">
+          {latest ? (
+            <div className="flex items-center gap-[5px] px-[14px] py-[7px] rounded-full"
+              style={{ background: "rgba(0,200,83,0.22)", border: "0.5px solid rgba(0,200,83,0.4)" }}>
+              <CheckCircle2 className="w-[13px] h-[13px]" style={{ color: "#66EE88" }} strokeWidth={2.5} />
+              <span className="text-[12px] font-bold" style={{ color: "#66EE88" }}>Published</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-[5px] px-[14px] py-[7px] rounded-full"
+              style={{ background: "rgba(255,170,0,0.22)", border: "0.5px solid rgba(255,170,0,0.4)" }}>
+              <AlertCircle className="w-[13px] h-[13px]" style={{ color: "#FFDD88" }} strokeWidth={2.5} />
+              <span className="text-[12px] font-bold" style={{ color: "#FFDD88" }}>Not published</span>
+            </div>
           )}
+          <div className="grid grid-cols-3 gap-[1px] rounded-[13px] overflow-hidden" style={{ background: "rgba(255,255,255,0.12)" }}>
+            {[
+              { val: allStructures.length, label: "Versions", color: "#fff" },
+              { val: dClassCount, label: "Classes", color: "#66EE88" },
+              { val: dTermCount, label: "Terms", color: "#FFDD88" },
+            ].map(({ val, label, color }) => (
+              <div key={label} className="py-[10px] px-[14px] text-center min-w-[72px]" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <div className="text-[17px] font-bold leading-none mb-[3px]" style={{ color, letterSpacing: "-0.4px" }}>{val}</div>
+                <div className="text-[8px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.40)" }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Bright stat cards (stats + year/notes inputs combined) ── */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        {/* Versions stat */}
+        <div className="rounded-[20px] p-5 relative overflow-hidden"
+          style={{ background: "linear-gradient(140deg, #DDEAFF 0%, #A8C5FF 55%, #7AA5FF 100%)", border: "0.5px solid rgba(0,85,255,0.4)", boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
+          <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
+          <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
+            style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)" }}>
+            <FileSpreadsheet className="w-[15px] h-[15px]" style={{ color: "#001055" }} strokeWidth={2.5} />
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px]" style={{ color: "#002080" }}>Versions Saved</div>
+          <div className="text-[34px] font-bold leading-none tracking-[-1px] mb-[5px]" style={{ color: "#001055" }}>{allStructures.length}</div>
+          <div className="text-[11px] font-semibold" style={{ color: "#002080" }}>
+            {latest?.uploadedBy ? `Last by ${latest.uploadedBy.split("@")[0]}` : "No uploads yet"}
+          </div>
         </div>
 
-        <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Academic Year (for new upload)</label>
-          <input
-            value={academicYear}
-            onChange={e => setAcademicYear(e.target.value)}
-            placeholder="e.g., 2026-27"
-            className="w-full text-sm font-bold text-[#1e294b] bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 outline-none focus:border-blue-300"
-          />
+        {/* Students stat */}
+        <div className="rounded-[20px] p-5 relative overflow-hidden"
+          style={{ background: "linear-gradient(140deg, #EEE0FF 0%, #C9A8FF 55%, #A880FF 100%)", border: "0.5px solid rgba(123,63,244,0.4)", boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
+          <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
+          <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
+            style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)" }}>
+            <Users className="w-[15px] h-[15px]" style={{ color: "#3A1580" }} strokeWidth={2.5} />
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px]" style={{ color: "#3A1580" }}>Students Tracked</div>
+          <div className="text-[34px] font-bold leading-none tracking-[-1px] mb-[5px]" style={{ color: "#280C5C" }}>{dStudentCount || "—"}</div>
+          <div className="text-[11px] font-semibold" style={{ color: "#3A1580" }}>
+            {dStudentCount > 0 ? "Student-level detail" : "Class-level only"}
+          </div>
         </div>
 
-        <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Notes (for new upload)</label>
-          <input
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            placeholder="e.g., Revised after board meeting"
-            className="w-full text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5 outline-none focus:border-blue-300"
-          />
+        {/* Academic Year input */}
+        <div className="rounded-[20px] p-5 relative overflow-hidden"
+          style={{ background: "linear-gradient(140deg, #DEFCE8 0%, #8CF0B0 55%, #50E088 100%)", border: "0.5px solid rgba(0,200,83,0.4)", boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
+          <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
+          <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
+            style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)" }}>
+            <Calendar className="w-[15px] h-[15px]" style={{ color: "#005A20" }} strokeWidth={2.5} />
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px]" style={{ color: "#005A20" }}>Academic Year (new upload)</div>
+          <input value={academicYear} onChange={e => setAcademicYear(e.target.value)} placeholder="e.g., 2026-27"
+            className="w-full h-[40px] px-3 rounded-[11px] text-[15px] font-bold outline-none"
+            style={{ background: "rgba(255,255,255,0.65)", border: "0.5px solid rgba(0,200,83,0.35)", color: "#004018" }} />
+        </div>
+
+        {/* Notes input */}
+        <div className="rounded-[20px] p-5 relative overflow-hidden"
+          style={{ background: "linear-gradient(140deg, #FFF6D1 0%, #FFE488 55%, #FFCC33 100%)", border: "0.5px solid rgba(255,170,0,0.4)", boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
+          <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
+          <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
+            style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)" }}>
+            <Tag className="w-[15px] h-[15px]" style={{ color: "#664400" }} strokeWidth={2.5} />
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px]" style={{ color: "#664400" }}>Notes (new upload)</div>
+          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g., Revised Q2 fees"
+            className="w-full h-[40px] px-3 rounded-[11px] text-[13px] font-semibold outline-none"
+            style={{ background: "rgba(255,255,255,0.65)", border: "0.5px solid rgba(255,170,0,0.35)", color: "#472A00" }} />
         </div>
       </div>
 
