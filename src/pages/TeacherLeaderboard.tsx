@@ -7,7 +7,7 @@ import {
 import {
   Trophy, Loader2, Users, Award, Crown,
   TrendingUp, Filter, ChevronDown, X, Search, Sparkles, BookOpen,
-  AlertTriangle, Check, ChevronLeft,
+  AlertTriangle, Check, ChevronLeft, BarChart3, ChevronRight,
 } from "lucide-react";
 import {
   scoreTeachers, TeacherScore, TeacherDoc, ScoreDoc,
@@ -1486,76 +1486,459 @@ export default function TeacherLeaderboard() {
     );
   }
 
+  const desktopAvgTier =
+    stats.avg >= 80
+      ? { label: "Excellent", bg: "rgba(0,200,83,.22)", border: "rgba(0,200,83,.38)", color: "#66EE88" }
+      : stats.avg >= 60
+      ? { label: "Healthy", bg: "rgba(0,85,255,.22)", border: "rgba(0,85,255,.38)", color: "#99BBFF" }
+      : stats.avg >= 40
+      ? { label: "Average", bg: "rgba(255,170,0,.22)", border: "rgba(255,170,0,.38)", color: "#FFDD44" }
+      : stats.avg > 0
+      ? { label: "Needs Focus", bg: "rgba(255,51,85,.22)", border: "rgba(255,51,85,.38)", color: "#FF99AA" }
+      : { label: "No Data", bg: "rgba(153,170,204,.18)", border: "rgba(153,170,204,.32)", color: "#CCDDEE" };
+
   return (
-    <div className="space-y-6 pb-10 animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-[#1e294b] tracking-tight flex items-center gap-2">
-            <Trophy className="w-7 h-7 text-amber-500" /> Teacher Leaderboard
-          </h1>
-          <p className="text-slate-500 text-xs md:text-sm font-medium mt-0.5">
-            Top performers in your branch — auto-ranked by student outcomes + engagement
-          </p>
+    <div
+      className="animate-in fade-in duration-300"
+      style={{
+        fontFamily: "'DM Sans', -apple-system, sans-serif",
+        paddingBottom: 40,
+      }}
+    >
+      {/* ─── Header ────────────────────────────────────────────────── */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+          marginBottom: 20,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              background: "linear-gradient(135deg, #FFAA00, #FFCC44)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 8px 22px rgba(255,170,0,.35)",
+            }}
+          >
+            <Trophy size={24} color="#fff" strokeWidth={2.2} />
+          </div>
+          <div>
+            <h1 style={{ fontSize: 28, fontWeight: 700, color: "#001040", letterSpacing: "-0.7px", margin: 0, lineHeight: 1.1 }}>
+              Teacher Leaderboard
+            </h1>
+            <p style={{ fontSize: 13, color: "#5070B0", fontWeight: 400, marginTop: 4, margin: 0 }}>
+              Top performers in your branch — auto-ranked by student outcomes + engagement
+            </p>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center bg-slate-100 rounded-xl p-1">
-            {(["term", "month", "all"] as TimeRange[]).map((r) => (
-              <button
-                key={r}
-                onClick={() => setTimeRange(r)}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                  timeRange === r ? "bg-white text-[#1e3a8a] shadow-sm" : "text-slate-500"
-                }`}
-              >
-                {r === "term" ? "This Term" : r === "month" ? "This Month" : "All Time"}
-              </button>
-            ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {/* Time range segmented */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              background: "#fff",
+              padding: 4,
+              borderRadius: 14,
+              border: "0.5px solid rgba(0,85,255,.12)",
+              boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+            }}
+          >
+            {(["term", "month", "all"] as TimeRange[]).map((r) => {
+              const active = timeRange === r;
+              return (
+                <button
+                  key={r}
+                  onClick={() => setTimeRange(r)}
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 10,
+                    background: active ? "linear-gradient(135deg, #0055FF, #1166FF)" : "transparent",
+                    color: active ? "#fff" : "#5070B0",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    border: "none",
+                    cursor: "pointer",
+                    boxShadow: active ? "0 3px 10px rgba(0,85,255,.32)" : "none",
+                    transition: "all .18s",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {r === "term" ? "This Term" : r === "month" ? "This Month" : "All Time"}
+                </button>
+              );
+            })}
           </div>
-          <div className="relative">
-            <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+
+          {/* Class filter */}
+          <div style={{ position: "relative" }}>
+            <BookOpen
+              size={14}
+              color="rgba(0,85,255,.6)"
+              strokeWidth={2.2}
+              style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+            />
             <select
               value={classFilter}
               onChange={(e) => setClassFilter(e.target.value)}
-              className="appearance-none border border-slate-200 rounded-xl pl-9 pr-10 py-2 text-xs font-bold text-slate-600 bg-white outline-none focus:ring-2 focus:ring-[#1e3a8a]/10 min-w-[180px]"
+              style={{
+                appearance: "none",
+                WebkitAppearance: "none",
+                background: "#fff",
+                border: "0.5px solid rgba(0,85,255,.14)",
+                borderRadius: 14,
+                padding: "9px 34px 9px 34px",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#002080",
+                outline: "none",
+                cursor: "pointer",
+                minWidth: 190,
+                boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                fontFamily: "inherit",
+              }}
             >
               {classOptions.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown
+              size={14}
+              color="rgba(0,85,255,.6)"
+              strokeWidth={2.2}
+              style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+            />
           </div>
         </div>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Total Teachers", value: stats.total,                                      icon: Users,     color: "text-blue-600",    bg: "bg-blue-50",    note: classFilter === "All" ? "In branch" : "Teaching this class" },
-          { label: "Avg Performance", value: `${stats.avg.toFixed(1)}%`,                      icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50", note: "Across filtered set" },
-          { label: "Active Teachers", value: stats.active,                                    icon: Sparkles,  color: "text-violet-600",  bg: "bg-violet-50",  note: "With recent data" },
-          { label: "Top Performer",   value: stats.top ? `${stats.top.composite.toFixed(0)}%` : "—", icon: Crown, color: "text-amber-600",   bg: "bg-amber-50",   note: stats.top?.teacher.name || "No teachers yet" },
-        ].map((s) => (
-          <div key={s.label} className="clickable-card bg-white p-4 md:p-5 rounded-2xl border border-slate-100 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">{s.label}</p>
-              <div className={`w-8 h-8 rounded-lg ${s.bg} flex items-center justify-center`}>
-                <s.icon className={`w-4 h-4 ${s.color}`} />
+      {/* ─── Dark Hero Banner ────────────────────────────────────────── */}
+      <div
+        style={{
+          background: "linear-gradient(135deg,#001040 0%,#001888 35%,#0033CC 70%,#0055FF 100%)",
+          borderRadius: 24,
+          padding: "22px 28px",
+          position: "relative",
+          overflow: "hidden",
+          boxShadow: "0 12px 36px rgba(0,8,60,.28), 0 0 0 .5px rgba(255,255,255,.12)",
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            top: -60,
+            right: -40,
+            width: 240,
+            height: 240,
+            background: "radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 65%)",
+            borderRadius: "50%",
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,.014) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.014) 1px,transparent 1px)",
+            backgroundSize: "22px 22px",
+            inset: 0,
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            position: "relative",
+            zIndex: 1,
+            gap: 24,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div
+              style={{
+                width: 54,
+                height: 54,
+                borderRadius: 16,
+                background: "rgba(255,255,255,.16)",
+                border: "0.5px solid rgba(255,255,255,.24)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Trophy size={26} color="rgba(255,255,255,.92)" strokeWidth={2.1} />
+            </div>
+            <div>
+              <div
+                style={{
+                  fontSize: 9,
+                  fontWeight: 700,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,.50)",
+                  marginBottom: 4,
+                }}
+              >
+                Branch Avg Score
+              </div>
+              <div
+                style={{
+                  fontSize: 40,
+                  fontWeight: 700,
+                  color: "#fff",
+                  letterSpacing: "-1.2px",
+                  lineHeight: 1,
+                }}
+              >
+                {stats.avg.toFixed(1)}%
               </div>
             </div>
-            <h3 className="text-2xl md:text-3xl font-extrabold text-[#1e294b] tracking-tight mb-1">{s.value}</h3>
-            <p className={`text-[10px] font-bold ${s.color} truncate`}>{s.note}</p>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 18px",
+              borderRadius: 100,
+              background: desktopAvgTier.bg,
+              border: `0.5px solid ${desktopAvgTier.border}`,
+              fontSize: 13,
+              fontWeight: 700,
+              color: desktopAvgTier.color,
+            }}
+          >
+            <BarChart3 size={14} strokeWidth={2.5} />
+            {desktopAvgTier.label} tier
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 1,
+              background: "rgba(255,255,255,.12)",
+              borderRadius: 14,
+              overflow: "hidden",
+              minWidth: 320,
+            }}
+          >
+            {[
+              { v: stats.total, l: "Teachers", c: "#fff" },
+              { v: dataTeachers.length, l: "With Data", c: "#FFDD44" },
+              { v: noDataTeachers.length, l: "New", c: noDataTeachers.length > 0 ? "#FF99AA" : "#fff" },
+            ].map((s, i) => (
+              <div
+                key={i}
+                style={{
+                  background: "rgba(255,255,255,.08)",
+                  padding: "14px 18px",
+                  textAlign: "center",
+                  minWidth: 100,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 700,
+                    color: s.c,
+                    letterSpacing: "-0.5px",
+                    lineHeight: 1,
+                    marginBottom: 4,
+                  }}
+                >
+                  {s.v}
+                </div>
+                <div
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: "rgba(255,255,255,.40)",
+                  }}
+                >
+                  {s.l}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Bright Stat Grid (4 cards) ─────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }}>
+        {[
+          {
+            label: "Total Teachers",
+            value: stats.total,
+            sub: classFilter === "All" ? "In branch" : "Teaching this class",
+            bg: "linear-gradient(140deg,#DDEAFF 0%,#A8C5FF 55%,#7AA5FF 100%)",
+            border: "0.5px solid rgba(0,85,255,.4)",
+            lblColor: "#002080",
+            valColor: "#001055",
+            subColor: "#002080",
+            icon: <Users size={18} color="#001055" strokeWidth={2.5} />,
+          },
+          {
+            label: "Avg Performance",
+            value: `${stats.avg.toFixed(1)}%`,
+            sub: "Across filtered set",
+            bg: "linear-gradient(140deg,#DEFCE8 0%,#8CF0B0 55%,#50E088 100%)",
+            border: "0.5px solid rgba(0,200,83,.4)",
+            lblColor: "#005A20",
+            valColor: "#004018",
+            subColor: "#005A20",
+            icon: <TrendingUp size={18} color="#005A20" strokeWidth={2.5} />,
+          },
+          {
+            label: "Active Teachers",
+            value: stats.active,
+            sub: "With recent data",
+            bg: "linear-gradient(140deg,#EEE0FF 0%,#C9A8FF 55%,#A880FF 100%)",
+            border: "0.5px solid rgba(123,63,244,.4)",
+            lblColor: "#3A1580",
+            valColor: "#280C5C",
+            subColor: "#3A1580",
+            icon: <Sparkles size={18} color="#3A1580" strokeWidth={2.5} />,
+          },
+          {
+            label: "Top Performer",
+            value: stats.top ? `${stats.top.composite.toFixed(0)}%` : "—",
+            sub: stats.top?.teacher.name || "No teachers yet",
+            bg: "linear-gradient(140deg,#FFF6D1 0%,#FFE488 55%,#FFCC33 100%)",
+            border: "0.5px solid rgba(255,170,0,.4)",
+            lblColor: "#664400",
+            valColor: "#472A00",
+            subColor: "#664400",
+            icon: <Crown size={18} color="#664400" strokeWidth={2.5} />,
+          },
+        ].map((c, i) => (
+          <div
+            key={i}
+            style={{
+              borderRadius: 20,
+              padding: 20,
+              position: "relative",
+              overflow: "hidden",
+              background: c.bg,
+              border: c.border,
+              boxShadow: "0 10px 28px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04)",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: -24,
+                right: -20,
+                width: 100,
+                height: 100,
+                borderRadius: "50%",
+                background: "radial-gradient(circle, rgba(255,255,255,.65) 0%, transparent 70%)",
+                pointerEvents: "none",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                top: 16,
+                right: 16,
+                width: 38,
+                height: 38,
+                borderRadius: 12,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(255,255,255,.75)",
+                border: "0.5px solid rgba(255,255,255,.95)",
+                boxShadow: "0 2px 6px rgba(0,0,0,.05)",
+              }}
+            >
+              {c.icon}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.10em",
+                textTransform: "uppercase",
+                color: c.lblColor,
+                marginBottom: 12,
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              {c.label}
+            </div>
+            <div
+              style={{
+                fontSize: 32,
+                fontWeight: 700,
+                color: c.valColor,
+                letterSpacing: "-1px",
+                lineHeight: 1,
+                marginBottom: 6,
+                position: "relative",
+                zIndex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {c.value}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: c.subColor,
+                position: "relative",
+                zIndex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {c.sub}
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Empty */}
+      {/* ─── Empty / Rankings ──────────────────────────────────────── */}
       {ranked.length === 0 ? (
-        <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-12 text-center">
-          <Trophy className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-          <h3 className="text-base font-extrabold text-[#1e294b] mb-1">No teachers to rank yet</h3>
-          <p className="text-sm text-slate-500 font-medium max-w-md mx-auto">
+        <div
+          style={{
+            background: "#fff",
+            border: "0.5px dashed rgba(0,85,255,.22)",
+            borderRadius: 24,
+            padding: "64px 24px",
+            textAlign: "center",
+            boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11)",
+          }}
+        >
+          <Trophy size={56} color="rgba(0,85,255,.22)" strokeWidth={1.8} style={{ margin: "0 auto 12px" }} />
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: "#001040", margin: "0 0 6px 0" }}>
+            No teachers to rank yet
+          </h3>
+          <p style={{ fontSize: 13, color: "#5070B0", fontWeight: 400, maxWidth: 440, margin: "0 auto", lineHeight: 1.55 }}>
             {classFilter !== "All"
               ? "No teachers assigned to this class yet, or no performance data recorded."
               : "Once teachers are added and academic data is recorded, they'll appear here with rankings."}
@@ -1563,20 +1946,78 @@ export default function TeacherLeaderboard() {
         </div>
       ) : (
         <>
-          {/* Top Podium — only teachers with real data */}
+          {/* Top Performer Spotlight + Podium */}
           {top3.length > 0 && (
-            <div className="bg-gradient-to-br from-amber-50 via-white to-blue-50 rounded-3xl border border-amber-100 p-5 md:p-8 pt-10">
-              <div className="flex items-center gap-2 mb-8">
-                <Award className="w-5 h-5 text-amber-600" />
-                <h2 className="text-sm font-extrabold text-[#1e294b] uppercase tracking-wider">
+            <div
+              style={{
+                background: "linear-gradient(140deg,#FFF6D6 0%,#FFE58A 42%,#FFCC44 100%)",
+                border: "0.5px solid rgba(255,170,0,.28)",
+                borderRadius: 28,
+                padding: "28px 32px 34px",
+                position: "relative",
+                overflow: "hidden",
+                boxShadow: "0 14px 40px rgba(255,170,0,.24), 0 0 0 .5px rgba(255,170,0,.22)",
+                marginBottom: 20,
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: -60,
+                  right: -40,
+                  width: 240,
+                  height: 240,
+                  background: "radial-gradient(circle, rgba(255,255,255,.6) 0%, transparent 65%)",
+                  borderRadius: "50%",
+                  pointerEvents: "none",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  backgroundImage:
+                    "linear-gradient(rgba(255,255,255,.3) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.3) 1px,transparent 1px)",
+                  backgroundSize: "22px 22px",
+                  inset: 0,
+                  pointerEvents: "none",
+                  opacity: 0.5,
+                }}
+              />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, position: "relative", zIndex: 1 }}>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 14px",
+                    borderRadius: 100,
+                    background: "rgba(255,255,255,.65)",
+                    border: "0.5px solid rgba(255,170,0,.35)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: "#885500",
+                  }}
+                >
+                  <Award size={12} color="#885500" strokeWidth={2.5} />
                   {top3.length === 1 ? "Top Performer" : top3.length === 2 ? "Top 2 Performers" : "Top 3 Performers"}
-                </h2>
+                </div>
               </div>
-              <div className={`grid gap-3 md:gap-6 items-end ${
-                top3.length === 1 ? "grid-cols-1 max-w-xs mx-auto" :
-                top3.length === 2 ? "grid-cols-2 max-w-2xl mx-auto" :
-                "grid-cols-3"
-              }`}>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 18,
+                  alignItems: "end",
+                  position: "relative",
+                  zIndex: 1,
+                  gridTemplateColumns:
+                    top3.length === 1 ? "1fr" : top3.length === 2 ? "repeat(2, 1fr)" : "repeat(3, 1fr)",
+                  maxWidth: top3.length === 1 ? 400 : top3.length === 2 ? 760 : "100%",
+                  margin: top3.length < 3 ? "0 auto" : undefined,
+                }}
+              >
                 {top3.length >= 3 && top3[1] && <PodiumCard rank={2} score={top3[1]} onClick={() => setSelected(top3[1])} />}
                 {top3[0] && <PodiumCard rank={1} score={top3[0]} onClick={() => setSelected(top3[0])} />}
                 {top3.length === 2 && top3[1] && <PodiumCard rank={2} score={top3[1]} onClick={() => setSelected(top3[1])} />}
@@ -1585,39 +2026,122 @@ export default function TeacherLeaderboard() {
             </div>
           )}
 
-          {/* Search */}
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          {/* Search + Clear Class */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+            <div style={{ position: "relative", flex: 1, maxWidth: 460 }}>
+              <Search
+                size={16}
+                color="rgba(0,85,255,.42)"
+                strokeWidth={2.2}
+                style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+              />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search teacher by name or email..."
-                className="pl-10 h-10 w-full border border-slate-200 rounded-xl text-xs font-semibold bg-white outline-none focus:ring-2 focus:ring-[#1e3a8a]/10"
+                style={{
+                  width: "100%",
+                  padding: "12px 16px 12px 42px",
+                  background: "#fff",
+                  borderRadius: 14,
+                  border: "0.5px solid rgba(0,85,255,.12)",
+                  fontFamily: "inherit",
+                  fontSize: 13,
+                  color: "#001040",
+                  fontWeight: 400,
+                  outline: "none",
+                  boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                }}
               />
             </div>
             {classFilter !== "All" && (
               <button
                 onClick={() => setClassFilter("All")}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold uppercase tracking-wider transition-all"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "8px 14px",
+                  borderRadius: 100,
+                  background: "rgba(0,85,255,.08)",
+                  border: "0.5px solid rgba(0,85,255,.16)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: "#0055FF",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
               >
-                <X className="w-3 h-3" /> Clear Class
+                <X size={12} strokeWidth={2.5} />
+                Clear Class
               </button>
             )}
           </div>
 
-          {/* Full ranked list */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-              <h3 className="text-xs font-extrabold text-[#1e294b] uppercase tracking-wider flex items-center gap-2">
-                <Filter className="w-3.5 h-3.5" /> Full Rankings ({ranked.length})
+          {/* Full Rankings card */}
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 24,
+              border: "0.5px solid rgba(0,85,255,.10)",
+              boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 18px 44px rgba(0,85,255,.13)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "16px 22px",
+                borderBottom: "0.5px solid rgba(0,85,255,.07)",
+                background: "linear-gradient(90deg, rgba(0,85,255,.04), transparent)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "#001040",
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  margin: 0,
+                }}
+              >
+                <Filter size={13} color="#0055FF" strokeWidth={2.3} />
+                Full Rankings
+                <span
+                  style={{
+                    padding: "3px 9px",
+                    borderRadius: 100,
+                    background: "rgba(0,85,255,.10)",
+                    border: "0.5px solid rgba(0,85,255,.16)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: "#0055FF",
+                    letterSpacing: "0.04em",
+                    textTransform: "none",
+                  }}
+                >
+                  {ranked.length} teacher{ranked.length === 1 ? "" : "s"}
+                </span>
               </h3>
             </div>
-            <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
+            <div style={{ maxHeight: 620, overflowY: "auto" }}>
               {(rest.length > 0 ? rest : ranked).map((r, i) => {
                 const rank = rest.length > 0 ? i + 4 : i + 1;
-                return <TeacherRow key={r.teacher.id} rank={rank} score={r} onClick={() => setSelected(r)} />;
+                const isLast = i === (rest.length > 0 ? rest.length - 1 : ranked.length - 1);
+                return (
+                  <div key={r.teacher.id} style={{ borderBottom: isLast ? "none" : "0.5px solid rgba(0,85,255,.07)" }}>
+                    <TeacherRow rank={rank} score={r} onClick={() => setSelected(r)} />
+                  </div>
+                );
               })}
             </div>
           </div>
@@ -1630,206 +2154,742 @@ export default function TeacherLeaderboard() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Helpers for desktop visual tokens (shared by PodiumCard / TeacherRow / Modal)
+const toneSwatch = (tone: string) => {
+  switch (tone) {
+    case "gold":    return { bg: "rgba(255,170,0,.10)", color: "#885500", border: "rgba(255,170,0,.22)" };
+    case "emerald": return { bg: "rgba(0,200,83,.10)", color: "#007830", border: "rgba(0,200,83,.22)" };
+    case "blue":    return { bg: "rgba(0,85,255,.10)", color: "#0055FF", border: "rgba(0,85,255,.18)" };
+    case "violet":  return { bg: "rgba(123,63,244,.10)", color: "#7B3FF4", border: "rgba(123,63,244,.22)" };
+    case "rose":    return { bg: "rgba(255,51,85,.10)", color: "#B01030", border: "rgba(255,51,85,.22)" };
+    default:        return { bg: "rgba(0,85,255,.10)", color: "#0055FF", border: "rgba(0,85,255,.18)" };
+  }
+};
+
+const compositeHex = (n: number) =>
+  n >= 80 ? "#00994A" : n >= 60 ? "#0055FF" : n >= 40 ? "#FF8800" : "#FF3355";
+
+const compositeBar = (n: number) =>
+  n >= 80
+    ? "linear-gradient(90deg, #00C853, #66EE88)"
+    : n >= 60
+    ? "linear-gradient(90deg, #0055FF, #4499FF)"
+    : n >= 40
+    ? "linear-gradient(90deg, #FF8800, #FFCC22)"
+    : "linear-gradient(90deg, #FF3355, #FF7788)";
+
 function PodiumCard({ rank, score, onClick }: { rank: 1 | 2 | 3; score: TeacherScore; onClick: () => void }) {
-  const heightClass = rank === 1 ? "min-h-[260px]" : rank === 2 ? "min-h-[220px]" : "min-h-[200px]";
+  const minH = rank === 1 ? 300 : rank === 2 ? 260 : 240;
   const accent =
-    rank === 1 ? { border: "border-amber-300", bg: "bg-gradient-to-br from-amber-100 to-white", ring: "ring-amber-400/40", badgeBg: "bg-amber-500", trophy: "text-amber-600" }
-    : rank === 2 ? { border: "border-slate-300", bg: "bg-gradient-to-br from-slate-100 to-white", ring: "ring-slate-400/30", badgeBg: "bg-slate-400", trophy: "text-slate-500" }
-    : { border: "border-orange-300", bg: "bg-gradient-to-br from-orange-100 to-white", ring: "ring-orange-400/30", badgeBg: "bg-orange-500", trophy: "text-orange-600" };
+    rank === 1
+      ? {
+          bg: "linear-gradient(140deg,#fff 0%,#FFF4D6 60%,#FFE58A 100%)",
+          border: "rgba(255,170,0,.45)",
+          badge: "linear-gradient(135deg,#FF8800,#FFAA00)",
+          badgeShadow: "0 6px 18px rgba(255,136,0,.5)",
+          avRing: "rgba(255,170,0,.45)",
+          avShadow: "0 0 0 4px rgba(255,170,0,.25), 0 10px 24px rgba(0,85,255,.20)",
+          crownColor: "#FF8800",
+        }
+      : rank === 2
+      ? {
+          bg: "linear-gradient(140deg,#fff 0%,#F0F3F8 60%,#D8DDE4 100%)",
+          border: "rgba(160,172,190,.5)",
+          badge: "linear-gradient(135deg,#7E8CA0,#A8B4C4)",
+          badgeShadow: "0 6px 18px rgba(126,140,160,.4)",
+          avRing: "rgba(126,140,160,.35)",
+          avShadow: "0 0 0 4px rgba(160,172,190,.2), 0 10px 24px rgba(0,85,255,.15)",
+          crownColor: "#7E8CA0",
+        }
+      : {
+          bg: "linear-gradient(140deg,#fff 0%,#FFE8D4 60%,#FFC58A 100%)",
+          border: "rgba(255,136,0,.45)",
+          badge: "linear-gradient(135deg,#FF8800,#FFAA55)",
+          badgeShadow: "0 6px 18px rgba(255,136,0,.4)",
+          avRing: "rgba(255,136,0,.4)",
+          avShadow: "0 0 0 4px rgba(255,136,0,.2), 0 10px 24px rgba(255,136,0,.22)",
+          crownColor: "#FF8800",
+        };
 
   return (
     <div
       onClick={onClick}
       role="button"
       tabIndex={0}
-      className={`clickable-card relative ${accent.bg} ${accent.border} border-2 rounded-3xl p-4 md:p-5 pt-8 flex flex-col items-center justify-end text-center shadow-sm hover:ring-4 ${accent.ring} transition-all cursor-pointer ${heightClass}`}
+      style={{
+        position: "relative",
+        background: accent.bg,
+        border: `0.5px solid ${accent.border}`,
+        borderRadius: 24,
+        padding: "40px 18px 22px",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        textAlign: "center",
+        cursor: "pointer",
+        minHeight: minH,
+        boxShadow: "0 10px 30px rgba(0,8,60,.10), 0 0 0 .5px rgba(255,255,255,.8) inset",
+        transition: "transform .18s cubic-bezier(.34,1.56,.64,1)",
+      }}
     >
-      <div className={`absolute -top-5 left-1/2 -translate-x-1/2 w-10 h-10 md:w-12 md:h-12 rounded-full ${accent.badgeBg} flex items-center justify-center text-white font-black text-lg md:text-xl shadow-lg ring-4 ring-white`}>
+      {/* Rank badge */}
+      <div
+        style={{
+          position: "absolute",
+          top: -22,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 46,
+          height: 46,
+          borderRadius: "50%",
+          background: accent.badge,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#fff",
+          fontSize: 18,
+          fontWeight: 700,
+          boxShadow: accent.badgeShadow,
+          border: "4px solid #fff",
+        }}
+      >
         {rank}
       </div>
-      {rank === 1 && <Crown className={`w-7 h-7 md:w-8 md:h-8 ${accent.trophy} mb-2`} />}
-      <div className={`w-14 h-14 md:w-16 md:h-16 rounded-full bg-white border-2 ${accent.border} flex items-center justify-center text-base md:text-lg font-extrabold text-[#1e294b] shadow-sm mb-3`}>
+
+      {/* Crown only on #1 */}
+      {rank === 1 && (
+        <Crown size={30} color={accent.crownColor} strokeWidth={2.3} style={{ marginBottom: 8 }} />
+      )}
+
+      {/* Avatar */}
+      <div
+        style={{
+          width: 66,
+          height: 66,
+          borderRadius: "50%",
+          background: "linear-gradient(140deg,#fff,#E5EEFF)",
+          border: `3px solid ${accent.avRing}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 20,
+          fontWeight: 700,
+          color: "#0055FF",
+          boxShadow: accent.avShadow,
+          marginBottom: 14,
+        }}
+      >
         {initialsOf(score.teacher.name)}
       </div>
-      <h4 className="text-sm md:text-base font-extrabold text-[#1e294b] truncate w-full px-2">
+
+      <h4
+        style={{
+          fontSize: 16,
+          fontWeight: 700,
+          color: "#001040",
+          letterSpacing: "-0.3px",
+          margin: "0 0 8px 0",
+          padding: "0 8px",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          width: "100%",
+        }}
+      >
         {score.teacher.name || score.teacher.email || "Teacher"}
       </h4>
-      <div className={`text-2xl md:text-3xl font-black mt-2 ${scoreTone(score.composite)}`}>
+
+      <div
+        style={{
+          fontSize: 32,
+          fontWeight: 700,
+          color: compositeHex(score.composite),
+          letterSpacing: "-1px",
+          lineHeight: 1,
+          marginBottom: 10,
+        }}
+      >
         {score.composite.toFixed(0)}%
       </div>
-      <div className="flex flex-wrap justify-center gap-1 mt-2">
-        {score.reasons.slice(0, 2).map((b, i) => (
-          <span key={i} className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${TONE_CLASSES[b.tone]}`}>
-            {b.label}
-          </span>
-        ))}
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center" }}>
+        {score.reasons.slice(0, 2).map((b, i) => {
+          const tc = toneSwatch(b.tone);
+          return (
+            <span
+              key={i}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 100,
+                background: tc.bg,
+                color: tc.color,
+                border: `0.5px solid ${tc.border}`,
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: "0.02em",
+              }}
+            >
+              {b.label}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
 }
 
 function TeacherRow({ rank, score, onClick }: { rank: number; score: TeacherScore; onClick: () => void }) {
+  const GREEN = "#00C853";
+  const RED = "#FF3355";
+  const ORANGE = "#FF8800";
+  const B1 = "#0055FF";
+  const composite = score.composite;
+
+  const avatarGrad =
+    composite >= 80
+      ? `linear-gradient(135deg, ${GREEN}, #22EE66)`
+      : composite >= 60
+      ? `linear-gradient(135deg, ${B1}, #4499FF)`
+      : composite >= 40
+      ? `linear-gradient(135deg, ${ORANGE}, #FFCC22)`
+      : `linear-gradient(135deg, ${RED}, #FF7788)`;
+
+  const avShadow =
+    composite >= 80
+      ? "0 4px 12px rgba(0,200,83,.28)"
+      : composite >= 60
+      ? "0 4px 12px rgba(0,85,255,.28)"
+      : composite >= 40
+      ? "0 4px 12px rgba(255,136,0,.28)"
+      : "0 4px 12px rgba(255,51,85,.28)";
+
   return (
     <div
       onClick={onClick}
       role="button"
       tabIndex={0}
-      className="px-4 md:px-5 py-3.5 flex items-center gap-3 md:gap-4 hover:bg-slate-50/60 transition-colors cursor-pointer"
+      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,85,255,.03)")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+      style={{
+        padding: "16px 22px",
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        cursor: "pointer",
+        transition: "background .15s",
+      }}
     >
-      <div className="w-7 md:w-9 text-center text-xs md:text-sm font-black text-slate-400">#{rank}</div>
-      <div className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-xs md:text-sm font-extrabold text-[#1e294b] flex-shrink-0">
+      <div
+        style={{
+          width: 40,
+          fontSize: 13,
+          fontWeight: 700,
+          color: "#99AACC",
+          letterSpacing: "-0.2px",
+          textAlign: "center",
+          flexShrink: 0,
+        }}
+      >
+        #{rank}
+      </div>
+      <div
+        style={{
+          width: 46,
+          height: 46,
+          borderRadius: 14,
+          background: avatarGrad,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 14,
+          fontWeight: 700,
+          color: "#fff",
+          flexShrink: 0,
+          boxShadow: avShadow,
+        }}
+      >
         {initialsOf(score.teacher.name)}
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-extrabold text-[#1e294b] truncate">
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: "#001040",
+            letterSpacing: "-0.2px",
+            margin: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {score.teacher.name || score.teacher.email || "Teacher"}
         </p>
         {score.teacher.email && (
-          <p className="text-[10px] font-bold text-slate-400 truncate">{score.teacher.email}</p>
+          <p
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              color: "#99AACC",
+              margin: "2px 0 0 0",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {score.teacher.email}
+          </p>
         )}
       </div>
-      <div className="hidden md:flex flex-wrap gap-1 max-w-[340px] justify-end">
-        {score.reasons.slice(0, 2).map((b, i) => (
-          <span key={i} className={`text-[9px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${TONE_CLASSES[b.tone]}`}>
-            {b.label}: {b.value}
-          </span>
-        ))}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 6,
+          justifyContent: "flex-end",
+          maxWidth: 340,
+        }}
+      >
+        {score.reasons.slice(0, 2).map((b, i) => {
+          const tc = toneSwatch(b.tone);
+          return (
+            <span
+              key={i}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 100,
+                background: tc.bg,
+                color: tc.color,
+                border: `0.5px solid ${tc.border}`,
+                fontSize: 10,
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {b.label}: {b.value}
+            </span>
+          );
+        })}
       </div>
-      <div className="flex items-center gap-3 ml-auto md:ml-0">
-        <div className="w-20 md:w-32 flex flex-col items-end">
-          <p className={`text-base md:text-lg font-black ${scoreTone(score.composite)}`}>
-            {score.composite.toFixed(0)}%
-          </p>
-          <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
-            <div
-              className={`h-full ${scoreBgTone(score.composite)} rounded-full transition-all duration-500`}
-              style={{ width: `${Math.min(100, score.composite)}%` }}
-            />
-          </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, minWidth: 150 }}>
+        <p
+          style={{
+            fontSize: 18,
+            fontWeight: 700,
+            color: compositeHex(composite),
+            letterSpacing: "-0.4px",
+            margin: 0,
+            lineHeight: 1,
+          }}
+        >
+          {composite.toFixed(0)}%
+        </p>
+        <div
+          style={{
+            width: 140,
+            height: 6,
+            borderRadius: 3,
+            background: "#E0ECFF",
+            overflow: "hidden",
+            marginTop: 6,
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              borderRadius: 3,
+              background: compositeBar(composite),
+              width: `${Math.min(100, Math.max(0, composite))}%`,
+              transition: "width .5s ease",
+            }}
+          />
         </div>
       </div>
+      <ChevronRight size={16} color="#99AACC" strokeWidth={2.3} />
     </div>
   );
 }
 
 function DetailModal({ score, onClose }: { score: TeacherScore; onClose: () => void }) {
   const metrics = [
-    { label: "Class Avg Score",  value: score.classAvg,    weight: 35, unit: "%" },
-    { label: "Pass Rate",        value: score.passRate,    weight: 20, unit: "%" },
-    { label: "Class Attendance", value: score.attendance,  weight: 20, unit: "%" },
-    { label: "Assignments",      value: score.assignments, weight: 15, unit: " posted", raw: true },
-    { label: "Punctuality",      value: score.punctuality, weight: 10, unit: "%" },
+    { label: "Class Avg Score",  value: score.classAvg,    weight: 35, unit: "%",       raw: false },
+    { label: "Pass Rate",        value: score.passRate,    weight: 20, unit: "%",       raw: false },
+    { label: "Class Attendance", value: score.attendance,  weight: 20, unit: "%",       raw: false },
+    { label: "Assignments",      value: score.assignments, weight: 15, unit: " posted", raw: true  },
+    { label: "Punctuality",      value: score.punctuality, weight: 10, unit: "%",       raw: false },
   ];
+  const signalsWithData = metrics.filter(
+    (m) => m.value !== null && m.value !== undefined && (!m.raw || Number(m.value) > 0)
+  ).length;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,10,60,.55)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        zIndex: 50,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        animation: "fadeIn .25s ease both",
+      }}
+    >
+      <style>{`
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+        @keyframes popIn{from{opacity:0;transform:translateY(20px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+      `}</style>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+        style={{
+          background: "#fff",
+          borderRadius: 28,
+          width: "100%",
+          maxWidth: 680,
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          boxShadow: "0 40px 80px rgba(0,10,60,.45), 0 0 0 .5px rgba(255,255,255,.1)",
+          animation: "popIn .4s cubic-bezier(.34,1.26,.64,1) both",
+          fontFamily: "'DM Sans', -apple-system, sans-serif",
+        }}
       >
-        <div className="px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-blue-50 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-4">
-            <div className="w-14 h-14 rounded-full bg-white border-2 border-amber-200 flex items-center justify-center text-base font-extrabold text-[#1e294b] flex-shrink-0">
+        {/* Dark hero header */}
+        <div
+          style={{
+            padding: "24px 28px",
+            background: "linear-gradient(135deg,#001040 0%,#001888 35%,#0033CC 70%,#0055FF 100%)",
+            position: "relative",
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 16,
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: -60,
+              right: -40,
+              width: 200,
+              height: 200,
+              background: "radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 65%)",
+              borderRadius: "50%",
+              pointerEvents: "none",
+            }}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 16, position: "relative", zIndex: 1 }}>
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: "50%",
+                background: "linear-gradient(140deg,#fff,#E5EEFF)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 20,
+                fontWeight: 700,
+                color: "#0055FF",
+                boxShadow: "0 10px 24px rgba(0,0,0,.25), 0 0 0 3px rgba(255,255,255,.25)",
+                flexShrink: 0,
+              }}
+            >
               {initialsOf(score.teacher.name)}
             </div>
             <div>
-              <h3 className="text-base md:text-lg font-extrabold text-[#1e294b]">
+              <h3 style={{ fontSize: 20, fontWeight: 700, color: "#fff", letterSpacing: "-0.4px", margin: 0 }}>
                 {score.teacher.name || score.teacher.email}
               </h3>
-              <p className="text-xs font-semibold text-slate-500">{score.teacher.email || "No email"}</p>
-              <div className="flex items-center gap-2 mt-2">
-                <span className={`text-xl md:text-2xl font-black ${scoreTone(score.composite)}`}>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", fontWeight: 500, margin: "3px 0 0 0" }}>
+                {score.teacher.email || "No email"}
+              </p>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 10 }}>
+                <span style={{ fontSize: 32, fontWeight: 700, color: "#66EEAA", letterSpacing: "-0.8px", lineHeight: 1 }}>
                   {score.composite.toFixed(1)}%
                 </span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: "rgba(255,255,255,.50)",
+                  }}
+                >
                   Composite Score
                 </span>
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/60 transition-all">
-            <X className="w-4 h-4 text-slate-500" />
+          <button
+            onClick={onClose}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 11,
+              background: "rgba(255,255,255,.14)",
+              border: "0.5px solid rgba(255,255,255,.22)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              flexShrink: 0,
+              position: "relative",
+              zIndex: 1,
+            }}
+          >
+            <X size={16} color="#fff" strokeWidth={2.3} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "22px 28px" }}>
           {score.reasons.length > 0 && (
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            <div style={{ marginBottom: 22 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "#99AACC",
+                  marginBottom: 10,
+                }}
+              >
                 Why They Rank Here
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {score.reasons.map((b, i) => (
-                  <span key={i} className={`text-xs font-bold px-3 py-1.5 rounded-full border ${TONE_CLASSES[b.tone]}`}>
-                    {b.label} · {b.value}
-                  </span>
-                ))}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {score.reasons.map((b, i) => {
+                  const tc = toneSwatch(b.tone);
+                  return (
+                    <span
+                      key={i}
+                      style={{
+                        padding: "7px 14px",
+                        borderRadius: 100,
+                        background: tc.bg,
+                        color: tc.color,
+                        border: `0.5px solid ${tc.border}`,
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {b.label} · {b.value}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Score Breakdown</p>
-            <div className="space-y-3">
+          <div style={{ marginBottom: 22 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 14,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "#99AACC",
+                }}
+              >
+                Score Breakdown
+              </div>
+              <div
+                style={{
+                  padding: "3px 10px",
+                  borderRadius: 100,
+                  background: "rgba(0,85,255,.08)",
+                  border: "0.5px solid rgba(0,85,255,.16)",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: "#0055FF",
+                }}
+              >
+                {signalsWithData}/5 signals
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {metrics.map((m) => {
-                const hasData = m.value !== null && m.value !== undefined;
+                const hasData = m.value !== null && m.value !== undefined && (!m.raw || Number(m.value) > 0);
+                const numVal = hasData ? Number(m.value) : 0;
                 const displayVal = hasData
                   ? m.raw
                     ? `${m.value}${m.unit}`
-                    : `${(m.value as number).toFixed(1)}${m.unit}`
+                    : `${numVal.toFixed(1)}${m.unit}`
+                  : m.raw
+                  ? `0${m.unit}`
                   : "No data";
-                const pctBar = hasData && !m.raw ? Math.min(100, m.value as number) : 0;
+                const pctBar = hasData && !m.raw ? Math.min(100, numVal) : m.raw && Number(m.value) > 0 ? 4 : 0;
+                const valColor = !hasData
+                  ? "#99AACC"
+                  : m.raw
+                  ? Number(m.value) > 0 ? "#00994A" : "#FF3355"
+                  : compositeHex(numVal);
                 return (
                   <div key={m.label}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-700">{m.label}</span>
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                          {m.weight}% weight
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: 6,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#002080", letterSpacing: "-0.1px" }}>
+                          {m.label}
+                        </span>
+                        <span
+                          style={{
+                            padding: "2px 8px",
+                            borderRadius: 100,
+                            background: "rgba(0,85,255,.08)",
+                            border: "0.5px solid rgba(0,85,255,.14)",
+                            fontSize: 9,
+                            fontWeight: 700,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            color: "#0055FF",
+                          }}
+                        >
+                          {m.weight}% Weight
                         </span>
                       </div>
-                      <span className={`text-xs font-extrabold ${hasData ? scoreTone(Number(m.value)) : "text-slate-400"}`}>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: valColor,
+                          fontStyle: !hasData ? "italic" : "normal",
+                        }}
+                      >
                         {displayVal}
                       </span>
                     </div>
-                    {hasData && !m.raw && (
-                      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                        <div
-                          className={`h-full ${scoreBgTone(Number(m.value))} rounded-full transition-all duration-500`}
-                          style={{ width: `${pctBar}%` }}
-                        />
-                      </div>
-                    )}
+                    <div
+                      style={{
+                        height: 7,
+                        borderRadius: 4,
+                        background: "#E0ECFF",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          borderRadius: 4,
+                          background: hasData
+                            ? m.raw
+                              ? Number(m.value) > 0
+                                ? "linear-gradient(90deg, #00C853, #66EE88)"
+                                : "linear-gradient(90deg, #FF3355, #FF7788)"
+                              : compositeBar(numVal)
+                            : "#E0ECFF",
+                          width: `${pctBar}%`,
+                          transition: "width .5s ease",
+                        }}
+                      />
+                    </div>
                   </div>
                 );
               })}
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-slate-50 rounded-xl p-3 text-center">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Students</p>
-              <p className="text-lg font-extrabold text-[#1e294b]">{score.studentCount}</p>
-            </div>
-            <div className="bg-slate-50 rounded-xl p-3 text-center">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tests Recorded</p>
-              <p className="text-lg font-extrabold text-[#1e294b]">{score.testCount}</p>
-            </div>
-            <div className="bg-slate-50 rounded-xl p-3 text-center">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Assignments</p>
-              <p className="text-lg font-extrabold text-[#1e294b]">{score.assignments}</p>
-            </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            {[
+              { lbl: "Students", val: score.studentCount },
+              { lbl: "Tests Recorded", val: score.testCount },
+              { lbl: "Assignments", val: score.assignments },
+            ].map((s, i) => (
+              <div
+                key={i}
+                style={{
+                  background: "#EEF4FF",
+                  borderRadius: 14,
+                  padding: 16,
+                  textAlign: "center",
+                  border: "0.5px solid rgba(0,85,255,.10)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: "#99AACC",
+                    marginBottom: 6,
+                  }}
+                >
+                  {s.lbl}
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#001040", letterSpacing: "-0.5px", lineHeight: 1 }}>
+                  {s.val}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-          <p className="text-[10px] text-slate-400 font-semibold">
-            Weighted signals: scores 35% · pass rate 20% · attendance 20% · assignments 15% · punctuality 10%
+        {/* Footer */}
+        <div
+          style={{
+            padding: "14px 28px",
+            borderTop: "0.5px solid rgba(0,85,255,.07)",
+            background: "#EEF4FF",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            flexShrink: 0,
+          }}
+        >
+          <p style={{ fontSize: 11, color: "#5070B0", fontWeight: 500, margin: 0, lineHeight: 1.55 }}>
+            Weighted signals:{" "}
+            <strong style={{ color: "#0055FF", fontWeight: 700 }}>scores 35%</strong> ·{" "}
+            <strong style={{ color: "#0055FF", fontWeight: 700 }}>pass 20%</strong> ·{" "}
+            <strong style={{ color: "#0055FF", fontWeight: 700 }}>attendance 20%</strong> ·{" "}
+            <strong style={{ color: "#0055FF", fontWeight: 700 }}>assignments 15%</strong> ·{" "}
+            <strong style={{ color: "#0055FF", fontWeight: 700 }}>punctuality 10%</strong>
           </p>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-[#1e3a8a] text-white text-xs font-bold hover:bg-[#152961] transition-all"
+            style={{
+              padding: "10px 22px",
+              borderRadius: 12,
+              background: "linear-gradient(135deg, #0055FF, #1166FF)",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              border: "none",
+              cursor: "pointer",
+              boxShadow: "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)",
+              fontFamily: "inherit",
+              letterSpacing: "0.02em",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              flexShrink: 0,
+            }}
           >
+            <X size={14} strokeWidth={2.4} />
             Close
           </button>
         </div>

@@ -320,7 +320,7 @@ const ClassPerformance = ({ classDoc, onBack }: Props) => {
     const email = inviteForm.email.toLowerCase().trim();
     const name  = inviteForm.name.trim();
     try {
-      await addDoc(collection(db, "students"), {
+      const studentDocRef = await addDoc(collection(db, "students"), {
         name, email, studentId: email,
         classId:     classDoc.id,   className:   classDoc.name,
         teacherId:   classDoc.teacherId   || "",
@@ -329,8 +329,10 @@ const ClassPerformance = ({ classDoc, onBack }: Props) => {
         branchId:    classDoc.branchId,
         status:      "Active",      createdAt:   serverTimestamp(),
       });
+      // Use student doc ID as enrollment.studentId so parent-dashboard
+      // (which queries enrollments by studentData.id) can see the class.
       await addDoc(collection(db, "enrollments"), {
-        studentId:    email,
+        studentId:    studentDocRef.id,
         studentEmail: email,
         studentName:  name,
         classId:      classDoc.id,   className:   classDoc.name,

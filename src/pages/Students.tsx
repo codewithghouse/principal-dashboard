@@ -214,11 +214,14 @@ const Students = () => {
 
     setSaving(true);
     try {
-      // 1. Add to students collection
-      await addDoc(collection(db, "students"), {
+      // 1. Add to students collection — capture the auto-generated doc ID so we
+      // can use it as the canonical studentId everywhere downstream. Previously
+      // we used `email` as `studentId`, which broke the parent-dashboard reads
+      // (those query enrollments by `studentData.id`, the actual doc ID, not email).
+      const studentDocRef = await addDoc(collection(db, "students"), {
         name:        studentName,
         email:       sid,
-        studentId:   sid,
+        studentId:   sid, // legacy — kept so existing reads matching by email keep working
         classId:     newStudent.classId,
         className:   cls?.name || "",
         teacherId:   cls?.teacherId || "",
@@ -229,9 +232,10 @@ const Students = () => {
         createdAt:   serverTimestamp(),
       });
 
-      // 2. Add to enrollments — this makes student appear in teacher dashboard
+      // 2. Add to enrollments — must reference the real student doc ID so that
+      // parent-dashboard's `where('studentId', '==', studentData.id)` matches.
       await addDoc(collection(db, "enrollments"), {
-        studentId:    sid,
+        studentId:    studentDocRef.id,
         studentEmail: sid,
         studentName:  studentName,
         classId:      newStudent.classId,

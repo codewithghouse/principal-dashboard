@@ -401,7 +401,7 @@ const ClassesSections = () => {
     const name  = inviteStudentForm.name.trim();
     const cls   = studentModalClass;
     try {
-      await addDoc(collection(db, "students"), {
+      const studentDocRef = await addDoc(collection(db, "students"), {
         name, email, studentId: email,
         classId:     cls.id,   className:   cls.name,
         teacherId:   cls.teacherId   || "",
@@ -410,8 +410,11 @@ const ClassesSections = () => {
         branchId:    cls.branchId,
         status:      "Active",      createdAt:   serverTimestamp(),
       });
+      // Use the auto-generated student doc ID — parent-dashboard reads
+      // enrollments by `studentData.id` (the doc ID), so storing email here
+      // hides the class from the student.
       await addDoc(collection(db, "enrollments"), {
-        studentId:    email,
+        studentId:    studentDocRef.id,
         studentEmail: email,
         studentName:  name,
         classId:      cls.id,   className:   cls.name,
