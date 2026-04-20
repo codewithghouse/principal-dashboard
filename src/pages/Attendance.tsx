@@ -1138,232 +1138,358 @@ const Attendance = () => {
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  DESKTOP — Blue Apple Design
+  // ═══════════════════════════════════════════════════════════════
+  const dB1 = "#0055FF", dB2 = "#1166FF", dB4 = "#4499FF";
+  const dBG = "#EEF4FF", dBG2 = "#E0ECFF";
+  const dT1 = "#001040", dT2 = "#002080", dT3 = "#5070B0", dT4 = "#99AACC";
+  const dSEP = "rgba(0,85,255,0.08)";
+  const dGREEN = "#00C853", dGREEN_D = "#007830", dGREEN_S = "rgba(0,200,83,0.10)", dGREEN_B = "rgba(0,200,83,0.22)";
+  const dRED = "#FF3355", dRED_S = "rgba(255,51,85,0.10)", dRED_B = "rgba(255,51,85,0.22)";
+  const dORANGE = "#FF8800";
+  const dGOLD = "#FFAA00";
+  const dVIOLET = "#7B3FF4";
+  const dSH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 10px rgba(0,85,255,0.07), 0 10px 28px rgba(0,85,255,0.09)";
+  const dSH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.12)";
+  const dSH_BTN = "0 6px 22px rgba(0,85,255,0.38), 0 2px 5px rgba(0,85,255,0.18)";
+
+  const attendancePctNum = parseInt(stats.monthlyAvg) || 0;
+  const tier = attendancePctNum >= 90 ? "Excellent" : attendancePctNum >= 80 ? "Good" : attendancePctNum >= 70 ? "Average" : "Needs Attention";
+  const tierColor = attendancePctNum >= 90 ? dGREEN : attendancePctNum >= 80 ? dGOLD : attendancePctNum >= 70 ? dORANGE : dRED;
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Attendance</h1>
-        <p className="text-sm text-muted-foreground">Monitor student attendance patterns and trends</p>
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
+      style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-4 pt-2 pb-5 flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0"
+            style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 6px 18px rgba(0,85,255,0.28)" }}>
+            <CheckCircle className="w-[22px] h-[22px] text-white" strokeWidth={2.4} />
+          </div>
+          <div>
+            <div className="text-[24px] font-bold leading-none" style={{ color: dT1, letterSpacing: "-0.6px" }}>Attendance</div>
+            <div className="text-[12px] mt-1" style={{ color: dT3 }}>Monitor student attendance patterns and trends</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => toast.info("Mark attendance — navigate to class detail to record")}
+            className="h-11 px-4 rounded-[13px] flex items-center gap-2 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02]"
+            style={{ border: `0.5px solid ${dSEP}`, color: dT2, boxShadow: dSH }}>
+            <Edit3 className="w-[14px] h-[14px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
+            Mark Attendance
+          </button>
+          <button
+            onClick={() => toast.success("Absence alerts queued for all absent students")}
+            className="h-11 px-4 rounded-[13px] flex items-center gap-2 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02]"
+            style={{ border: `0.5px solid ${dSEP}`, color: dT2, boxShadow: dSH }}>
+            <Bell className="w-[14px] h-[14px]" style={{ color: dORANGE }} strokeWidth={2.3} />
+            Send Alerts
+          </button>
+          <button onClick={generateReport}
+            className="h-11 px-5 rounded-[13px] flex items-center gap-2 text-[13px] font-bold text-white relative overflow-hidden transition-transform hover:scale-[1.02]"
+            style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: dSH_BTN }}>
+            <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+            <FileText className="w-[14px] h-[14px] relative z-10" strokeWidth={2.5} />
+            <span className="relative z-10">Monthly Report</span>
+          </button>
+        </div>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin w-8 h-8 border-4 border-[#1e3a8a] border-t-transparent rounded-full" />
+        <div className="bg-white rounded-[20px] py-24 flex flex-col items-center gap-3" style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="w-10 h-10 rounded-full border-[3px] border-t-transparent animate-spin" style={{ borderColor: dB1, borderTopColor: "transparent" }} />
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: dT4 }}>Loading attendance data…</p>
         </div>
       ) : (
         <>
-          {/* ===== 4 STAT CARDS ===== */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
-            {/* Today's Present */}
-            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-medium text-muted-foreground">Today's Present</span>
-                <CheckCircle className="w-5 h-5 text-green-500" />
+          {/* Dark Hero */}
+          <div className="rounded-[22px] px-7 py-6 relative overflow-hidden text-white"
+            style={{
+              background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+              boxShadow: "0 10px 36px rgba(0,51,204,0.30), 0 0 0 0.5px rgba(255,255,255,0.10)",
+            }}>
+            <div className="absolute -right-12 -top-12 w-[220px] h-[220px] rounded-full pointer-events-none"
+              style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+            <div className="flex items-center justify-between gap-6 flex-wrap relative z-10">
+              <div className="flex items-center gap-5">
+                <div className="w-14 h-14 rounded-[16px] flex items-center justify-center shrink-0"
+                  style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                  <TrendingUp className="w-7 h-7 text-white" strokeWidth={2.2} />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] mb-[6px]" style={{ color: "rgba(255,255,255,0.55)" }}>Monthly Average</div>
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-[48px] font-bold leading-none tracking-tight">{stats.monthlyAvg}</span>
+                    <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+                      style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.28)" }}>
+                      {tier}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <p className="text-4xl font-black text-[#1e3a8a] mb-1">{stats.presentToday}</p>
-              <p className="text-xs text-muted-foreground font-medium">
-                {stats.totalToday > 0 ? `${pct(stats.presentToday)} attendance` : "No records today"}
-              </p>
-            </div>
-
-            {/* Absent Today */}
-            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-medium text-muted-foreground">Absent Today</span>
-                <XCircle className="w-5 h-5 text-red-500" />
+              <div className="flex items-center gap-5 flex-wrap">
+                {[
+                  { label: "Present",  val: stats.presentToday, color: "#66EE88" },
+                  { label: "Absent",   val: stats.absentToday,  color: "#FF88AA" },
+                  { label: "Late",     val: stats.lateToday,    color: "#FFDD44" },
+                ].map(s => (
+                  <div key={s.label} className="flex items-center gap-2">
+                    <span className="w-[10px] h-[10px] rounded-full" style={{ background: s.color, boxShadow: `0 0 0 3px ${s.color}33` }} />
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.50)" }}>{s.label}</div>
+                      <div className="text-[22px] font-bold leading-none" style={{ letterSpacing: "-0.5px" }}>{s.val}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <p className="text-4xl font-black text-red-500 mb-1">{stats.absentToday}</p>
-              <p className="text-xs text-muted-foreground font-bold">
-                {stats.totalToday > 0 ? `${pct(stats.absentToday)} of total` : "Requires attention"}
-              </p>
-            </div>
-
-            {/* Late Arrivals */}
-            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-medium text-muted-foreground">Late Arrivals</span>
-                <Clock className="w-5 h-5 text-amber-500" />
-              </div>
-              <p className="text-4xl font-black text-amber-500 mb-1">{stats.lateToday}</p>
-              <p className="text-xs text-muted-foreground font-medium">
-                {stats.totalToday > 0 ? `${pct(stats.lateToday)} of total` : "No late arrivals"}
-              </p>
-            </div>
-
-            {/* Monthly Avg */}
-            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-medium text-muted-foreground">Monthly Avg</span>
-                <TrendingUp className="w-5 h-5 text-[#1e3a8a]" />
-              </div>
-              <p className="text-4xl font-black text-foreground mb-1">{stats.monthlyAvg}</p>
-              <p className="text-xs text-green-500 font-bold">Global Institution Average</p>
             </div>
           </div>
 
-          {/* ===== HEATMAP + TREND ===== */}
-          {/* ── Sudden Drop Alerts (delta-based) ── */}
-          {suddenDrops.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 mb-1">
-                <TrendingDown className="w-4 h-4 text-red-500" />
-                <span className="text-xs font-black text-red-600 uppercase tracking-widest">Sudden Drop Detected</span>
-              </div>
-              {suddenDrops.map(d => (
-                <div key={d.grade} className="flex items-center gap-3 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-                  <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                  <div className="flex-1">
-                    <span className="text-xs font-bold text-red-700">{d.grade}</span>
-                    <span className="text-xs text-red-500 font-medium ml-2">
-                      dropped {d.drop}% this week ({d.prev}% → {d.recent}%)
-                    </span>
+          {/* 4 Stat Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
+            {[
+              { title: "Today's Present", val: stats.presentToday, valColor: dGREEN_D, sub: stats.totalToday > 0 ? `${pct(stats.presentToday)} attendance` : "No records today", Icon: CheckCircle, grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, glow: "rgba(0,200,83,0.10)", shadow: "0 4px 14px rgba(0,200,83,0.22)" },
+              { title: "Absent Today", val: stats.absentToday, valColor: dRED, sub: stats.totalToday > 0 ? `${pct(stats.absentToday)} of total` : "Requires attention", Icon: XCircle, grad: `linear-gradient(135deg, ${dRED}, #FF6688)`, glow: "rgba(255,51,85,0.12)", shadow: "0 4px 14px rgba(255,51,85,0.26)" },
+              { title: "Late Arrivals", val: stats.lateToday, valColor: dGOLD, sub: stats.totalToday > 0 ? `${pct(stats.lateToday)} of total` : "No late arrivals", Icon: Clock, grad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, glow: "rgba(255,170,0,0.12)", shadow: "0 4px 14px rgba(255,170,0,0.26)" },
+              { title: "Monthly Avg", val: stats.monthlyAvg, valColor: dB1, sub: `${tier} tier`, Icon: TrendingUp, grad: `linear-gradient(135deg, ${dB1}, ${dB2})`, glow: "rgba(0,85,255,0.10)", shadow: "0 4px 14px rgba(0,85,255,0.26)" },
+            ].map(({ title, val, valColor, sub, Icon, grad, glow, shadow }) => (
+              <div key={title} className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+                style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+                <div className="absolute -top-6 -right-6 w-[100px] h-[100px] rounded-full pointer-events-none"
+                  style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)` }} />
+                <div className="flex items-center justify-between mb-4 relative">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>{title}</span>
+                  <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+                    style={{ background: grad, boxShadow: shadow }}>
+                    <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
                   </div>
-                  <button onClick={() => setSelectedClass(d.grade)}
-                    className="text-[10px] font-black text-[#1e3a8a] hover:underline">View →</button>
                 </div>
-              ))}
+                <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: valColor, letterSpacing: "-1.2px" }}>{val}</p>
+                <p className="text-[11px] font-semibold truncate" style={{ color: dT3 }}>{sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Sudden Drop Alerts */}
+          {suddenDrops.length > 0 && (
+            <div className="mt-5 rounded-[20px] overflow-hidden"
+              style={{ background: "linear-gradient(145deg, rgba(255,51,85,0.04) 0%, rgba(255,255,255,0.6) 100%)", border: `0.5px solid ${dRED_B}`, boxShadow: dSH_LG }}>
+              <div className="flex items-center gap-[10px] px-6 py-[18px] bg-white" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                <div className="w-9 h-9 rounded-[11px] flex items-center justify-center"
+                  style={{ background: `linear-gradient(135deg, ${dRED}, #FF6688)`, boxShadow: "0 4px 14px rgba(255,51,85,0.26)" }}>
+                  <TrendingDown className="w-4 h-4 text-white" strokeWidth={2.4} />
+                </div>
+                <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Sudden Drop Detected</h2>
+                <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+                  style={{ background: dRED_S, color: dRED, border: `0.5px solid ${dRED_B}` }}>
+                  {suddenDrops.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-5">
+                {suddenDrops.map(d => (
+                  <div key={d.grade} className="bg-white rounded-[14px] p-4 flex items-center gap-3"
+                    style={{ border: `0.5px solid ${dRED_B}`, boxShadow: dSH }}>
+                    <div className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
+                      style={{ background: `linear-gradient(135deg, ${dRED}, #FF6688)`, boxShadow: "0 3px 10px rgba(255,51,85,0.22)" }}>
+                      <AlertTriangle className="w-[18px] h-[18px] text-white" strokeWidth={2.4} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-bold" style={{ color: dT1 }}>{d.grade}</p>
+                      <p className="text-[11px] font-medium mt-0.5" style={{ color: dRED }}>
+                        dropped {d.drop}% ({d.prev}% → {d.recent}%)
+                      </p>
+                    </div>
+                    <button onClick={() => setSelectedClass(d.grade)}
+                      className="text-[11px] font-bold px-3 py-1.5 rounded-[10px] transition-transform hover:scale-[1.04]"
+                      style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, color: "#fff", boxShadow: dSH }}>
+                      View →
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Grade-wise Heatmap */}
-            <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
-              <h2 className="text-base font-bold text-foreground mb-6">Grade-wise Attendance Heatmap</h2>
-              {gradeHeatmap.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No attendance data available</p>
-              ) : (
-                <div className="flex items-end justify-between gap-3 mb-6 flex-wrap">
-                  {gradeHeatmap.map((g, i) => (
-                    <div
-                      key={i}
-                      className="flex-1 min-w-[70px] text-center cursor-pointer"
-                      onClick={() => setSelectedClass(g.grade)}
-                    >
-                      <p className="text-xs font-bold text-muted-foreground mb-2">{g.grade}</p>
-                      <div
-                        className="rounded-xl py-4 px-2 hover:scale-105 transition-transform shadow-sm"
-                        style={{ backgroundColor: g.color }}
-                      >
-                        <p className="text-lg font-black text-white">{g.pct}</p>
-                      </div>
+          {/* Heatmap + Trend */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
+            {/* Grade Heatmap */}
+            <div className="bg-white rounded-[20px] overflow-hidden"
+              style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+              <div className="flex items-center gap-[10px] px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                  style={{ background: "rgba(123,63,244,0.10)", border: "0.5px solid rgba(123,63,244,0.22)" }}>
+                  <CheckCircle className="w-4 h-4" style={{ color: dVIOLET }} strokeWidth={2.4} />
+                </div>
+                <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Grade-wise Heatmap</h2>
+              </div>
+              <div className="p-6">
+                {gradeHeatmap.length === 0 ? (
+                  <div className="flex items-center justify-center h-48">
+                    <p className="text-[13px] font-bold" style={{ color: dT4 }}>No attendance data available</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-4 gap-3 mb-6">
+                      {gradeHeatmap.map((g, i) => {
+                        const grad = g.value >= 90 ? `linear-gradient(135deg, ${dGREEN}, #22EE66)` :
+                                     g.value >= 80 ? `linear-gradient(135deg, ${dGOLD}, #FFDD44)` :
+                                                      `linear-gradient(135deg, ${dRED}, #FF6688)`;
+                        const shadow = g.value >= 90 ? "0 4px 14px rgba(0,200,83,0.24)" :
+                                       g.value >= 80 ? "0 4px 14px rgba(255,170,0,0.24)" :
+                                                        "0 4px 14px rgba(255,51,85,0.26)";
+                        return (
+                          <button key={i} onClick={() => setSelectedClass(g.grade)}
+                            className="flex flex-col items-center gap-2 transition-transform hover:scale-[1.04]">
+                            <span className="text-[11px] font-bold" style={{ color: dT3 }}>{g.grade}</span>
+                            <div className="w-full aspect-square rounded-[14px] flex items-center justify-center text-white text-[16px] font-bold"
+                              style={{ background: grad, boxShadow: shadow, letterSpacing: "-0.4px" }}>
+                              {g.pct}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-              )}
-              <div className="flex items-center gap-6 pt-4 border-t border-border">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#22c55e]" />
-                  <span className="text-[10px] font-bold text-muted-foreground">90-100%</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#f59e0b]" />
-                  <span className="text-[10px] font-bold text-muted-foreground">80-89%</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#ef4444]" />
-                  <span className="text-[10px] font-bold text-muted-foreground">Below 80%</span>
-                </div>
+                    <div className="flex items-center gap-5 pt-4" style={{ borderTop: `0.5px solid ${dSEP}` }}>
+                      {[
+                        { color: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, label: "90-100%" },
+                        { color: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, label: "80-89%" },
+                        { color: `linear-gradient(135deg, ${dRED}, #FF6688)`, label: "Below 80%" },
+                      ].map(({ color, label }) => (
+                        <div key={label} className="flex items-center gap-[6px]">
+                          <span className="w-3 h-3 rounded-[4px]" style={{ background: color }} />
+                          <span className="text-[11px] font-semibold" style={{ color: dT3 }}>{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
             {/* 30-Day Trend */}
-            <div className="bg-card border border-border rounded-2xl p-7 shadow-sm">
-              <h2 className="text-base font-bold text-foreground mb-2">30-Day Attendance Trend</h2>
-              {trendData.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-20">No trend data available</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={250}>
-                  <AreaChart data={trendData}>
-                    <defs>
-                      <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#64748b" stopOpacity={0.1} />
-                        <stop offset="95%" stopColor="#64748b" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                    <XAxis
-                      dataKey="day"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
-                      interval={4}
-                    />
-                    <YAxis
-                      domain={['auto', 'auto']}
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
-                      tickFormatter={(v) => `${v}%`}
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#475569"
-                      strokeWidth={2}
-                      fill="url(#trendGradient)"
-                      dot={{ r: 3, fill: '#ffffff', stroke: '#475569', strokeWidth: 2 }}
-                      activeDot={{ r: 6, fill: '#475569', stroke: '#ffffff', strokeWidth: 2 }}
-                      animationDuration={1500}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
+            <div className="bg-white rounded-[20px] overflow-hidden"
+              style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+              <div className="flex items-center gap-[10px] px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                  style={{ background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.20)" }}>
+                  <TrendingUp className="w-4 h-4" style={{ color: dB1 }} strokeWidth={2.4} />
+                </div>
+                <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>30-Day Trend</h2>
+              </div>
+              <div className="px-4 pt-5 pb-4">
+                {trendData.length === 0 ? (
+                  <div className="flex items-center justify-center h-[260px]">
+                    <p className="text-[13px] font-bold" style={{ color: dT4 }}>No trend data available</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <AreaChart data={trendData} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={dB1} stopOpacity={0.30} />
+                          <stop offset="95%" stopColor={dB1} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,85,255,0.08)" vertical={false} />
+                      <XAxis dataKey="day" axisLine={false} tickLine={false}
+                        tick={{ fontSize: 10, fontWeight: 700, fill: dT4 }} interval={4} />
+                      <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false}
+                        tick={{ fontSize: 10, fontWeight: 700, fill: dT4 }} tickFormatter={(v) => `${v}%`} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Area type="monotone" dataKey="value" stroke={dB1} strokeWidth={2.5} fill="url(#trendGrad)" dot={false}
+                        activeDot={{ r: 5, fill: dB1, stroke: "#fff", strokeWidth: 2 }} animationDuration={1200} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* ===== ABSENT STUDENTS TABLE ===== */}
-          <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm">
-            <div className="flex items-center justify-between px-7 py-5 border-b border-border">
-              <h2 className="text-base font-bold text-foreground">Absent Students Today</h2>
-              <button className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold hover:bg-[#1e4fc0] transition-colors shadow-md">
-                <Send className="w-4 h-4" /> Alert Parents
-              </button>
+          {/* Absent Students Table */}
+          <div className="mt-5 bg-white rounded-[20px] overflow-hidden"
+            style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+            <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+              <div className="flex items-center gap-[10px]">
+                <div className="w-9 h-9 rounded-[11px] flex items-center justify-center"
+                  style={{ background: `linear-gradient(135deg, ${dRED}, #FF6688)`, boxShadow: "0 4px 14px rgba(255,51,85,0.26)" }}>
+                  <XCircle className="w-4 h-4 text-white" strokeWidth={2.4} />
+                </div>
+                <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Absent Students Today</h2>
+                <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+                  style={{ background: dRED_S, color: dRED, border: `0.5px solid ${dRED_B}` }}>
+                  {absentStudents.length}
+                </span>
+              </div>
+              {absentStudents.length > 0 && (
+                <button onClick={() => toast.success("Absence alerts queued for all parents")}
+                  className="h-10 px-4 rounded-[12px] flex items-center gap-1.5 text-[12px] font-bold text-white transition-transform hover:scale-[1.02]"
+                  style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.26)" }}>
+                  <Send className="w-[13px] h-[13px]" strokeWidth={2.4} />
+                  Alert Parents
+                </button>
+              )}
             </div>
 
             {absentStudents.length === 0 ? (
-              <div className="py-12 text-center">
-                <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
-                <p className="text-sm font-bold text-muted-foreground">No absent students today</p>
+              <div className="py-16 flex flex-col items-center gap-3 text-center">
+                <div className="w-16 h-16 rounded-[18px] flex items-center justify-center"
+                  style={{ background: dGREEN_S, border: `0.5px solid ${dGREEN_B}`, boxShadow: "0 0 0 8px rgba(0,200,83,0.05)" }}>
+                  <CheckCircle className="w-8 h-8" style={{ color: dGREEN }} strokeWidth={2.2} />
+                </div>
+                <p className="text-[14px] font-bold" style={{ color: dT1 }}>No absent students today</p>
+                <p className="text-[11px]" style={{ color: dT4 }}>All students present or late</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[600px]">
+                <table className="w-full text-sm min-w-[720px]">
                   <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Student</th>
-                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Grade-Section</th>
-                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Parent Contact</th>
-                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Consecutive Absent</th>
-                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Monthly %</th>
-                      <th className="text-left px-7 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Status</th>
+                    <tr style={{ background: dBG, borderBottom: `0.5px solid ${dSEP}` }}>
+                      {["Student", "Class", "Contact", "Consecutive", "Monthly %", "Status"].map((h, i) => (
+                        <th key={h} className={`px-5 py-3 text-[10px] font-bold uppercase tracking-[0.10em] ${i >= 3 && i <= 4 ? "text-center" : "text-left"}`}
+                          style={{ color: dT4 }}>{h}</th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border">
+                  <tbody>
                     {absentStudents.map((s, i) => (
-                      <tr key={i} className="hover:bg-secondary/30 transition-colors">
-                        <td className="px-7 py-5">
+                      <tr key={i} className="transition-colors hover:bg-[#F8FAFF]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                        <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-[10px] font-bold text-muted-foreground">
+                            <div className="w-10 h-10 rounded-[12px] flex items-center justify-center text-white text-[12px] font-bold shrink-0"
+                              style={{ background: `linear-gradient(135deg, ${dRED}, #FF6688)`, boxShadow: "0 3px 10px rgba(255,51,85,0.22)" }}>
                               {s.initials}
                             </div>
-                            <span className="font-bold text-foreground text-sm">{s.name}</span>
+                            <p className="text-[13px] font-bold" style={{ color: dT1 }}>{s.name}</p>
                           </div>
                         </td>
-                        <td className="px-7 py-5 font-bold text-foreground text-sm">{s.grade}</td>
-                        <td className="px-7 py-5 text-muted-foreground text-sm font-medium">{s.contact}</td>
-                        <td className="px-7 py-5">
-                          <span className={`font-bold text-sm ${s.consecutiveNum >= 3 ? 'text-red-500' : s.consecutiveNum >= 2 ? 'text-amber-500' : 'text-muted-foreground'}`}>
-                            {s.consecutive}
+                        <td className="px-5 py-4">
+                          <span className="inline-flex items-center px-3 py-[4px] rounded-full text-[11px] font-bold"
+                            style={{ background: "rgba(0,85,255,0.10)", color: dB1, border: "0.5px solid rgba(0,85,255,0.20)" }}>
+                            {s.grade}
                           </span>
                         </td>
-                        <td className="px-7 py-5">
-                          <span className={`font-bold text-sm ${s.monthlyVal < 60 ? 'text-red-500' : s.monthlyVal < 80 ? 'text-amber-500' : 'text-green-500'}`}>
-                            {s.monthly}
-                          </span>
+                        <td className="px-5 py-4 text-[12px] font-medium" style={{ color: dT3 }}>{s.contact}</td>
+                        <td className="px-5 py-4 text-center text-[13px] font-bold"
+                          style={{ color: s.consecutiveNum >= 3 ? dRED : s.consecutiveNum >= 2 ? dORANGE : dT1 }}>
+                          {s.consecutive}
                         </td>
-                        <td className="px-7 py-5">
-                          <span className={`text-sm font-bold ${s.status === 'Chronic' ? 'text-red-500' : s.status === 'Warning' ? 'text-amber-500' : 'text-foreground'}`}>
+                        <td className="px-5 py-4 text-center text-[13px] font-bold"
+                          style={{ color: s.monthlyVal < 60 ? dRED : s.monthlyVal < 80 ? dORANGE : dGREEN_D }}>
+                          {s.monthly}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-[4px] rounded-full text-[10px] font-bold uppercase tracking-[0.08em]"
+                            style={{
+                              background: s.status === "Chronic" ? dRED_S : s.status === "Warning" ? "rgba(255,170,0,0.10)" : dGREEN_S,
+                              color: s.status === "Chronic" ? dRED : s.status === "Warning" ? "#884400" : dGREEN_D,
+                              border: `0.5px solid ${s.status === "Chronic" ? dRED_B : s.status === "Warning" ? "rgba(255,170,0,0.22)" : dGREEN_B}`,
+                            }}>
+                            <span className="w-[6px] h-[6px] rounded-full"
+                              style={{ background: s.status === "Chronic" ? dRED : s.status === "Warning" ? dGOLD : dGREEN }} />
                             {s.status}
                           </span>
                         </td>
@@ -1375,20 +1501,30 @@ const Attendance = () => {
             )}
           </div>
 
-          {/* ===== ACTION BUTTONS ===== */}
-          <div className="flex flex-wrap items-center gap-3">
-            <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#1e3a8a] text-white text-sm font-bold hover:bg-[#1e4fc0] transition-colors shadow-md">
-              <Edit3 className="w-4 h-4" /> Mark Attendance
-            </button>
-            <button className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors">
-              <Bell className="w-4 h-4 text-muted-foreground" /> Send Absence Alerts
-            </button>
-            <button
-              onClick={generateReport}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors"
-            >
-              <FileText className="w-4 h-4 text-muted-foreground" /> Generate Monthly Report
-            </button>
+          {/* AI Intelligence */}
+          <div className="mt-5 rounded-[22px] px-7 py-6 relative overflow-hidden"
+            style={{
+              background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
+              boxShadow: "0 10px 36px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+            }}>
+            <div className="absolute -top-10 -right-7 w-[200px] h-[200px] rounded-full pointer-events-none"
+              style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+            <div className="flex items-center gap-2 mb-3 relative z-10">
+              <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                <Sparkles className="w-4 h-4 text-white" strokeWidth={2.4} />
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI Attendance Intelligence</span>
+            </div>
+            <p className="text-[14px] leading-[1.75] font-normal relative z-10 max-w-[900px]" style={{ color: "rgba(255,255,255,0.88)" }}>
+              School attendance is tracking at <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.monthlyAvg}</strong> ({tier}) with <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.presentToday} present</strong>, <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.absentToday} absent</strong>, and <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.lateToday} late</strong> today.
+              {suddenDrops.length > 0 && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{suddenDrops.length} class{suddenDrops.length === 1 ? "" : "es"}</strong> showed a sudden 15%+ drop this week — immediate review recommended.</>}
+              {absentStudents.filter(s => s.status === "Chronic").length > 0 && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{absentStudents.filter(s => s.status === "Chronic").length} student{absentStudents.filter(s => s.status === "Chronic").length === 1 ? "" : "s"}</strong> flagged as chronic absentees.</>}
+            </p>
+            <div className="flex items-center gap-2 mt-4 pt-3 relative z-10" style={{ borderTop: "0.5px solid rgba(255,255,255,0.12)" }}>
+              <div className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ background: dB4 }} />
+              <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.45)" }}>Auto-generated · Real-time data</span>
+            </div>
           </div>
         </>
       )}

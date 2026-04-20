@@ -1098,190 +1098,305 @@ const Syllabus = () => {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  //  DESKTOP — Blue Apple Design
+  // ═══════════════════════════════════════════════════════════════
+  const dB1 = "#0055FF", dB2 = "#1166FF", dB4 = "#4499FF";
+  const dBG = "#EEF4FF", dBG2 = "#E0ECFF";
+  const dT1 = "#001040", dT2 = "#002080", dT3 = "#5070B0", dT4 = "#99AACC";
+  const dSEP = "rgba(0,85,255,0.08)";
+  const dGREEN = "#00C853", dGREEN_D = "#007830", dGREEN_S = "rgba(0,200,83,0.10)", dGREEN_B = "rgba(0,200,83,0.22)";
+  const dRED = "#FF3355";
+  const dGOLD = "#FFAA00";
+  const dVIOLET = "#7B3FF4";
+  const dSH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 10px rgba(0,85,255,0.07), 0 10px 28px rgba(0,85,255,0.09)";
+  const dSH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.12)";
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
+      style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
 
-      {/* ── PAGE HEADER ───────────────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-2xl font-bold text-[#1e294b]">Syllabus</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          View and manage syllabi uploaded by teachers for your branch
-        </p>
+      {/* Toolbar */}
+      <div className="flex items-center gap-4 pt-2 pb-5">
+        <div className="w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0"
+          style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 6px 18px rgba(0,85,255,0.28)" }}>
+          <Library className="w-[22px] h-[22px] text-white" strokeWidth={2.4} />
+        </div>
+        <div>
+          <div className="text-[24px] font-bold leading-none" style={{ color: dT1, letterSpacing: "-0.6px" }}>Syllabus</div>
+          <div className="text-[12px] mt-1" style={{ color: dT3 }}>View and manage syllabi uploaded by teachers for your branch</div>
+        </div>
       </div>
 
-      {/* ── STAT CARDS ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          title="Total Syllabi"
-          value={totalCount}
-          subtitle={totalCount === 0 ? "None uploaded yet" : "Across all classes"}
-          icon={Library}
-          iconBg="bg-blue-50 text-blue-600"
-        />
-        <StatCard
-          title="Classes Covered"
-          value={classesCount}
-          subtitle={classesCount === 0 ? "No classes yet" : "With at least one syllabus"}
-          icon={Building2}
-          iconBg="bg-indigo-50 text-indigo-600"
-        />
-        <StatCard
-          title="Subjects Covered"
-          value={subjectsCount}
-          subtitle={subjectsCount === 0 ? "No subjects yet" : "Distinct subjects"}
-          icon={BookOpen}
-          iconBg="bg-emerald-50 text-emerald-600"
-        />
-        <StatCard
-          title="Updated This Week"
-          value={updatedThisWeek}
-          subtitle="Past 7 days"
-          icon={Calendar}
-          iconBg="bg-amber-50 text-amber-600"
-        />
+      {/* Dark Hero */}
+      <div className="rounded-[22px] px-7 py-6 relative overflow-hidden text-white"
+        style={{
+          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+          boxShadow: "0 10px 36px rgba(0,51,204,0.30), 0 0 0 0.5px rgba(255,255,255,0.10)",
+        }}>
+        <div className="absolute -right-12 -top-12 w-[220px] h-[220px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+        <div className="flex items-center justify-between gap-6 flex-wrap relative z-10">
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 rounded-[16px] flex items-center justify-center shrink-0"
+              style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+              <FileText className="w-7 h-7 text-white" strokeWidth={2.2} />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] mb-[6px]" style={{ color: "rgba(255,255,255,0.55)" }}>Syllabus Library</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[48px] font-bold leading-none tracking-tight">{loading ? "—" : totalCount}</span>
+                <span className="text-[14px] font-semibold" style={{ color: "rgba(255,255,255,0.50)" }}>total documents</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-6 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                <Clock className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.50)" }}>Last Upload</div>
+                <div className="text-[18px] font-bold leading-none" style={{ letterSpacing: "-0.3px" }}>{lastUploadShort}</div>
+              </div>
+            </div>
+            <div className="w-px h-10" style={{ background: "rgba(255,255,255,0.18)" }} />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                <CheckCircle2 className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.50)" }}>This Week</div>
+                <div className="text-[22px] font-bold leading-none" style={{ letterSpacing: "-0.5px" }}>{updatedThisWeek}</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* ── FILTERS ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
-        <div className="relative flex-1 min-w-[180px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+      {/* 4 Stat Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
+        {[
+          { title: "Total Syllabi", val: totalCount, valColor: dB1, sub: totalCount === 0 ? "None uploaded yet" : "Across all classes", Icon: Library, grad: `linear-gradient(135deg, ${dB1}, ${dB2})`, glow: "rgba(0,85,255,0.10)", shadow: "0 4px 14px rgba(0,85,255,0.26)" },
+          { title: "Classes Covered", val: classesCount, valColor: dVIOLET, sub: classesCount === 0 ? "No classes yet" : "With ≥ 1 syllabus", Icon: Building2, grad: `linear-gradient(135deg, ${dVIOLET}, #A07CF8)`, glow: "rgba(123,63,244,0.10)", shadow: "0 4px 14px rgba(123,63,244,0.24)" },
+          { title: "Subjects Covered", val: subjectsCount, valColor: dGREEN_D, sub: subjectsCount === 0 ? "No subjects yet" : "Distinct subjects", Icon: BookOpen, grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, glow: "rgba(0,200,83,0.10)", shadow: "0 4px 14px rgba(0,200,83,0.22)" },
+          { title: "Updated This Week", val: updatedThisWeek, valColor: dGOLD, sub: "Past 7 days", Icon: Calendar, grad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, glow: "rgba(255,170,0,0.12)", shadow: "0 4px 14px rgba(255,170,0,0.26)" },
+        ].map(({ title, val, valColor, sub, Icon, grad, glow, shadow }) => (
+          <div key={title} className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+            style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+            <div className="absolute -top-6 -right-6 w-[100px] h-[100px] rounded-full pointer-events-none"
+              style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)` }} />
+            <div className="flex items-center justify-between mb-4 relative">
+              <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>{title}</span>
+              <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+                style={{ background: grad, boxShadow: shadow }}>
+                <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
+              </div>
+            </div>
+            <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: valColor, letterSpacing: "-1.2px" }}>{val}</p>
+            <p className="text-[11px] font-semibold truncate" style={{ color: dT3 }}>{sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter Row */}
+      <div className="flex items-center gap-3 mt-5 flex-wrap">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
           <input
             type="text"
             placeholder="Search by filename, title, or teacher…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+            className="w-full h-11 pl-11 pr-4 bg-white rounded-[14px] text-[13px] font-medium outline-none"
+            style={{ border: `0.5px solid ${dSEP}`, color: dT1, boxShadow: dSH, fontFamily: "inherit" }}
           />
         </div>
-
-        <select
-          value={classFilter}
-          onChange={(e) => setClassFilter(e.target.value)}
-          className="py-2.5 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
-        >
-          <option value="">All Classes</option>
-          {classOptions.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-
-        <select
-          value={subjectFilter}
-          onChange={(e) => setSubjectFilter(e.target.value)}
-          className="py-2.5 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
-        >
-          <option value="">All Subjects</option>
-          {subjectOptions.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+        {[
+          { value: classFilter, set: setClassFilter, all: "All Classes", opts: classOptions },
+          { value: subjectFilter, set: setSubjectFilter, all: "All Subjects", opts: subjectOptions },
+        ].map((f, i) => (
+          <select key={i}
+            value={f.value}
+            onChange={(e) => f.set(e.target.value)}
+            className="h-11 px-4 pr-10 bg-white rounded-[14px] text-[13px] font-semibold outline-none cursor-pointer appearance-none"
+            style={{
+              border: `0.5px solid ${dSEP}`,
+              color: dT2,
+              boxShadow: dSH,
+              fontFamily: "inherit",
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230055FF' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 14px center",
+            }}>
+            <option value="">{f.all}</option>
+            {f.opts.map((o: string) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        ))}
       </div>
 
-      {/* ── ERROR STATE ───────────────────────────────────────────────────── */}
+      {/* Error */}
       {error && !loading && (
-        <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-sm text-rose-600">
+        <div className="mt-4 p-4 rounded-[14px] text-[13px] font-medium"
+          style={{ background: "rgba(255,51,85,0.06)", border: "0.5px solid rgba(255,51,85,0.20)", color: dRED }}>
           {error}
         </div>
       )}
 
-      {/* ── LOADING / EMPTY / GRID ────────────────────────────────────────── */}
+      {/* Section Label */}
+      <div className="flex items-center gap-3 mt-6 mb-3">
+        <div className="w-9 h-9 rounded-[11px] flex items-center justify-center"
+          style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.26)" }}>
+          <FileText className="w-4 h-4 text-white" strokeWidth={2.4} />
+        </div>
+        <div className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Uploaded Syllabi</div>
+        <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+          style={{ background: "rgba(0,85,255,0.10)", color: dB1, border: "0.5px solid rgba(0,85,255,0.18)" }}>
+          {filtered.length}
+        </span>
+      </div>
+
+      {/* Cards Grid */}
       {loading ? (
-        <div className="flex justify-center py-28">
-          <Loader2 className="w-8 h-8 animate-spin text-[#1e3a8a]" />
+        <div className="bg-white rounded-[20px] py-16 flex flex-col items-center gap-3" style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <Loader2 className="w-8 h-8 animate-spin" style={{ color: dB1 }} />
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: dT4 }}>Loading syllabi…</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-28 bg-white rounded-2xl border border-dashed border-slate-200">
+        <div className="bg-white rounded-[20px] py-20 flex flex-col items-center gap-3 text-center" style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="w-16 h-16 rounded-[18px] flex items-center justify-center"
+            style={{ background: "rgba(0,85,255,0.08)", border: `0.5px solid ${dSEP}` }}>
+            {syllabi.length === 0 ? (
+              <Library className="w-8 h-8" style={{ color: dT4 }} strokeWidth={2} />
+            ) : (
+              <FileText className="w-8 h-8" style={{ color: dT4 }} strokeWidth={2} />
+            )}
+          </div>
           {syllabi.length === 0 ? (
             <>
-              <Library className="w-12 h-12 text-slate-200 mb-4" />
-              <p className="text-base font-bold text-slate-400">No syllabi uploaded yet</p>
-              <p className="text-sm text-slate-300 mt-1">Teachers can upload syllabi from their dashboard.</p>
+              <p className="text-[14px] font-bold" style={{ color: dT1 }}>No syllabi uploaded yet</p>
+              <p className="text-[11px] max-w-[280px]" style={{ color: dT4 }}>Teachers can upload syllabi from their dashboard.</p>
             </>
           ) : (
             <>
-              <FileText className="w-12 h-12 text-slate-200 mb-4" />
-              <p className="text-base font-bold text-slate-400">No syllabi match your filters</p>
-              <p className="text-sm text-slate-300 mt-1">Try clearing filters or changing your search.</p>
+              <p className="text-[14px] font-bold" style={{ color: dT1 }}>No syllabi match your filters</p>
+              <p className="text-[11px] max-w-[280px]" style={{ color: dT4 }}>Try clearing filters or changing your search.</p>
             </>
           )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((s) => {
-            const title = s.title || `Syllabus - ${s.subject || "General"}`;
+            const title = s.title || `Syllabus · ${s.subject || "General"}`;
             const classLabel = s.className || s.classId || "Class";
             return (
-              <div
-                key={s.id}
-                className="clickable-card bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col"
-              >
-                {/* Top row: class + subject badge */}
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <span className="text-xs font-bold text-[#1e294b] bg-slate-100 px-2.5 py-1 rounded-full truncate">
-                    {classLabel}
-                  </span>
-                  {s.subject && (
-                    <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full truncate">
-                      {s.subject}
+              <div key={s.id} className="bg-white rounded-[20px] overflow-hidden flex flex-col relative"
+                style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+
+                {/* Top header with gradient icon */}
+                <div className="flex items-start gap-3 p-5" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                  <div className="w-11 h-11 rounded-[13px] flex items-center justify-center shrink-0"
+                    style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.26)" }}>
+                    <FileText className="w-5 h-5 text-white" strokeWidth={2.3} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.08em] px-[9px] py-[3px] rounded-full"
+                        style={{ background: "rgba(0,85,255,0.10)", color: dB1, border: "0.5px solid rgba(0,85,255,0.20)" }}>
+                        {classLabel}
+                      </span>
+                      {s.subject && (
+                        <span className="text-[10px] font-bold uppercase tracking-[0.08em] px-[9px] py-[3px] rounded-full"
+                          style={{ background: "rgba(123,63,244,0.10)", color: dVIOLET, border: "0.5px solid rgba(123,63,244,0.22)" }}>
+                          {s.subject}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-[14px] font-bold leading-tight line-clamp-2" style={{ color: dT1, letterSpacing: "-0.2px" }}>{title}</h3>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="flex-1 p-5 flex flex-col gap-3">
+                  <div className="flex items-center gap-2 text-[11px] font-medium" style={{ color: dT3 }}>
+                    <FileText className="w-[12px] h-[12px] shrink-0" style={{ color: "rgba(0,85,255,0.5)" }} strokeWidth={2.4} />
+                    <span className="truncate">{s.fileName || "file.pdf"}</span>
+                    <span className="text-[10px] font-bold px-[7px] py-[2px] rounded-full shrink-0"
+                      style={{ background: dBG, color: dT2 }}>
+                      {formatFileSize(s.fileSize)}
                     </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] font-medium" style={{ color: dT3 }}>
+                    <div className="w-5 h-5 rounded-[6px] flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                      style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})` }}>
+                      {(s.uploadedByName || "U").split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase()}
+                    </div>
+                    <span className="truncate" style={{ color: dT2, fontWeight: 600 }}>{s.uploadedByName || "Unknown"}</span>
+                    <span className="text-[10px]" style={{ color: dT4 }}>·</span>
+                    <span>{formatRelativeTime(s.uploadedAt)}</span>
+                  </div>
+                  {s.academicYear && (
+                    <div>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-[9px] py-[3px] rounded-full uppercase tracking-[0.08em]"
+                        style={{ background: "rgba(255,170,0,0.10)", color: "#884400", border: "0.5px solid rgba(255,170,0,0.22)" }}>
+                        <Calendar className="w-[11px] h-[11px]" strokeWidth={2.4} />
+                        {s.academicYear}
+                      </span>
+                    </div>
                   )}
                 </div>
 
-                {/* Title */}
-                <h3 className="text-base font-bold text-[#1e294b] leading-tight mb-1 line-clamp-2">
-                  {title}
-                </h3>
-
-                {/* Filename + size */}
-                <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
-                  <FileText className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{s.fileName || "file.pdf"}</span>
-                  <span className="text-slate-300">·</span>
-                  <span className="shrink-0">{formatFileSize(s.fileSize)}</span>
-                </div>
-
-                {/* Uploaded by + time */}
-                <p className="text-xs text-slate-500 mb-3">
-                  <span className="font-semibold text-slate-600">
-                    {s.uploadedByName || "Unknown"}
-                  </span>
-                  <span className="text-slate-300 mx-1.5">·</span>
-                  {formatRelativeTime(s.uploadedAt)}
-                </p>
-
-                {/* Academic year badge */}
-                {s.academicYear && (
-                  <div className="mb-4">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-indigo-50 text-indigo-600 uppercase tracking-wide">
-                      <Calendar className="w-3 h-3" />
-                      {s.academicYear}
-                    </span>
-                  </div>
-                )}
-
                 {/* Actions */}
-                <div className="mt-auto flex items-center gap-2 pt-3 border-t border-slate-50">
-                  <button
-                    onClick={() => handleView(s.fileUrl)}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-[#1e3a8a] text-white rounded-lg text-xs font-semibold hover:opacity-90 transition"
-                  >
-                    <Eye className="w-3.5 h-3.5" /> View PDF
+                <div className="flex gap-2 p-4" style={{ borderTop: `0.5px solid ${dSEP}`, background: dBG }}>
+                  <button onClick={() => handleView(s.fileUrl)}
+                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[12px] font-bold text-white transition-transform hover:scale-[1.02] relative overflow-hidden"
+                    style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.26)" }}>
+                    <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 52%)" }} />
+                    <Eye className="w-[13px] h-[13px] relative z-10" strokeWidth={2.3} />
+                    <span className="relative z-10">View PDF</span>
                   </button>
-                  <button
-                    onClick={() => handleDelete(s)}
-                    disabled={deletingId === s.id}
-                    className="w-9 h-9 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center transition-colors disabled:opacity-50"
-                    title="Delete syllabus"
-                  >
+                  <button onClick={() => handleDelete(s)} disabled={deletingId === s.id}
+                    className="w-10 h-10 rounded-[12px] flex items-center justify-center bg-white disabled:opacity-50 transition-transform hover:scale-[1.04]"
+                    style={{ border: `0.5px solid rgba(255,51,85,0.20)`, color: dRED }}
+                    title="Delete syllabus">
                     {deletingId === s.id
-                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      : <Trash2 className="w-3.5 h-3.5" />}
+                      ? <Loader2 className="w-[13px] h-[13px] animate-spin" />
+                      : <Trash2 className="w-[13px] h-[13px]" />}
                   </button>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* AI Intelligence Card */}
+      {!loading && totalCount > 0 && lastUploadRel && (
+        <div className="mt-5 rounded-[22px] px-7 py-6 relative overflow-hidden"
+          style={{
+            background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
+            boxShadow: "0 10px 36px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+          }}>
+          <div className="absolute -top-10 -right-7 w-[200px] h-[200px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+          <div className="flex items-center gap-2 mb-3 relative z-10">
+            <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+              style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+              <Sparkles className="w-4 h-4 text-white" strokeWidth={2.4} />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI Syllabus Intelligence</span>
+          </div>
+          <p className="text-[14px] leading-[1.75] font-normal relative z-10 max-w-[900px]" style={{ color: "rgba(255,255,255,0.88)" }}>
+            Your library has <strong style={{ color: "#fff", fontWeight: 700 }}>{totalCount} syllabi</strong> across <strong style={{ color: "#fff", fontWeight: 700 }}>{classesCount} class{classesCount === 1 ? "" : "es"}</strong> and <strong style={{ color: "#fff", fontWeight: 700 }}>{subjectsCount} subject{subjectsCount === 1 ? "" : "s"}</strong>.
+            Latest upload by <strong style={{ color: "#fff", fontWeight: 700 }}>{lastUploadRel.by}</strong> was <strong style={{ color: "#fff", fontWeight: 700 }}>{lastUploadRel.rel}</strong>.
+            {updatedThisWeek > 0 && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{updatedThisWeek}</strong> new document{updatedThisWeek === 1 ? "" : "s"} added this week.</>}
+          </p>
+          <div className="flex items-center gap-2 mt-4 pt-3 relative z-10" style={{ borderTop: "0.5px solid rgba(255,255,255,0.12)" }}>
+            <div className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ background: dB4 }} />
+            <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.45)" }}>Auto-generated · Real-time data</span>
+          </div>
         </div>
       )}
     </div>

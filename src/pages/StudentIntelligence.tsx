@@ -629,278 +629,330 @@ export default function StudentIntelligence() {
     );
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  //  DESKTOP — Blue Apple Design
+  // ═══════════════════════════════════════════════════════════════
+  const dB1 = "#0055FF", dB2 = "#1166FF", dB4 = "#4499FF";
+  const dBG = "#EEF4FF", dBG2 = "#E0ECFF";
+  const dT1 = "#001040", dT2 = "#002080", dT3 = "#5070B0", dT4 = "#99AACC";
+  const dSEP = "rgba(0,85,255,0.08)";
+  const dGREEN = "#00C853", dGREEN_D = "#007830", dGREEN_S = "rgba(0,200,83,0.10)", dGREEN_B = "rgba(0,200,83,0.22)";
+  const dRED = "#FF3355", dRED_S = "rgba(255,51,85,0.10)", dRED_B = "rgba(255,51,85,0.22)";
+  const dORANGE = "#FF8800", dORANGE_S = "rgba(255,136,0,0.10)", dORANGE_B = "rgba(255,136,0,0.22)";
+  const dGOLD = "#FFAA00";
+  const dVIOLET = "#7B3FF4";
+  const dSH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 10px rgba(0,85,255,0.07), 0 10px 28px rgba(0,85,255,0.09)";
+  const dSH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.12)";
+  const dSH_BTN = "0 6px 22px rgba(0,85,255,0.38), 0 2px 5px rgba(0,85,255,0.18)";
+
+  const tierThemeD = {
+    weak:       { color: dRED,    soft: dRED_S,    border: dRED_B,    grad: `linear-gradient(135deg, ${dRED}, #FF6688)`,    shadow: "0 4px 14px rgba(255,51,85,0.26)",  Icon: AlertTriangle, label: "Weak",       desc: "Needs immediate attention" },
+    developing: { color: dORANGE, soft: dORANGE_S, border: dORANGE_B, grad: `linear-gradient(135deg, ${dORANGE}, #FFCC22)`, shadow: "0 4px 14px rgba(255,136,0,0.26)", Icon: TrendingUp,    label: "Developing", desc: "Moderate performance" },
+    smart:      { color: dGREEN,  soft: dGREEN_S,  border: dGREEN_B,  grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`,  shadow: "0 4px 14px rgba(0,200,83,0.24)",  Icon: Award,         label: "Smart",      desc: "Strong performer" },
+  };
+
   return (
-    <div className="space-y-5 pb-10">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Student Intelligence</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Auto-detected performance tiers · Filter by class · Notify teacher or parent in one click
-          </p>
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
+      style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-4 pt-2 pb-5 flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0"
+            style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 6px 18px rgba(0,85,255,0.28)" }}>
+            <Sparkles className="w-[22px] h-[22px] text-white" strokeWidth={2.4} />
+          </div>
+          <div>
+            <div className="text-[24px] font-bold leading-none" style={{ color: dT1, letterSpacing: "-0.6px" }}>Student Intelligence</div>
+            <div className="text-[12px] mt-1" style={{ color: dT3 }}>Auto-detected performance tiers · Filter by class · Notify in one click</div>
+          </div>
         </div>
         <button
           onClick={() => setNotifyAllOpen(true)}
           disabled={loading || classified.length === 0}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1e3a8a] text-white text-sm font-bold rounded-xl hover:bg-[#1e4fc0] transition-colors shadow-sm disabled:opacity-50 self-start md:self-auto"
-        >
-          <Megaphone className="w-4 h-4" />
-          Notify All Class Teachers
+          className="h-11 px-5 rounded-[14px] flex items-center gap-2 text-[13px] font-bold text-white relative overflow-hidden transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100"
+          style={{
+            background: "linear-gradient(135deg, #001040, #001888)",
+            boxShadow: "0 6px 22px rgba(0,8,64,0.28), 0 2px 6px rgba(0,8,64,0.14)",
+          }}>
+          <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, transparent 52%)" }} />
+          <Megaphone className="w-4 h-4 relative z-10" strokeWidth={2.3} />
+          <span className="relative z-10">Notify All Class Teachers</span>
         </button>
       </div>
 
-      {/* Filters row */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search student, roll no, class..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full h-10 pl-9 pr-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
-          />
+      {/* Dark Hero */}
+      <div className="rounded-[22px] px-7 py-6 relative overflow-hidden text-white"
+        style={{
+          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+          boxShadow: "0 10px 36px rgba(0,51,204,0.30), 0 0 0 0.5px rgba(255,255,255,0.10)",
+        }}>
+        <div className="absolute -right-12 -top-12 w-[220px] h-[220px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+        <div className="flex items-center justify-between gap-6 flex-wrap relative z-10">
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 rounded-[16px] flex items-center justify-center shrink-0"
+              style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+              <Users className="w-7 h-7 text-white" strokeWidth={2.2} />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] mb-[6px]" style={{ color: "rgba(255,255,255,0.55)" }}>Total Students Analyzed</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[48px] font-bold leading-none tracking-tight">{classified.length}</span>
+                <span className="text-[14px] font-semibold" style={{ color: "rgba(255,255,255,0.45)" }}>students</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-6 flex-wrap">
+            {(["weak", "developing", "smart"] as Category[]).map(k => {
+              const t = tierThemeD[k];
+              return (
+                <div key={k} className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+                    style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                    <t.Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.50)" }}>{t.label}</div>
+                    <div className="text-[24px] font-bold leading-none" style={{ letterSpacing: "-0.6px" }}>{counts[k]}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <select
-          value={classFilter}
-          onChange={e => setClassFilter(e.target.value)}
-          className="h-10 px-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
-        >
-          <option value="all">All Classes ({classified.length})</option>
-          {classes.map(c => {
-            const inClass = classified.filter(s => s.classId === c.id).length;
-            return (
-              <option key={c.id} value={c.id}>
-                {c.name || c.className} ({inClass})
-              </option>
-            );
-          })}
-        </select>
       </div>
 
-      {/* Tabs */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Tier Cards (filter tabs) */}
+      <div className="grid grid-cols-3 gap-4 mt-5">
         {TABS.map(t => {
-          const meta = CATEGORY_META[t.key];
+          const td = tierThemeD[t.key];
           const active = activeTab === t.key;
-          const Icon = t.icon;
           return (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`rounded-2xl p-4 text-left transition-all border-2 ${
-                active
-                  ? "shadow-md"
-                  : "bg-white border-slate-200 hover:border-slate-300"
-              }`}
-              style={active ? { background: meta.bg, borderColor: meta.border } : undefined}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ background: meta.bg }}
-                >
-                  <Icon className="w-4 h-4" style={{ color: meta.color }} />
+              className="rounded-[20px] p-5 text-left relative overflow-hidden transition-transform hover:scale-[1.01]"
+              style={{
+                background: active ? `linear-gradient(145deg, ${td.soft} 0%, rgba(255,255,255,0.4) 100%)` : "#FFFFFF",
+                border: `0.5px solid ${active ? td.color + "66" : dSEP}`,
+                boxShadow: active ? `${dSH_LG}, 0 0 0 2px ${td.color}22` : dSH_LG,
+              }}>
+              <div className="absolute -top-8 -right-8 w-[110px] h-[110px] rounded-full pointer-events-none"
+                style={{ background: `radial-gradient(circle, ${td.soft} 0%, transparent 70%)` }} />
+              <div className="flex items-center justify-between mb-3 relative">
+                <div className="w-11 h-11 rounded-[13px] flex items-center justify-center"
+                  style={{ background: td.grad, boxShadow: td.shadow }}>
+                  <td.Icon className="w-5 h-5 text-white" strokeWidth={2.3} />
                 </div>
-                <span
-                  className="text-2xl font-black"
-                  style={{ color: active ? meta.color : "#334155" }}
-                >
-                  {counts[t.key]}
-                </span>
+                {active && (
+                  <div className="w-[8px] h-[8px] rounded-full animate-pulse" style={{ background: td.color, boxShadow: `0 0 0 3px ${td.color}33` }} />
+                )}
               </div>
-              <p className="text-sm font-bold text-slate-900">{t.label}</p>
-              <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">
-                {meta.description}
-              </p>
+              <div className="text-[36px] font-bold leading-none mb-2" style={{ color: td.color, letterSpacing: "-1.2px" }}>{counts[t.key]}</div>
+              <div className="text-[14px] font-bold mb-1" style={{ color: dT1, letterSpacing: "-0.2px" }}>{td.label}</div>
+              <div className="text-[11px]" style={{ color: dT3 }}>{td.desc}</div>
             </button>
           );
         })}
       </div>
 
-      {/* List */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-slate-500" />
-            <span className="text-sm font-bold text-slate-900">
-              {CATEGORY_META[activeTab].label} Students ({visible.length})
-            </span>
-          </div>
-          {classFilter !== "all" && (
-            <button
-              onClick={() => setClassFilter("all")}
-              className="text-xs font-semibold text-[#1e3a8a] hover:underline"
-            >
-              Clear class filter
-            </button>
-          )}
+      {/* Filters Row */}
+      <div className="flex items-center gap-3 mt-5 flex-wrap">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
+          <input
+            type="text"
+            placeholder="Search student, roll no, class..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full h-11 pl-11 pr-4 bg-white rounded-[14px] text-[13px] font-medium outline-none"
+            style={{ border: `0.5px solid ${dSEP}`, color: dT1, boxShadow: dSH, fontFamily: "inherit" }}
+          />
         </div>
+        <select
+          value={classFilter}
+          onChange={e => setClassFilter(e.target.value)}
+          className="h-11 px-4 pr-10 bg-white rounded-[14px] text-[13px] font-semibold outline-none cursor-pointer appearance-none"
+          style={{
+            border: `0.5px solid ${dSEP}`,
+            color: dT2,
+            boxShadow: dSH,
+            fontFamily: "inherit",
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230055FF' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "right 14px center",
+          }}>
+          <option value="all">All Classes ({classified.length})</option>
+          {classes.map(c => {
+            const inClass = classified.filter(s => s.classId === c.id).length;
+            return (
+              <option key={c.id} value={c.id}>{c.name || c.className} ({inClass})</option>
+            );
+          })}
+        </select>
+      </div>
 
-        {loading ? (
-          <div className="py-16 flex justify-center">
-            <Loader2 className="w-6 h-6 animate-spin text-[#1e3a8a]" />
-          </div>
-        ) : visible.length === 0 ? (
-          <div className="py-16 text-center">
-            <p className="text-sm text-slate-500">
-              No students in this tier {classFilter !== "all" ? "for selected class" : ""}.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {visible.map(stu => (
-              <StudentRow
-                key={stu.studentId}
-                student={stu}
-                onOpenProfile={() => navigate(`/students/${stu.studentId}`)}
-                onAnalyzeAI={() => setAiInsightStudent(stu)}
-                onNotifyTeacher={() => setNotifyTeacher(stu)}
-                onNotifyParent={() => setNotifyParent(stu)}
-              />
-            ))}
-          </div>
+      {/* Section Label */}
+      <div className="flex items-center gap-3 mt-6 mb-3">
+        <div className="w-9 h-9 rounded-[11px] flex items-center justify-center"
+          style={{ background: tierThemeD[activeTab].grad, boxShadow: tierThemeD[activeTab].shadow }}>
+          {(() => { const Ic = tierThemeD[activeTab].Icon; return <Ic className="w-4 h-4 text-white" strokeWidth={2.4} />; })()}
+        </div>
+        <div className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>
+          {CATEGORY_META[activeTab].label} Students
+        </div>
+        <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+          style={{ background: tierThemeD[activeTab].soft, color: tierThemeD[activeTab].color, border: `0.5px solid ${tierThemeD[activeTab].border}` }}>
+          {visible.length}
+        </span>
+        {classFilter !== "all" && (
+          <button onClick={() => setClassFilter("all")}
+            className="ml-auto text-[12px] font-bold hover:underline" style={{ color: dB1 }}>
+            Clear class filter
+          </button>
         )}
       </div>
 
-      {/* Modals */}
-      {notifyTeacher && (
-        <NotifyTeacherModal
-          student={notifyTeacher}
-          onClose={() => setNotifyTeacher(null)}
-        />
-      )}
-      {notifyParent && (
-        <NotifyParentModal
-          student={notifyParent}
-          onClose={() => setNotifyParent(null)}
-        />
-      )}
-      {notifyAllOpen && (
-        <NotifyAllTeachersModal
-          classified={classified}
-          onClose={() => setNotifyAllOpen(false)}
-        />
-      )}
-      {aiInsightStudent && (
-        <StudentAIInsightsModal
-          student={aiInsightStudent}
-          onClose={() => setAiInsightStudent(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// StudentRow — single student card in the list
-// ═══════════════════════════════════════════════════════════════════════════
-function StudentRow({
-  student,
-  onOpenProfile,
-  onAnalyzeAI,
-  onNotifyTeacher,
-  onNotifyParent,
-}: {
-  student: ClassifiedStudent;
-  onOpenProfile: () => void;
-  onAnalyzeAI: () => void;
-  onNotifyTeacher: () => void;
-  onNotifyParent: () => void;
-}) {
-  const meta = CATEGORY_META[student.category];
-  const initials = (student.studentName || "S")
-    .trim()
-    .split(" ")
-    .map(w => w[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-
-  return (
-    <div
-      onClick={onOpenProfile}
-      role="button"
-      tabIndex={0}
-      className="flex flex-col md:flex-row items-start md:items-center gap-4 px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors"
-    >
-      {/* Avatar + identity */}
-      <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div
-          className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-sm"
-          style={{ background: meta.bg, color: meta.color }}
-        >
-          {initials}
+      {/* Student Cards */}
+      {loading ? (
+        <div className="bg-white rounded-[20px] py-16 flex flex-col items-center gap-3" style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <Loader2 className="w-8 h-8 animate-spin" style={{ color: dB1 }} />
+          <p className="text-[12px] font-bold uppercase tracking-widest" style={{ color: dT4 }}>Loading student intelligence…</p>
         </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-bold text-slate-900 truncate">{student.studentName}</p>
-            <span
-              className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-              style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}
-            >
-              {meta.label}
-            </span>
+      ) : visible.length === 0 ? (
+        <div className="bg-white rounded-[20px] py-16 flex flex-col items-center gap-3" style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="w-14 h-14 rounded-[16px] flex items-center justify-center"
+            style={{ background: tierThemeD[activeTab].soft, border: `0.5px solid ${tierThemeD[activeTab].border}` }}>
+            {(() => { const Ic = tierThemeD[activeTab].Icon; return <Ic className="w-6 h-6" style={{ color: tierThemeD[activeTab].color }} strokeWidth={2.2} />; })()}
           </div>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            Class {student.className || "—"} · Roll {student.rollNo || "—"}
+          <p className="text-[14px] font-bold" style={{ color: dT1 }}>
+            No students in this tier {classFilter !== "all" ? "for selected class" : ""}.
           </p>
-          <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
-            {student.reasons.join(" · ")}
-          </p>
+          <p className="text-[11px]" style={{ color: dT4 }}>Try switching tier or clearing class filter</p>
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {visible.map(stu => {
+            const t = tierThemeD[stu.category];
+            const initials = (stu.studentName || "S").trim().split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+            const scoreColor = stu.avgScore >= 75 ? dGREEN_D : stu.avgScore >= 50 ? dORANGE : dRED;
+            const attColor = stu.attendancePct >= 85 ? dGREEN_D : stu.attendancePct >= 70 ? dORANGE : dRED;
+            return (
+              <div key={stu.studentId} className="bg-white rounded-[20px] overflow-hidden relative"
+                style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+                <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: t.grad }} />
 
-      {/* Metrics */}
-      <div className="grid grid-cols-2 md:flex md:items-center gap-3 md:gap-6 w-full md:w-auto md:mr-3">
-        <div className="text-center md:text-right">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Avg</p>
-          <p
-            className="text-sm font-bold"
-            style={{ color: student.avgScore >= 75 ? "#059669" : student.avgScore >= 50 ? "#d97706" : "#dc2626" }}
-          >
-            {student.avgScore > 0 || student.scores.length > 0 ? `${student.avgScore}%` : "—"}
-          </p>
-        </div>
-        <div className="text-center md:text-right">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Attd</p>
-          <p
-            className="text-sm font-bold"
-            style={{ color: student.attendancePct >= 85 ? "#059669" : student.attendancePct >= 70 ? "#d97706" : "#dc2626" }}
-          >
-            {student.totalAttendance > 0 ? `${student.attendancePct}%` : "—"}
-          </p>
-        </div>
-      </div>
+                <button
+                  onClick={() => navigate(`/students/${stu.studentId}`)}
+                  className="w-full flex items-center gap-4 pl-6 pr-5 pt-5 pb-4 text-left hover:bg-[#F8FAFF] transition-colors"
+                  style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                  <div className="w-[52px] h-[52px] rounded-[16px] flex items-center justify-center text-[17px] font-bold text-white shrink-0"
+                    style={{ background: t.grad, boxShadow: t.shadow }}>
+                    {initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <div className="text-[15px] font-bold truncate" style={{ color: dT1, letterSpacing: "-0.2px" }}>{stu.studentName}</div>
+                      <div className="px-[10px] py-[4px] rounded-full text-[9px] font-bold uppercase tracking-[0.08em]"
+                        style={{ background: t.soft, color: t.color, border: `0.5px solid ${t.border}` }}>
+                        {CATEGORY_META[stu.category].label}
+                      </div>
+                    </div>
+                    <div className="text-[11px] font-medium" style={{ color: dT3 }}>
+                      {stu.className ? `Class ${stu.className}` : "No class"}{stu.rollNo ? ` · Roll ${stu.rollNo}` : ""}
+                    </div>
+                    <div className="text-[11px] mt-0.5 truncate" style={{ color: dT3 }}>
+                      {stu.reasons?.length > 0 ? stu.reasons.join(" · ") : "On track"}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 shrink-0" style={{ color: dT4 }} />
+                </button>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
-        <button
-          onClick={(e) => { e.stopPropagation(); onAnalyzeAI(); }}
-          className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-xs font-semibold text-[#1e3a8a] hover:bg-indigo-100 hover:border-indigo-300 transition-colors"
-          title="AI-powered root cause + improvement plan"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          AI Analysis
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onNotifyTeacher(); }}
-          className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:border-blue-200 hover:text-[#1e3a8a] transition-colors"
-        >
-          <GraduationCap className="w-3.5 h-3.5" />
-          Notify Teacher
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onNotifyParent(); }}
-          className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors"
-        >
-          <MessageSquare className="w-3.5 h-3.5" />
-          Notify Parent
-        </button>
-        <ChevronRight className="hidden md:block w-4 h-4 text-slate-300" />
-      </div>
+                {/* Score strip */}
+                <div className="grid grid-cols-3">
+                  {[
+                    { label: "Avg Score", val: stu.scores.length > 0 ? `${stu.avgScore}%` : "—", color: scoreColor, pct: stu.avgScore },
+                    { label: "Attendance", val: stu.totalAttendance > 0 ? `${stu.attendancePct}%` : "—", color: attColor, pct: stu.attendancePct },
+                    { label: "Tier", val: CATEGORY_META[stu.category].label, color: t.color, pct: 100 },
+                  ].map((cell, i, arr) => (
+                    <div key={cell.label} className="px-4 py-3" style={{ borderRight: i < arr.length - 1 ? `0.5px solid ${dSEP}` : undefined, borderBottom: `0.5px solid ${dSEP}` }}>
+                      <div className="text-[9px] font-bold uppercase tracking-[0.08em] mb-1" style={{ color: dT4 }}>{cell.label}</div>
+                      <div className="text-[20px] font-bold leading-none mb-1.5" style={{ color: cell.color, letterSpacing: "-0.4px" }}>{cell.val}</div>
+                      <div className="h-1 rounded-[2px]" style={{ background: dBG2 }}>
+                        <div className="h-full rounded-[2px]" style={{ width: `${Math.min(100, Math.max(0, cell.pct))}%`, background: cell.color }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 p-4">
+                  <button onClick={() => setAiInsightStudent(stu)}
+                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[12px] font-bold transition-transform hover:scale-[1.02]"
+                    style={{ background: dBG, border: `0.5px solid rgba(0,85,255,0.18)`, color: dB1, boxShadow: dSH }}>
+                    <Sparkles className="w-[13px] h-[13px]" strokeWidth={2.3} />
+                    AI Analysis
+                  </button>
+                  <button onClick={() => setNotifyTeacher(stu)}
+                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02]"
+                    style={{ border: `0.5px solid ${dSEP}`, color: dT2, boxShadow: dSH }}>
+                    <GraduationCap className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
+                    Notify Teacher
+                  </button>
+                  <button onClick={() => setNotifyParent(stu)}
+                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[12px] font-bold text-white transition-transform hover:scale-[1.02] relative overflow-hidden"
+                    style={{ background: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, boxShadow: "0 4px 14px rgba(0,200,83,0.30)" }}>
+                    <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, transparent 52%)" }} />
+                    <MessageSquare className="w-[13px] h-[13px] relative z-10" strokeWidth={2.3} />
+                    <span className="relative z-10">Notify Parent</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* AI Intelligence Card */}
+      {!loading && counts.weak > 0 && (
+        <div className="mt-5 rounded-[22px] px-7 py-6 relative overflow-hidden"
+          style={{
+            background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
+            boxShadow: "0 10px 36px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+          }}>
+          <div className="absolute -top-10 -right-7 w-[200px] h-[200px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+          <div className="flex items-center gap-2 mb-3 relative z-10">
+            <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+              style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+              <Sparkles className="w-4 h-4 text-white" strokeWidth={2.4} />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI Class Intelligence</span>
+          </div>
+          {(() => {
+            const weakFirst = classified.filter(s => s.category === "weak").sort((a, b) => a.avgScore - b.avgScore)[0];
+            return (
+              <p className="text-[14px] leading-[1.75] font-normal relative z-10 max-w-[900px]" style={{ color: "rgba(255,255,255,0.88)" }}>
+                <strong style={{ color: "#fff", fontWeight: 700 }}>{counts.weak} student{counts.weak === 1 ? "" : "s"}</strong> performing below passing threshold.
+                {weakFirst && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{weakFirst.studentName}</strong>'s <strong style={{ color: "#fff", fontWeight: 700 }}>{weakFirst.avgScore}% average</strong> requires immediate teacher intervention.</>}
+                {" "}Focused revision and teacher support can significantly improve outcomes before the next assessment.
+              </p>
+            );
+          })()}
+          <div className="flex items-center gap-2 mt-4 pt-3 relative z-10" style={{ borderTop: "0.5px solid rgba(255,255,255,0.12)" }}>
+            <div className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ background: dB4 }} />
+            <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.45)" }}>Auto-generated from real-time assessment data</span>
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
+      {notifyTeacher && <NotifyTeacherModal student={notifyTeacher} onClose={() => setNotifyTeacher(null)} />}
+      {notifyParent && <NotifyParentModal student={notifyParent} onClose={() => setNotifyParent(null)} />}
+      {notifyAllOpen && <NotifyAllTeachersModal classified={classified} onClose={() => setNotifyAllOpen(false)} />}
+      {aiInsightStudent && <StudentAIInsightsModal student={aiInsightStudent} onClose={() => setAiInsightStudent(null)} />}
     </div>
   );
 }
+

@@ -269,40 +269,157 @@ export default function ExamsResults() {
   }
 
   /* ══ MAIN RENDER ══════════════════════════════════════════════ */
-  return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+  const dPassTier = !latestExam ? { label: "No data", c: "#CCDDEE", bg: "rgba(153,170,204,.18)", bdr: "rgba(153,170,204,.32)" }
+    : latestExam.passRate >= 75 ? { label: "Excellent", c: "#66EE88", bg: "rgba(0,200,83,0.22)", bdr: "rgba(0,200,83,0.4)" }
+    : latestExam.passRate >= 50 ? { label: "Average", c: "#FFDD88", bg: "rgba(255,170,0,0.22)", bdr: "rgba(255,170,0,0.4)" }
+    : { label: "Weak", c: "#FF99AA", bg: "rgba(255,51,85,0.22)", bdr: "rgba(255,51,85,0.4)" };
 
-      {/* Header */}
-      <div>
-        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
-          RESULT OF CLICK: "EXAMS &amp; RESULTS"
-        </p>
-        <p className="text-sm text-muted-foreground">Manage exams and view student results</p>
+  return (
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+
+      {/* Top toolbar */}
+      <div className="flex items-start justify-between gap-4 pt-2 mb-5">
+        <div className="min-w-0">
+          <div className="text-[28px] font-bold leading-tight tracking-[-0.7px] flex items-center gap-[10px]" style={{ color: "#001040" }}>
+            <div className="w-9 h-9 rounded-[12px] flex items-center justify-center flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 4px 12px rgba(0,85,255,0.32)" }}>
+              <FileText className="w-[19px] h-[19px] text-white" strokeWidth={2.4} />
+            </div>
+            Exams &amp; Results
+          </div>
+          <div className="text-[12px] font-normal mt-[6px] ml-[46px] flex items-center gap-[6px]" style={{ color: "#5070B0" }}>
+            <span>Results Analysis</span>
+            <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
+            <span>Subject Performance</span>
+            <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
+            <span>Merit &amp; Fail Lists</span>
+          </div>
+        </div>
       </div>
 
-      {/* ── Upcoming Exams ── */}
-      <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-        <h2 className="text-base font-bold text-foreground mb-5">Upcoming Exams</h2>
+      {/* Dark hero banner */}
+      <div className="rounded-[22px] px-6 py-5 relative overflow-hidden flex items-center justify-between gap-5 mb-4 cursor-pointer transition-transform active:scale-[0.995] hover:scale-[1.005]"
+        onClick={() => latestExam && setSelectedExam(latestExam)}
+        style={{
+          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+          boxShadow: "0 8px 26px rgba(0,8,60,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+        }}>
+        <div className="absolute -top-12 -right-8 w-[180px] h-[180px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+        <div className="flex items-center gap-[12px] min-w-0 relative z-10">
+          <div className="w-11 h-11 rounded-[13px] flex items-center justify-center flex-shrink-0"
+            style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.24)" }}>
+            <FileText className="w-[22px] h-[22px]" style={{ color: "rgba(255,255,255,0.92)" }} strokeWidth={2.1} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] mb-[5px]" style={{ color: "rgba(255,255,255,0.50)" }}>
+              Latest Exam {latestExam?.dateLabel && `· ${latestExam.dateLabel}`}
+            </div>
+            <div className="text-[34px] font-bold text-white leading-none tracking-[-1px] truncate">
+              {loading ? "…" : latestExam?.name || "No exam results yet"}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0 relative z-10">
+          <div className="flex items-center gap-[5px] px-[14px] py-[7px] rounded-full"
+            style={{ background: dPassTier.bg, border: `0.5px solid ${dPassTier.bdr}` }}>
+            <span className="text-[12px] font-bold" style={{ color: dPassTier.c }}>{dPassTier.label}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-[1px] rounded-[13px] overflow-hidden" style={{ background: "rgba(255,255,255,0.12)" }}>
+            {[
+              { val: latestExam?.totalStudents ?? "—", label: "Students", color: "#fff" },
+              { val: latestExam ? `${latestExam.passRate}%` : "—", label: "Pass Rate", color: "#66EE88" },
+              { val: latestExam ? `${latestExam.avgPct}%` : "—", label: "Avg %", color: "#FFDD88" },
+            ].map(({ val, label, color }) => (
+              <div key={label} className="py-[10px] px-[14px] text-center min-w-[72px]" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <div className="text-[17px] font-bold leading-none mb-[3px]" style={{ color, letterSpacing: "-0.4px" }}>{val}</div>
+                <div className="text-[8px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.40)" }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bright stat cards 4-wide */}
+      <div className="grid grid-cols-4 gap-4 mb-5">
+        {[
+          { label: "Latest Exam", val: latestExam?.name || "—", sub: latestExam?.dateLabel || "No data", variant: "blue", Icon: FileText, isText: true, onClick: () => latestExam && setSelectedExam(latestExam) },
+          { label: "Students Appeared", val: latestExam?.totalStudents ?? "—", sub: latestExam ? `${latestExam.scores.filter(s => !s.isAbsent).length} of ${latestExam.scores.length} total` : "—", variant: "violet", Icon: Users },
+          { label: "Pass Rate", val: latestExam ? `${latestExam.passRate}%` : "—", sub: passRateDiff !== null ? `${passRateDiff >= 0 ? "+" : ""}${passRateDiff}% vs prev` : dPassTier.label, variant: "green", Icon: Percent },
+          { label: "School Topper", val: topper?.name || "—", sub: topper ? `${topper.className || ""} · ${topper.avgPct}%` : "No data", variant: "gold", Icon: Trophy, isText: true },
+        ].map((s, i) => {
+          const styles: Record<string, { bg: string; bdr: string; lbl: string; val: string; icoColor: string }> = {
+            blue:   { bg: "linear-gradient(140deg, #DDEAFF 0%, #A8C5FF 55%, #7AA5FF 100%)", bdr: "rgba(0,85,255,0.4)",   lbl: "#002080", val: "#001055", icoColor: "#001055" },
+            violet: { bg: "linear-gradient(140deg, #EEE0FF 0%, #C9A8FF 55%, #A880FF 100%)", bdr: "rgba(123,63,244,0.4)", lbl: "#3A1580", val: "#280C5C", icoColor: "#3A1580" },
+            green:  { bg: "linear-gradient(140deg, #DEFCE8 0%, #8CF0B0 55%, #50E088 100%)", bdr: "rgba(0,200,83,0.4)",   lbl: "#005A20", val: "#004018", icoColor: "#005A20" },
+            gold:   { bg: "linear-gradient(140deg, #FFF6D1 0%, #FFE488 55%, #FFCC33 100%)", bdr: "rgba(255,170,0,0.4)",  lbl: "#664400", val: "#472A00", icoColor: "#664400" },
+          };
+          const st = styles[s.variant];
+          const Icon = s.Icon;
+          return (
+            <div key={i}
+              onClick={s.onClick}
+              className={`rounded-[20px] p-5 relative overflow-hidden ${s.onClick ? "cursor-pointer transition-transform active:scale-[0.97] hover:scale-[1.02]" : ""}`}
+              style={{ background: st.bg, border: `0.5px solid ${st.bdr}`, boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
+              <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
+              <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
+                style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)", boxShadow: "0 2px 6px rgba(0,0,0,0.05)" }}>
+                <Icon className="w-[15px] h-[15px]" style={{ color: st.icoColor }} strokeWidth={2.5} />
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px] relative z-[1]" style={{ color: st.lbl }}>{s.label}</div>
+              {s.isText ? (
+                <div className="text-[18px] font-bold leading-tight tracking-[-0.3px] mb-[5px] relative z-[1] truncate" style={{ color: st.val }}>{s.val}</div>
+              ) : (
+                <div className="text-[34px] font-bold leading-none tracking-[-1px] mb-[5px] relative z-[1]" style={{ color: st.val }}>{s.val}</div>
+              )}
+              <div className="text-[11px] font-semibold relative z-[1] truncate flex items-center gap-1" style={{ color: st.lbl }}>
+                {i === 2 && passRateDiff !== null && (passRateDiff >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />)}
+                {s.sub}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Upcoming exams section */}
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] mb-3" style={{ color: "#99AACC" }}>
+        Upcoming Exams
+        <span className="px-[10px] py-[3px] rounded-full text-[10px] font-bold ml-1"
+          style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}>
+          {upcomingExams.length} scheduled
+        </span>
+        <div className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
+      </div>
+
+      <div className="rounded-[22px] bg-white p-5 mb-5"
+        style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
         {loading ? (
-          <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" style={{ color: "#0055FF" }} /></div>
         ) : upcomingExams.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">
-            No upcoming exams scheduled. Teachers can create exams from the Teacher Dashboard.
-          </p>
+          <div className="flex items-center gap-3 py-4 px-2">
+            <div className="w-10 h-10 rounded-[12px] flex items-center justify-center flex-shrink-0"
+              style={{ background: "rgba(0,85,255,0.08)", border: "0.5px solid rgba(0,85,255,0.14)" }}>
+              <Calendar className="w-[18px] h-[18px]" style={{ color: "rgba(0,85,255,0.45)" }} strokeWidth={2} />
+            </div>
+            <div>
+              <p className="text-[13px] font-bold" style={{ color: "#001040" }}>No upcoming exams scheduled</p>
+              <p className="text-[11px] mt-1" style={{ color: "#99AACC" }}>Teachers can create exams from the Teacher Dashboard.</p>
+            </div>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {upcomingExams.slice(0, 3).map((exam, i) => {
+          <div className="grid grid-cols-3 gap-3">
+            {upcomingExams.slice(0, 6).map((exam, i) => {
               const color = BORDER_COLORS[i % BORDER_COLORS.length];
               const dateStr = fmtDate(exam.testDate || exam.date || "");
               return (
-                <div key={exam.id} className="p-4 rounded-xl border border-border bg-muted/10 hover:bg-muted/20 transition-colors"
-                  style={{ borderLeftWidth: "4px", borderLeftColor: color }}>
-                  <p className="text-sm font-bold text-foreground mb-1">{exam.title || exam.testName}</p>
-                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> {dateStr || "Date TBD"}
+                <div key={exam.id} className="rounded-[14px] px-4 py-3 relative overflow-hidden transition-transform active:scale-[0.98] hover:scale-[1.02]"
+                  style={{ background: "#F5F9FF", border: "0.5px solid rgba(0,85,255,0.10)", borderLeftWidth: "4px", borderLeftColor: color }}>
+                  <p className="text-[13px] font-bold truncate" style={{ color: "#001040" }}>{exam.title || exam.testName}</p>
+                  <p className="text-[11px] mt-1 flex items-center gap-1" style={{ color: "#5070B0" }}>
+                    <Calendar className="w-3 h-3" strokeWidth={2.3} /> {dateStr || "Date TBD"}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {exam.className ? `Class: ${exam.className}` : exam.subject || ""}
+                  <p className="text-[11px] font-semibold mt-[2px]" style={{ color: "#99AACC" }}>
+                    {exam.className ? `Class ${exam.className}` : exam.subject || ""}
                   </p>
                 </div>
               );
@@ -311,120 +428,47 @@ export default function ExamsResults() {
         )}
       </div>
 
-      {/* ── 4 Stat Cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        {/* Latest Exam */}
-        <div
-          className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
-          onClick={() => latestExam && setSelectedExam(latestExam)}
-        >
-          <div className="flex items-start justify-between mb-3">
-            <p className="text-xs font-semibold text-muted-foreground">Latest Exam</p>
-            <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-              <FileText className="w-4 h-4 text-blue-600" />
-            </div>
-          </div>
-          <p className="text-lg font-black text-foreground leading-tight mb-1">
-            {loading ? "…" : latestExam?.name || "No data"}
-          </p>
-          <p className="text-xs text-muted-foreground">{loading ? "" : latestExam?.dateLabel || ""}</p>
-          {latestExam && (
-            <p className="text-[10px] text-blue-600 font-semibold mt-2 group-hover:underline">View Results →</p>
-          )}
-        </div>
-
-        {/* Students Appeared */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-3">
-            <p className="text-xs font-semibold text-muted-foreground">Students Appeared</p>
-            <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
-              <Users className="w-4 h-4 text-green-600" />
-            </div>
-          </div>
-          <p className="text-3xl font-black text-foreground mb-1">
-            {loading ? "…" : latestExam?.totalStudents ?? "—"}
-          </p>
-          {latestExam && (
-            <p className="text-xs text-muted-foreground">
-              {latestExam.scores.filter(s => !s.isAbsent).length} of {latestExam.scores.length} total
-            </p>
-          )}
-        </div>
-
-        {/* Pass Rate */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-3">
-            <p className="text-xs font-semibold text-muted-foreground">Pass Rate</p>
-            <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
-              <Percent className="w-4 h-4 text-amber-500" />
-            </div>
-          </div>
-          <p className={`text-3xl font-black mb-1 ${
-            loading ? "text-foreground"
-              : (latestExam?.passRate ?? 0) >= 75 ? "text-green-600"
-              : (latestExam?.passRate ?? 0) >= 50 ? "text-amber-500"
-              : "text-red-500"
-          }`}>
-            {loading ? "…" : latestExam ? `${latestExam.passRate}%` : "—"}
-          </p>
-          {passRateDiff !== null && (
-            <p className={`text-xs flex items-center gap-1 ${passRateDiff >= 0 ? "text-green-600" : "text-red-500"}`}>
-              {passRateDiff >= 0
-                ? <TrendingUp className="w-3 h-3" />
-                : <TrendingDown className="w-3 h-3" />}
-              {Math.abs(passRateDiff)}% vs last exam
-            </p>
-          )}
-        </div>
-
-        {/* School Topper */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between mb-3">
-            <p className="text-xs font-semibold text-muted-foreground">School Topper</p>
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-              <Trophy className="w-4 h-4 text-emerald-600" />
-            </div>
-          </div>
-          <p className="text-lg font-black text-foreground leading-tight mb-1">
-            {loading ? "…" : topper?.name || "—"}
-          </p>
-          {topper && (
-            <p className="text-xs text-muted-foreground">
-              {topper.className && `${topper.className} • `}{topper.avgPct}%
-            </p>
-          )}
-        </div>
+      {/* Analytics section label */}
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] mb-3" style={{ color: "#99AACC" }}>
+        Analytics
+        <div className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
       </div>
 
-      {/* ── Charts Row ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
+      {/* Charts row */}
+      <div className="grid grid-cols-2 gap-4 mb-5">
         {/* Subject-wise Pass Rates */}
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-          <h3 className="text-base font-bold text-foreground mb-4">Subject-wise Pass Rates</h3>
+        <div className="rounded-[22px] bg-white p-5"
+          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-[14px] font-bold tracking-[-0.2px]" style={{ color: "#001040" }}>Subject-wise Pass Rates</div>
+            <span className="px-[9px] py-[3px] rounded-full text-[10px] font-bold"
+              style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}>
+              {subjectData.length} subjects
+            </span>
+          </div>
           {loading ? (
-            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: "#0055FF" }} /></div>
           ) : subjectData.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <FileText className="w-8 h-8 text-muted-foreground/30 mb-2" />
-              <p className="text-xs text-muted-foreground">No subject data yet</p>
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <FileText className="w-10 h-10 mb-2" style={{ color: "rgba(0,85,255,0.20)" }} strokeWidth={1.8} />
+              <p className="text-[12px] font-semibold" style={{ color: "#99AACC" }}>No subject data yet</p>
             </div>
           ) : (
-            <div className="h-56">
+            <div className="h-60">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={subjectData} margin={{ top: 16, right: 8, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E0ECFF" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false}
-                    tick={{ fontSize: 11, fill: "#64748b", fontWeight: 600 }} dy={8} />
+                    tick={{ fontSize: 11, fill: "#5070B0", fontWeight: 600 }} dy={8} />
                   <YAxis axisLine={false} tickLine={false}
-                    tick={{ fontSize: 11, fill: "#94a3b8" }} domain={[0, 100]} />
+                    tick={{ fontSize: 11, fill: "#99AACC" }} domain={[0, 100]} />
                   <RechartsTip
                     formatter={(v: any) => [`${v}%`, "Pass Rate"]}
-                    contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: 12 }}
+                    contentStyle={{ borderRadius: "10px", border: "0.5px solid rgba(0,85,255,0.14)", fontSize: 12, fontFamily: "'DM Sans', sans-serif", boxShadow: "0 4px 16px rgba(0,85,255,0.12)" }}
                   />
-                  <Bar dataKey="passRate" radius={[4, 4, 0, 0]} maxBarSize={52} label={{ position: "top", fontSize: 11, fontWeight: 700, fill: "#475569", formatter: (v: any) => `${v}%` }}>
+                  <Bar dataKey="passRate" radius={[6, 6, 0, 0]} maxBarSize={52} label={{ position: "top", fontSize: 11, fontWeight: 700, fill: "#001040", formatter: (v: any) => `${v}%` }}>
                     {subjectData.map((d, i) => (
-                      <Cell key={i} fill={d.passRate >= 80 ? "#16a34a" : d.passRate >= 60 ? "#d97706" : "#ef4444"} />
+                      <Cell key={i} fill={d.passRate >= 80 ? "#00C853" : d.passRate >= 60 ? "#FF8800" : "#FF3355"} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -434,31 +478,39 @@ export default function ExamsResults() {
         </div>
 
         {/* Grade Distribution */}
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-          <h3 className="text-base font-bold text-foreground mb-4">Grade Distribution</h3>
+        <div className="rounded-[22px] bg-white p-5"
+          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-[14px] font-bold tracking-[-0.2px]" style={{ color: "#001040" }}>Grade Distribution</div>
+            <span className="px-[9px] py-[3px] rounded-full text-[10px] font-bold"
+              style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}>
+              Latest exam
+            </span>
+          </div>
           {loading ? (
-            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: "#0055FF" }} /></div>
           ) : gradeData.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <FileText className="w-8 h-8 text-muted-foreground/30 mb-2" />
-              <p className="text-xs text-muted-foreground">No grade data yet</p>
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <FileText className="w-10 h-10 mb-2" style={{ color: "rgba(0,85,255,0.20)" }} strokeWidth={1.8} />
+              <p className="text-[12px] font-semibold" style={{ color: "#99AACC" }}>No grade data yet</p>
             </div>
           ) : (
-            <div className="h-56">
+            <div className="h-60">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={gradeData} cx="45%" cy="50%" innerRadius={60} outerRadius={90}
-                    paddingAngle={3} dataKey="value" stroke="none" label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                  <Pie data={gradeData} cx="45%" cy="50%" innerRadius={60} outerRadius={92}
+                    paddingAngle={3} dataKey="value" stroke="none"
+                    label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
                     labelLine={false}>
                     {gradeData.map((d, i) => <Cell key={i} fill={d.color} />)}
                   </Pie>
                   <Legend
                     iconType="circle" iconSize={10}
-                    formatter={(value) => <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>{value}</span>}
+                    formatter={(value) => <span style={{ fontSize: 12, color: "#5070B0", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{value}</span>}
                   />
                   <RechartsTip
                     formatter={(v: any, name) => [`${v} students`, name]}
-                    contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: 12 }}
+                    contentStyle={{ borderRadius: "10px", border: "0.5px solid rgba(0,85,255,0.14)", fontSize: 12, fontFamily: "'DM Sans', sans-serif", boxShadow: "0 4px 16px rgba(0,85,255,0.12)" }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -467,108 +519,136 @@ export default function ExamsResults() {
         </div>
       </div>
 
-      {/* ── Failed Students by Subject ── */}
+      {/* Failed students by subject */}
       {!loading && failedBySubject.length > 0 && (
-        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-border flex items-center gap-2 bg-red-50/40">
-            <AlertTriangle className="w-4 h-4 text-red-500" />
-            <h3 className="text-base font-bold text-red-900">Failed Students by Subject</h3>
-            {latestExam && <span className="text-xs text-muted-foreground ml-1">— {latestExam.name}</span>}
+        <>
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] mb-3" style={{ color: "#99AACC" }}>
+            Failed Students by Subject
+            {latestExam && (
+              <span className="px-[10px] py-[3px] rounded-full text-[10px] font-bold ml-1"
+                style={{ background: "rgba(255,51,85,0.10)", color: "#FF3355", border: "0.5px solid rgba(255,51,85,0.22)" }}>
+                {latestExam.name}
+              </span>
+            )}
+            <div className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
           </div>
-          <div className="p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {failedBySubject.slice(0, 4).map(({ subject, students }) => (
-                <div key={subject} className="border border-red-100 rounded-xl overflow-hidden">
-                  <div className="bg-red-50 px-4 py-2.5 flex items-center justify-between">
-                    <p className="text-xs font-bold text-red-700 uppercase tracking-wide">{subject}</p>
-                    <span className="text-xs font-black text-red-500">{students.length} failed</span>
+          <div className="grid grid-cols-4 gap-4 mb-5">
+            {failedBySubject.slice(0, 4).map(({ subject, students }) => (
+              <div key={subject} className="rounded-[18px] bg-white overflow-hidden"
+                style={{ boxShadow: "0 0 0 .5px rgba(255,51,85,.08), 0 4px 16px rgba(255,51,85,.09), 0 16px 40px rgba(255,51,85,.12)", border: "0.5px solid rgba(255,51,85,0.18)" }}>
+                <div className="flex items-center justify-between px-4 py-[10px]"
+                  style={{ background: "linear-gradient(135deg, rgba(255,51,85,0.08), rgba(255,51,85,0.04))", borderBottom: "0.5px solid rgba(255,51,85,0.14)" }}>
+                  <div className="flex items-center gap-[6px]">
+                    <AlertTriangle className="w-[13px] h-[13px]" style={{ color: "#FF3355" }} strokeWidth={2.4} />
+                    <span className="text-[11px] font-bold uppercase tracking-[0.05em]" style={{ color: "#B01030" }}>{subject}</span>
                   </div>
-                  <div className="divide-y divide-red-50">
-                    {students.slice(0, 4).map((s: any, i: number) => (
-                      <div key={i} className="flex items-center justify-between px-4 py-2.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-7 h-7 rounded-full bg-red-500 flex items-center justify-center text-white text-[9px] font-bold shrink-0">
-                            {s.studentName?.substring(0, 2).toUpperCase()}
-                          </div>
-                          <p className="text-xs font-semibold text-foreground truncate">{s.studentName}</p>
-                        </div>
-                        <span className="text-xs font-bold text-red-500 shrink-0 ml-2">{Math.round(s.percentage)}%</span>
-                      </div>
-                    ))}
-                    {students.length > 4 && (
-                      <p className="px-4 py-2 text-[10px] text-muted-foreground font-semibold">+{students.length - 4} more</p>
-                    )}
-                  </div>
+                  <span className="px-[8px] py-[2px] rounded-full text-[10px] font-bold"
+                    style={{ background: "rgba(255,51,85,0.12)", color: "#FF3355", border: "0.5px solid rgba(255,51,85,0.22)" }}>
+                    {students.length} failed
+                  </span>
                 </div>
-              ))}
-            </div>
+                <div>
+                  {students.slice(0, 5).map((s: any, i: number, arr: any[]) => (
+                    <div key={i} className="flex items-center justify-between px-4 py-[10px]"
+                      style={i < Math.min(arr.length, 5) - 1 ? { borderBottom: "0.5px solid rgba(255,51,85,0.05)" } : {}}>
+                      <div className="flex items-center gap-[8px] min-w-0">
+                        <div className="w-7 h-7 rounded-[9px] flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                          style={{ background: "linear-gradient(135deg, #FF3355, #FF6688)", boxShadow: "0 2px 6px rgba(255,51,85,0.22)" }}>
+                          {s.studentName?.substring(0, 2).toUpperCase()}
+                        </div>
+                        <p className="text-[12px] font-semibold truncate" style={{ color: "#001040" }}>{s.studentName}</p>
+                      </div>
+                      <span className="text-[12px] font-bold shrink-0 ml-2" style={{ color: "#FF3355" }}>{Math.round(s.percentage)}%</span>
+                    </div>
+                  ))}
+                  {students.length > 5 && (
+                    <p className="px-4 py-[7px] text-[10px] font-semibold" style={{ color: "#99AACC" }}>+{students.length - 5} more</p>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+        </>
       )}
 
-      {/* ── All Exams table ── */}
+      {/* All exams */}
       {!loading && examGroups.length > 0 && (
-        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-            <h3 className="text-base font-bold text-foreground">All Exams</h3>
-            <span className="text-xs text-muted-foreground font-semibold">{examGroups.length} exams</span>
+        <>
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] mb-3" style={{ color: "#99AACC" }}>
+            All Exams
+            <span className="px-[10px] py-[3px] rounded-full text-[10px] font-bold ml-1"
+              style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}>
+              {examGroups.length} {examGroups.length === 1 ? "exam" : "exams"}
+            </span>
+            <div className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[500px]">
-              <thead>
-                <tr className="border-b border-border bg-muted/20">
-                  {["Exam Name", "Date", "Students", "Pass Rate", "Avg %", ""].map(h => (
-                    <th key={h} className="px-6 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {examGroups.map((exam, i) => (
-                  <tr key={i} className="hover:bg-muted/10 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-[#1e3a8a]/10 flex items-center justify-center shrink-0">
-                          <FileText className="w-3.5 h-3.5 text-[#1e3a8a]" />
-                        </div>
-                        <span className="text-sm font-bold text-foreground">{exam.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground">{exam.dateLabel || "—"}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-foreground">{exam.totalStudents}</td>
-                    <td className="px-6 py-4">
-                      <span className={`text-sm font-bold ${exam.passRate >= 75 ? "text-green-600" : exam.passRate >= 50 ? "text-amber-500" : "text-red-500"}`}>
-                        {exam.passRate}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-sm font-bold ${exam.avgPct >= 70 ? "text-green-600" : exam.avgPct >= 50 ? "text-amber-500" : "text-red-500"}`}>
-                        {exam.avgPct}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        onClick={() => setSelectedExam(exam)}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-[#1e3a8a] text-white text-xs font-bold rounded-lg hover:bg-[#1e3a8a]/90 transition-colors whitespace-nowrap"
-                      >
-                        View Exam Results <ChevronRight className="w-3 h-3" />
-                      </button>
-                    </td>
+          <div className="rounded-[22px] bg-white overflow-hidden"
+            style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[700px]">
+                <thead>
+                  <tr style={{ background: "rgba(0,85,255,0.04)", borderBottom: "0.5px solid rgba(0,85,255,0.07)" }}>
+                    {["Exam Name", "Date", "Students", "Pass Rate", "Avg %", ""].map(h => (
+                      <th key={h} className="px-6 py-[14px] text-left text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "#99AACC" }}>{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {examGroups.map((exam, i, arr) => {
+                    const passColor = exam.passRate >= 75 ? "#00C853" : exam.passRate >= 50 ? "#FF8800" : "#FF3355";
+                    const avgColor = exam.avgPct >= 70 ? "#00C853" : exam.avgPct >= 50 ? "#FF8800" : "#FF3355";
+                    return (
+                      <tr key={i} className="transition-colors hover:bg-[#F5F9FF]"
+                        style={i < arr.length - 1 ? { borderBottom: "0.5px solid rgba(0,85,255,0.05)" } : {}}>
+                        <td className="px-6 py-[14px]">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-[11px] flex items-center justify-center flex-shrink-0"
+                              style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.28)" }}>
+                              <FileText className="w-[16px] h-[16px] text-white" strokeWidth={2.3} />
+                            </div>
+                            <span className="text-[13px] font-bold tracking-[-0.2px] capitalize" style={{ color: "#001040" }}>{exam.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-[14px] text-[12px] font-semibold" style={{ color: "#5070B0" }}>{exam.dateLabel || "—"}</td>
+                        <td className="px-6 py-[14px] text-[13px] font-bold" style={{ color: "#001040" }}>{exam.totalStudents}</td>
+                        <td className="px-6 py-[14px]">
+                          <span className="px-[10px] py-[4px] rounded-full text-[12px] font-bold"
+                            style={{ background: `${passColor}15`, color: passColor, border: `0.5px solid ${passColor}35` }}>
+                            {exam.passRate}%
+                          </span>
+                        </td>
+                        <td className="px-6 py-[14px]">
+                          <span className="text-[13px] font-bold" style={{ color: avgColor }}>{exam.avgPct}%</span>
+                        </td>
+                        <td className="px-6 py-[14px]">
+                          <button onClick={() => setSelectedExam(exam)}
+                            className="h-9 px-4 rounded-[11px] flex items-center gap-[5px] text-[11px] font-bold text-white transition-transform active:scale-95 hover:scale-[1.03] relative overflow-hidden whitespace-nowrap"
+                            style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.26)" }}>
+                            <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+                            <span className="relative z-10">View Results</span>
+                            <ChevronRight className="w-3 h-3 relative z-10" strokeWidth={2.5} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Empty state */}
       {!loading && examGroups.length === 0 && (
-        <div className="bg-card border border-border rounded-2xl p-12 text-center shadow-sm">
-          <FileText className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-          <p className="text-sm font-bold text-muted-foreground">No exam results yet</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Teachers submit scores via Teacher Dashboard → Tests &amp; Exams.
-          </p>
+        <div className="rounded-[22px] py-16 text-center bg-white"
+          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+          <div className="w-16 h-16 rounded-[20px] mx-auto mb-4 flex items-center justify-center"
+            style={{ background: "rgba(0,85,255,0.08)", border: "0.5px solid rgba(0,85,255,0.14)" }}>
+            <FileText className="w-7 h-7" style={{ color: "rgba(0,85,255,0.45)" }} strokeWidth={2} />
+          </div>
+          <p className="text-[13px] font-bold mb-1" style={{ color: "#001040" }}>No exam results yet</p>
+          <p className="text-[12px]" style={{ color: "#99AACC" }}>Teachers submit scores via Teacher Dashboard → Tests &amp; Exams.</p>
         </div>
       )}
     </div>

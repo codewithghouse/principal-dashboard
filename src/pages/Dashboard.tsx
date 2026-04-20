@@ -429,181 +429,259 @@ const Dashboard = () => {
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  DESKTOP — Blue Apple Design (matches mobile language)
+  // ═══════════════════════════════════════════════════════════════
+  const dB1 = "#0055FF", dB2 = "#1166FF", dB4 = "#4499FF";
+  const dBG = "#EEF4FF", dBG2 = "#E0ECFF";
+  const dT1 = "#001040", dT3 = "#5070B0", dT4 = "#99AACC";
+  const dSEP = "rgba(0,85,255,0.08)";
+  const dGREEN = "#00C853", dGREEN_D = "#007830", dGREEN_S = "rgba(0,200,83,0.10)", dGREEN_B = "rgba(0,200,83,0.22)";
+  const dRED = "#FF3355", dRED_S = "rgba(255,51,85,0.10)", dRED_B = "rgba(255,51,85,0.22)";
+  const dORANGE = "#FF8800", dORANGE_S = "rgba(255,136,0,0.10)", dORANGE_B = "rgba(255,136,0,0.22)";
+  const dGOLD = "#FFAA00";
+  const dVIOLET = "#7B3FF4";
+  const dSH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 10px rgba(0,85,255,0.07), 0 10px 28px rgba(0,85,255,0.09)";
+  const dSH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.12)";
+
+  const healthLabelText = healthLabel(healthIndex);
+  const healthTier = healthIndex === null ? dT3 : healthIndex >= 80 ? dGREEN : healthIndex >= 65 ? dGOLD : dRED;
+
   return (
-    <div className="space-y-5 pb-10 animate-in fade-in duration-500">
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
+      style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
 
-      {/* ── Academic Health Banner ───────────────────────────────────────────── */}
-      <div className="bg-[#1e3a8a] rounded-2xl px-4 sm:px-7 py-5 sm:py-6 flex flex-wrap items-center justify-between gap-4 sm:gap-5 text-white relative overflow-hidden shadow-lg">
-        {/* Decorative blobs */}
-        <div className="absolute -right-10 -top-10 w-56 h-56 bg-white/5 rounded-full pointer-events-none" />
-        <div className="absolute right-40 -bottom-8 w-36 h-36 bg-white/5 rounded-full pointer-events-none" />
+      {/* ── Toolbar ───────────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-4 pt-2 pb-5">
+        <div className="w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0"
+          style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 6px 18px rgba(0,85,255,0.28)" }}>
+          <Heart className="w-[22px] h-[22px] text-white" strokeWidth={2.4} />
+        </div>
+        <div>
+          <div className="text-[24px] font-bold leading-none" style={{ color: dT1, letterSpacing: "-0.6px" }}>Principal Dashboard</div>
+          <div className="text-[12px] mt-1" style={{ color: dT3 }}>Real-time school intelligence overview</div>
+        </div>
+      </div>
 
-        {/* Left — score */}
-        <div className="flex items-center gap-4 relative z-10">
-          <div className="w-13 h-13 rounded-xl bg-white/10 flex items-center justify-center shrink-0 p-3">
-            <Heart className="w-7 h-7 text-white animate-pulse" />
+      {/* ── Academic Health Hero ──────────────────────────────────────────────── */}
+      <div className="rounded-[22px] px-7 py-6 flex flex-wrap items-center justify-between gap-5 text-white relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+          boxShadow: "0 10px 36px rgba(0,51,204,0.30), 0 0 0 0.5px rgba(255,255,255,0.10)",
+        }}>
+        <div className="absolute -right-10 -top-10 w-56 h-56 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+        <div className="absolute inset-0 pointer-events-none" style={{
+          backgroundImage: "linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)",
+          backgroundSize: "26px 26px",
+        }} />
+
+        <div className="flex items-center gap-5 relative z-10">
+          <div className="w-14 h-14 rounded-[16px] flex items-center justify-center shrink-0"
+            style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+            <Heart className="w-7 h-7 text-white animate-pulse" strokeWidth={2.2} />
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50 mb-1">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] mb-1" style={{ color: "rgba(255,255,255,0.55)" }}>
               Academic Health Index
             </p>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-5xl font-black tracking-tight leading-none">{displayHealth}</span>
-              <span className="text-lg font-bold text-white/30">/100</span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-[52px] font-bold tracking-tight leading-none">{displayHealth}</span>
+              <span className="text-lg font-bold" style={{ color: "rgba(255,255,255,0.35)" }}>/100</span>
             </div>
           </div>
         </div>
 
-        {/* Right — trend + status */}
         <div className="flex items-center gap-7 relative z-10">
           {healthDelta !== null && (
             <div className="text-right">
-              <div className={`flex items-center gap-1.5 justify-end ${healthDelta >= 0 ? "text-green-400" : "text-red-400"}`}>
-                {healthDelta >= 0
-                  ? <ArrowUp className="w-4 h-4" />
-                  : <ArrowDown className="w-4 h-4" />}
-                <span className="text-2xl font-black tracking-tight">{Math.abs(healthDelta)}%</span>
+              <div className={`flex items-center gap-1.5 justify-end`} style={{ color: healthDelta >= 0 ? "#66EE88" : "#FF88AA" }}>
+                {healthDelta >= 0 ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}
+                <span className="text-2xl font-bold tracking-tight">{Math.abs(healthDelta)}%</span>
               </div>
-              <p className="text-[11px] font-medium text-white/45 mt-0.5">vs Last 7 Days</p>
+              <p className="text-[11px] font-medium mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>vs Last 7 Days</p>
             </div>
           )}
-          {healthDelta !== null && <div className="w-px h-10 bg-white/20 hidden sm:block" />}
-          <div className="text-right hidden sm:block">
-            <p className="text-2xl font-black tracking-tight">{healthLabel(healthIndex)}</p>
-            <p className="text-[11px] font-medium text-white/45 mt-0.5">Overall Status</p>
+          {healthDelta !== null && <div className="w-px h-10" style={{ background: "rgba(255,255,255,0.20)" }} />}
+          <div className="text-right">
+            <p className="text-2xl font-bold tracking-tight">{healthLabelText}</p>
+            <p className="text-[11px] font-medium mt-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>Overall Status</p>
           </div>
         </div>
       </div>
 
-      {/* ── 4 Stat Cards ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      {/* ── 4 Bright Stat Cards ───────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
 
-        {/* Total Students */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-muted-foreground">Total Students</span>
-            <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
-              <Users className="w-4.5 h-4.5 text-indigo-600" />
+        {/* Students — blue */}
+        <div className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(0,85,255,0.10) 0%, transparent 70%)" }} />
+          <div className="flex items-center justify-between mb-4 relative">
+            <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>Total Students</span>
+            <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+              style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.28)" }}>
+              <Users className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
             </div>
           </div>
-          <p className="text-[2.5rem] font-black tracking-tight text-foreground leading-none mb-2">{displayStudents}</p>
-          <p className="text-xs font-semibold text-muted-foreground">Enrolled this branch</p>
+          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: dB1, letterSpacing: "-1.2px" }}>{displayStudents}</p>
+          <p className="text-[11px] font-semibold" style={{ color: dT3 }}>Enrolled this branch</p>
         </div>
 
-        {/* Teachers */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-muted-foreground">Teachers</span>
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
-              <GraduationCap className="w-4.5 h-4.5 text-emerald-600" />
+        {/* Teachers — green */}
+        <div className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(0,200,83,0.10) 0%, transparent 70%)" }} />
+          <div className="flex items-center justify-between mb-4 relative">
+            <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>Teachers</span>
+            <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+              style={{ background: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, boxShadow: "0 4px 14px rgba(0,200,83,0.26)" }}>
+              <GraduationCap className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
             </div>
           </div>
-          <p className="text-[2.5rem] font-black tracking-tight text-foreground leading-none mb-2">{displayTeachers}</p>
-          <p className="text-xs font-semibold text-emerald-500">Active staff</p>
+          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: dGREEN_D, letterSpacing: "-1.2px" }}>{displayTeachers}</p>
+          <p className="text-[11px] font-semibold" style={{ color: dGREEN_D }}>Active staff</p>
         </div>
 
-        {/* Attendance */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-muted-foreground">Today's Attendance</span>
-            <div className="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center">
-              <CalendarCheck className="w-4.5 h-4.5 text-orange-500" />
+        {/* Attendance — gold */}
+        <div className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(255,170,0,0.12) 0%, transparent 70%)" }} />
+          <div className="flex items-center justify-between mb-4 relative">
+            <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>Today's Attendance</span>
+            <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+              style={{ background: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, boxShadow: "0 4px 14px rgba(255,170,0,0.28)" }}>
+              <CalendarCheck className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
             </div>
           </div>
-          <p className="text-[2.5rem] font-black tracking-tight text-foreground leading-none mb-2">{displayAttendance}</p>
+          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: dGOLD, letterSpacing: "-1.2px" }}>{displayAttendance}</p>
           {attendanceDelta !== null ? (
-            <p className={`text-xs font-semibold flex items-center gap-1 ${attendanceDelta >= 0 ? "text-green-500" : "text-red-500"}`}>
-              {attendanceDelta >= 0
-                ? <ArrowUp className="w-3 h-3" />
-                : <ArrowDown className="w-3 h-3" />}
+            <p className="text-[11px] font-semibold flex items-center gap-1" style={{ color: attendanceDelta >= 0 ? dGREEN_D : dRED }}>
+              {attendanceDelta >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
               {Math.abs(attendanceDelta)}% vs yesterday
             </p>
           ) : (
-            <p className="text-xs font-semibold text-muted-foreground">No data yet</p>
+            <p className="text-[11px] font-semibold" style={{ color: dT3 }}>No data yet</p>
           )}
         </div>
 
-        {/* Pending Incidents */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-muted-foreground">Pending Incidents</span>
-            <div className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center">
-              <AlertCircle className="w-4.5 h-4.5 text-red-500" />
+        {/* Incidents — red/violet */}
+        <div className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
+            style={{ background: `radial-gradient(circle, ${(pendingIncidents ?? 0) > 0 ? "rgba(255,51,85,0.12)" : "rgba(123,63,244,0.10)"} 0%, transparent 70%)` }} />
+          <div className="flex items-center justify-between mb-4 relative">
+            <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>Pending Incidents</span>
+            <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+              style={{
+                background: (pendingIncidents ?? 0) > 0 ? `linear-gradient(135deg, ${dRED}, #FF6688)` : `linear-gradient(135deg, ${dVIOLET}, #A07CF8)`,
+                boxShadow: (pendingIncidents ?? 0) > 0 ? "0 4px 14px rgba(255,51,85,0.28)" : "0 4px 14px rgba(123,63,244,0.26)",
+              }}>
+              <AlertCircle className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
             </div>
           </div>
-          <p className={`text-[2.5rem] font-black tracking-tight leading-none mb-2 ${(pendingIncidents ?? 0) > 0 ? "text-red-500" : "text-foreground"}`}>
+          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: (pendingIncidents ?? 0) > 0 ? dRED : dVIOLET, letterSpacing: "-1.2px" }}>
             {displayIncidents}
           </p>
-          <p className={`text-xs font-semibold ${(pendingIncidents ?? 0) > 0 ? "text-red-500" : "text-muted-foreground"}`}>
+          <p className="text-[11px] font-semibold" style={{ color: (pendingIncidents ?? 0) > 0 ? dRED : dT3 }}>
             {(pendingIncidents ?? 0) > 0 ? "Action required" : "All clear"}
           </p>
         </div>
       </div>
 
-      {/* ── Risk Alerts + Attendance Trend ───────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      {/* ── Risk Alerts + Attendance Trend ────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
 
-        {/* Today's Risk Alerts */}
-        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-            <h2 className="text-sm font-bold text-foreground">Today's Risk Alerts</h2>
-            <button className="text-xs font-semibold text-[#1e3a8a] hover:text-[#1e4fc0] flex items-center gap-0.5 transition-colors">
+        {/* Risk Alerts card */}
+        <div className="bg-white rounded-[20px] overflow-hidden flex flex-col"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+            <div className="flex items-center gap-[10px]">
+              <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                style={{ background: dRED_S, border: `0.5px solid ${dRED_B}` }}>
+                <AlertCircle className="w-4 h-4" style={{ color: dRED }} strokeWidth={2.4} />
+              </div>
+              <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Today's Risk Alerts</h2>
+            </div>
+            <button className="text-[12px] font-bold flex items-center gap-0.5 transition-colors" style={{ color: dB1 }}>
               View All <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="flex-1 divide-y divide-border/60">
+          <div className="flex-1">
             {riskAlerts.length === 0 ? (
-              <div className="px-6 py-10 text-center">
-                <p className="text-sm font-medium text-muted-foreground">No active risk alerts</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">All students are performing within acceptable range</p>
+              <div className="px-6 py-12 text-center">
+                <div className="w-14 h-14 rounded-[16px] mx-auto mb-3 flex items-center justify-center"
+                  style={{ background: dGREEN_S, border: `0.5px solid ${dGREEN_B}` }}>
+                  <Heart className="w-6 h-6" style={{ color: dGREEN }} strokeWidth={2.2} />
+                </div>
+                <p className="text-[13px] font-bold" style={{ color: dT1 }}>No active risk alerts</p>
+                <p className="text-[11px] mt-1" style={{ color: dT4 }}>All students are performing within acceptable range</p>
               </div>
             ) : (
-              riskAlerts.map(a => (
-                <div
-                  key={a.id}
-                  className={`flex items-center justify-between px-6 py-4 ${a.rowBg} hover:bg-muted/30 transition-colors duration-150`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: a.dot }} />
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-foreground truncate">{a.name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{a.detail}</p>
+              riskAlerts.map((a, idx) => {
+                const isCrit = a.level === "CRITICAL";
+                return (
+                  <div key={a.id}
+                    className="flex items-center justify-between px-6 py-4 hover:bg-[#F5F9FF] transition-colors cursor-pointer"
+                    style={{ borderTop: idx > 0 ? `0.5px solid ${dSEP}` : undefined, background: isCrit ? "rgba(255,51,85,0.03)" : "transparent" }}>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="w-[10px] h-[10px] rounded-full shrink-0"
+                        style={{ background: a.dot, boxShadow: `0 0 0 3px ${isCrit ? "rgba(255,51,85,0.15)" : "rgba(255,170,0,0.15)"}` }} />
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-bold truncate" style={{ color: dT1 }}>{a.name}</p>
+                        <p className="text-[11px] mt-0.5" style={{ color: dT3 }}>{a.detail}</p>
+                      </div>
                     </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wide px-3 py-1.5 rounded-[8px] shrink-0 ml-4 text-white"
+                      style={{
+                        background: isCrit ? `linear-gradient(135deg, ${dRED}, #FF6688)` : `linear-gradient(135deg, ${dGOLD}, #FFCC22)`,
+                        color: isCrit ? "#fff" : "#884400",
+                        boxShadow: isCrit ? "0 2px 8px rgba(255,51,85,0.26)" : "0 2px 8px rgba(255,170,0,0.24)",
+                      }}>
+                      {a.level}
+                    </span>
                   </div>
-                  <span className={`${a.badge} text-white text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-md shrink-0 ml-4`}>
-                    {a.level}
-                  </span>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
 
         {/* Attendance Trend */}
-        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-border">
-            <h2 className="text-sm font-bold text-foreground">Attendance Trend (Last 30 Days)</h2>
+        <div className="bg-white rounded-[20px] overflow-hidden"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+            <div className="flex items-center gap-[10px]">
+              <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                style={{ background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.20)" }}>
+                <CalendarCheck className="w-4 h-4" style={{ color: dB1 }} strokeWidth={2.4} />
+              </div>
+              <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Attendance Trend · 30 Days</h2>
+            </div>
           </div>
           <div className="px-4 pt-5 pb-4">
             {trendData.length === 0 ? (
-              <div className="h-[188px] flex items-center justify-center">
-                <p className="text-sm font-medium text-muted-foreground">No attendance data yet</p>
+              <div className="h-[220px] flex items-center justify-center">
+                <p className="text-[13px] font-bold" style={{ color: dT4 }}>No attendance data yet</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={188}>
-                <AreaChart data={trendData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={trendData} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
                   <defs>
                     <linearGradient id="attGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#1e3a8a" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#1e3a8a" stopOpacity={0} />
+                      <stop offset="5%" stopColor={dB1} stopOpacity={0.30} />
+                      <stop offset="95%" stopColor={dB1} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,85,255,0.08)" vertical={false} />
                   <XAxis
                     dataKey="day"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 600 }}
+                    tick={{ fontSize: 10, fill: dT4, fontWeight: 600 }}
                     ticks={[1, 5, 10, 15, 20, 25, 30]}
                     dy={6}
                   />
@@ -611,24 +689,17 @@ const Dashboard = () => {
                     domain={["auto", "auto"]}
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 600 }}
+                    tick={{ fontSize: 10, fill: dT4, fontWeight: 600 }}
                     tickFormatter={v => `${v}%`}
                     dx={-4}
                   />
                   <Tooltip
                     formatter={(v: number) => [`${v}%`, "Attendance"]}
-                    contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", boxShadow: "0 4px 20px rgba(0,0,0,0.07)", fontSize: 12, fontWeight: 700 }}
-                    cursor={{ stroke: "#1e3a8a", strokeWidth: 1, strokeDasharray: "4 4" }}
+                    contentStyle={{ borderRadius: 12, border: `0.5px solid ${dSEP}`, boxShadow: dSH, fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}
+                    cursor={{ stroke: dB1, strokeWidth: 1, strokeDasharray: "4 4" }}
                   />
-                  <Area
-                    type="monotone"
-                    dataKey="v"
-                    stroke="#1e3a8a"
-                    strokeWidth={2}
-                    fill="url(#attGrad)"
-                    dot={false}
-                    activeDot={{ r: 5, fill: "#1e3a8a", stroke: "#fff", strokeWidth: 2 }}
-                  />
+                  <Area type="monotone" dataKey="v" stroke={dB1} strokeWidth={2.5} fill="url(#attGrad)" dot={false}
+                    activeDot={{ r: 5, fill: dB1, stroke: "#fff", strokeWidth: 2 }} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -636,43 +707,58 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* ── Class Heatmap + Teachers + Comms ─────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+      {/* ── Class Heatmap + Teachers + Comms ──────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5 items-start">
 
         {/* Class Performance Heatmap */}
-        <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-border">
-            <h2 className="text-sm font-bold text-foreground">Class Performance Heatmap</h2>
+        <div className="bg-white rounded-[20px] overflow-hidden"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="flex items-center gap-[10px] px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+            <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+              style={{ background: "rgba(123,63,244,0.10)", border: "0.5px solid rgba(123,63,244,0.22)" }}>
+              <Star className="w-4 h-4" style={{ color: dVIOLET }} strokeWidth={2.4} />
+            </div>
+            <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Class Performance Heatmap</h2>
           </div>
           <div className="p-6">
             {heatmapCells.length === 0 ? (
               <div className="py-10 text-center">
-                <p className="text-sm font-medium text-muted-foreground">No results data yet</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">Heatmap will populate once exams are graded</p>
+                <p className="text-[13px] font-bold" style={{ color: dT1 }}>No results data yet</p>
+                <p className="text-[11px] mt-1" style={{ color: dT4 }}>Heatmap will populate once exams are graded</p>
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-6 gap-2.5 mb-5">
-                  {heatmapCells.map(c => (
-                    <div key={c.cls} className="flex flex-col items-center gap-1.5">
-                      <span className="text-[10px] font-bold text-muted-foreground">{c.cls}</span>
-                      <div className={`${c.color} w-full aspect-square rounded-lg shadow-sm opacity-90`} />
+                <div className="grid grid-cols-6 gap-3 mb-6">
+                  {heatmapCells.map(c => {
+                    const avgNum = c.avg ?? 0;
+                    const cellGrad = avgNum >= 75 ? `linear-gradient(135deg, ${dGREEN}, #22EE66)` :
+                                     avgNum >= 55 ? `linear-gradient(135deg, ${dGOLD}, #FFDD44)` :
+                                                    `linear-gradient(135deg, ${dRED}, #FF6688)`;
+                    const cellShadow = avgNum >= 75 ? "0 4px 12px rgba(0,200,83,0.22)" :
+                                       avgNum >= 55 ? "0 4px 12px rgba(255,170,0,0.22)" :
+                                                      "0 4px 12px rgba(255,51,85,0.22)";
+                    return (
+                      <div key={c.cls} className="flex flex-col items-center gap-2">
+                        <span className="text-[10px] font-bold" style={{ color: dT3 }}>{c.cls}</span>
+                        <div className="w-full aspect-square rounded-[12px] flex items-center justify-center text-white text-[13px] font-bold"
+                          style={{ background: c.avg === null ? dBG2 : cellGrad, boxShadow: c.avg === null ? "none" : cellShadow, letterSpacing: "-0.3px" }}>
+                          {c.avg !== null ? `${c.avg}%` : "—"}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-5 pt-4" style={{ borderTop: `0.5px solid ${dSEP}` }}>
+                  {[
+                    { color: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, label: "Good (≥75%)" },
+                    { color: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, label: "Average (55–74%)" },
+                    { color: `linear-gradient(135deg, ${dRED}, #FF6688)`, label: "Weak (<55%)" },
+                  ].map(({ color, label }) => (
+                    <div key={label} className="flex items-center gap-[6px]">
+                      <span className="w-3 h-3 rounded-[4px]" style={{ background: color }} />
+                      <span className="text-[11px] font-semibold" style={{ color: dT3 }}>{label}</span>
                     </div>
                   ))}
-                </div>
-                <div className="flex items-center gap-5 pt-4 border-t border-border/60">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-sm" />
-                    <span className="text-[11px] font-semibold text-muted-foreground">Good (≥75%)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-sm" />
-                    <span className="text-[11px] font-semibold text-muted-foreground">Average (55–74%)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm" />
-                    <span className="text-[11px] font-semibold text-muted-foreground">Weak (&lt;55%)</span>
-                  </div>
                 </div>
               </>
             )}
@@ -683,30 +769,39 @@ const Dashboard = () => {
         <div className="flex flex-col gap-5">
 
           {/* Teacher Performance */}
-          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-              <h2 className="text-sm font-bold text-foreground">Teacher Performance</h2>
-              <button className="text-xs font-semibold text-[#1e3a8a] hover:text-[#1e4fc0] flex items-center gap-0.5 transition-colors">
+          <div className="bg-white rounded-[20px] overflow-hidden"
+            style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+            <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+              <div className="flex items-center gap-[10px]">
+                <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                  style={{ background: dGREEN_S, border: `0.5px solid ${dGREEN_B}` }}>
+                  <GraduationCap className="w-4 h-4" style={{ color: dGREEN }} strokeWidth={2.4} />
+                </div>
+                <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Top Teachers</h2>
+              </div>
+              <button className="text-[12px] font-bold flex items-center gap-0.5" style={{ color: dB1 }}>
                 View All <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
             <div className="p-5">
               {teacherRows.length === 0 ? (
-                <p className="text-sm font-medium text-muted-foreground text-center py-6">No teachers added yet</p>
+                <p className="text-[13px] font-bold text-center py-6" style={{ color: dT4 }}>No teachers added yet</p>
               ) : (
-                <div className="space-y-3.5">
+                <div className="space-y-3">
                   {teacherRows.map(t => (
-                    <div key={t.ini + t.name} className="flex items-center gap-3 py-0.5">
-                      <div className={`w-9 h-9 rounded-full ${t.bg} flex items-center justify-center text-white text-xs font-black shrink-0`}>
+                    <div key={t.ini + t.name} className="flex items-center gap-3 py-1">
+                      <div className="w-10 h-10 rounded-[12px] flex items-center justify-center text-white text-[12px] font-bold shrink-0"
+                        style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 3px 10px rgba(0,85,255,0.22)" }}>
                         {t.ini}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-foreground truncate leading-tight">{t.name}</p>
-                        <p className="text-xs text-muted-foreground font-medium mt-0.5">{t.subject}</p>
+                        <p className="text-[13px] font-bold truncate leading-tight" style={{ color: dT1 }}>{t.name}</p>
+                        <p className="text-[11px] font-medium mt-0.5" style={{ color: dT3 }}>{t.subject}</p>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                        <span className="text-sm font-black text-foreground">{t.rating}</span>
+                      <div className="flex items-center gap-1 shrink-0 px-[10px] py-[5px] rounded-full"
+                        style={{ background: "rgba(255,170,0,0.10)", border: "0.5px solid rgba(255,170,0,0.22)" }}>
+                        <Star className="w-[13px] h-[13px]" style={{ color: dGOLD, fill: dGOLD }} />
+                        <span className="text-[12px] font-bold" style={{ color: "#884400" }}>{t.rating}</span>
                       </div>
                     </div>
                   ))}
@@ -716,38 +811,83 @@ const Dashboard = () => {
           </div>
 
           {/* Urgent Communications */}
-          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-              <h2 className="text-sm font-bold text-foreground">Urgent Communications</h2>
+          <div className="bg-white rounded-[20px] overflow-hidden"
+            style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+            <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+              <div className="flex items-center gap-[10px]">
+                <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                  style={{ background: dORANGE_S, border: `0.5px solid ${dORANGE_B}` }}>
+                  <AlertCircle className="w-4 h-4" style={{ color: dORANGE }} strokeWidth={2.4} />
+                </div>
+                <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Urgent Communications</h2>
+              </div>
               {urgentComms.length > 0 && (
-                <span className="bg-red-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full tracking-wide">
+                <span className="text-[10px] font-bold px-3 py-[5px] rounded-full text-white"
+                  style={{ background: `linear-gradient(135deg, ${dRED}, #FF6688)`, boxShadow: "0 2px 8px rgba(255,51,85,0.26)" }}>
                   {urgentComms.length} New
                 </span>
               )}
             </div>
             <div className="p-5">
               {urgentComms.length === 0 ? (
-                <p className="text-sm font-medium text-muted-foreground text-center py-6">No urgent messages</p>
+                <p className="text-[13px] font-bold text-center py-6" style={{ color: dT4 }}>No urgent messages</p>
               ) : (
-                <div className="space-y-3">
-                  {urgentComms.map(c => (
-                    <div key={c.id} className={`border-l-4 ${c.border} bg-muted/40 rounded-r-xl pl-4 pr-3 py-3 hover:bg-muted/70 transition-colors duration-150 cursor-pointer`}>
-                      <p className="text-sm font-bold text-foreground leading-snug">{c.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        From: {c.from}{c.time ? ` · ${c.time}` : ""}
-                      </p>
-                    </div>
-                  ))}
+                <div className="space-y-2.5">
+                  {urgentComms.map(c => {
+                    const isHigh = c.border.includes("red");
+                    return (
+                      <div key={c.id} className="rounded-[14px] px-4 py-3 transition-colors cursor-pointer hover:bg-[#F5F9FF]"
+                        style={{
+                          background: dBG,
+                          borderLeft: `3px solid ${isHigh ? dRED : dGOLD}`,
+                        }}>
+                        <p className="text-[13px] font-bold leading-snug" style={{ color: dT1 }}>{c.title}</p>
+                        <p className="text-[11px] font-medium mt-0.5" style={{ color: dT3 }}>
+                          From: {c.from}{c.time ? ` · ${c.time}` : ""}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
-
         </div>
       </div>
 
+      {/* ── AI Intelligence Card ──────────────────────────────────────────────── */}
+      {(riskAlerts.length > 0 || healthIndex !== null) && (
+        <div className="mt-5 rounded-[22px] px-7 py-6 relative overflow-hidden"
+          style={{
+            background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
+            boxShadow: "0 10px 36px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+          }}>
+          <div className="absolute -top-10 -right-7 w-[200px] h-[200px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+          <div className="flex items-center gap-2 mb-3 relative z-10">
+            <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+              style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+              <Star className="w-4 h-4 text-white" strokeWidth={2.4} />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI School Intelligence</span>
+          </div>
+          <p className="text-[14px] leading-[1.75] font-normal relative z-10 max-w-[900px]" style={{ color: "rgba(255,255,255,0.88)" }}>
+            School is operating at <strong style={{ color: "#fff", fontWeight: 700 }}>{displayHealth}/100 health</strong>
+            {healthLabelText !== "Loading" && <> · <strong style={{ color: "#fff", fontWeight: 700 }}>{healthLabelText}</strong> tier</>}.
+            {riskAlerts.length > 0 && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{riskAlerts.length} student{riskAlerts.length === 1 ? "" : "s"}</strong> flagged for immediate attention.</>}
+            {attendanceToday !== null && <> Today's attendance at <strong style={{ color: "#fff", fontWeight: 700 }}>{attendanceToday}%</strong>{attendanceDelta !== null ? ` (${attendanceDelta >= 0 ? "+" : ""}${attendanceDelta}% vs yesterday)` : ""}.</>}
+            {" "}Review risk alerts and urgent communications to maintain momentum.
+          </p>
+          <div className="flex items-center gap-2 mt-4 pt-3 relative z-10" style={{ borderTop: "0.5px solid rgba(255,255,255,0.12)" }}>
+            <div className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ background: dB4 }} />
+            <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.45)" }}>Auto-generated · Real-time data</span>
+          </div>
+        </div>
+      )}
+
     </div>
   );
+
 };
 
 export default Dashboard;

@@ -1195,119 +1195,226 @@ const TeacherPerformance = () => {
     );
   }
 
+  // Desktop derived stats
+  const dTopPerformers = teachers.filter(t => (t.avgScore ?? 0) >= 80).length;
+  const dNeedsSupport = teachers.filter(t => t.avgScore != null && t.avgScore < 60).length;
+  const dFiltered = filtered;
+  const dSchoolAvgTier = schoolAvg >= 80 ? { label: "Excellent", c: "#66EE88", bg: "rgba(0,200,83,0.22)", bdr: "rgba(0,200,83,0.4)" }
+    : schoolAvg >= 65 ? { label: "Strong", c: "#66EE88", bg: "rgba(0,200,83,0.22)", bdr: "rgba(0,200,83,0.4)" }
+    : schoolAvg >= 50 ? { label: "Average", c: "#FFDD88", bg: "rgba(255,170,0,0.22)", bdr: "rgba(255,170,0,0.4)" }
+    : { label: "Weak", c: "#FF99AA", bg: "rgba(255,51,85,0.22)", bdr: "rgba(255,51,85,0.4)" };
+
   return (
-    <div className="space-y-6 pb-10">
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold text-[#1e294b] tracking-tight">Teacher Performance</h1>
-          <p className="text-sm text-slate-400 font-medium mt-0.5">Impact analysis — same subject across teachers, same teacher across classes</p>
-        </div>
-        <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-4 py-2 border border-slate-100">
-          <BarChart3 className="w-4 h-4 text-[#1e3a8a]" />
-          <span className="text-xs font-bold text-[#1e294b]">School Avg: {schoolAvg}%</span>
-        </div>
-      </div>
-
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search by teacher or subject..."
-          className="w-full pl-10 pr-4 h-10 bg-white border border-slate-100 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 shadow-sm transition-all" />
-      </div>
-
-      {/* Stats strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: "Total Teachers", value: teachers.length,  color: "text-blue-600",  bg: "bg-blue-50"  },
-          { label: "Avg Class Score", value: `${schoolAvg}%`, color: "text-green-600", bg: "bg-green-50" },
-          { label: "Top Performers", value: teachers.filter(t => (t.avgScore ?? 0) >= 80).length, color: "text-emerald-600", bg: "bg-emerald-50" },
-          { label: "Needs Support",  value: teachers.filter(t => t.avgScore != null && t.avgScore < 60).length, color: "text-red-600", bg: "bg-red-50" },
-        ].map(s => (
-          <div key={s.label} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
-            <div className={`text-2xl font-bold ${s.color}`}>{loading ? "—" : s.value}</div>
-            <div className="text-xs text-slate-400 font-semibold mt-1">{s.label}</div>
+      {/* Top toolbar */}
+      <div className="flex items-start justify-between gap-4 pt-2 mb-5">
+        <div className="min-w-0">
+          <div className="text-[28px] font-bold leading-tight tracking-[-0.7px] flex items-center gap-[10px]" style={{ color: "#001040" }}>
+            <div className="w-9 h-9 rounded-[12px] flex items-center justify-center flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 4px 12px rgba(0,85,255,0.32)" }}>
+              <GraduationCap className="w-[19px] h-[19px] text-white" strokeWidth={2.4} />
+            </div>
+            Teacher Performance
           </div>
-        ))}
+          <div className="text-[12px] font-normal mt-[6px] ml-[46px] flex items-center gap-[6px]" style={{ color: "#5070B0" }}>
+            <span>Impact Analysis</span>
+            <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
+            <span>Same Subject Across Teachers</span>
+            <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
+            <span>Same Teacher Across Classes</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search teacher or subject…"
+              className="h-[42px] pl-10 pr-4 rounded-[12px] bg-white text-[13px] font-medium outline-none min-w-[280px]"
+              style={{ color: "#001040", border: "0.5px solid rgba(0,85,255,0.14)", boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.09)" }} />
+          </div>
+        </div>
       </div>
 
-      {/* Teacher Cards / Table */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20 bg-white rounded-3xl border border-slate-100">
-          <Loader2 className="w-6 h-6 animate-spin text-slate-300" />
+      {/* Dark hero banner */}
+      <div className="rounded-[22px] px-6 py-5 relative overflow-hidden flex items-center justify-between gap-5 mb-4"
+        style={{
+          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+          boxShadow: "0 8px 26px rgba(0,8,60,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+        }}>
+        <div className="absolute -top-12 -right-8 w-[180px] h-[180px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+        <div className="flex items-center gap-[12px] min-w-0 relative z-10">
+          <div className="w-11 h-11 rounded-[13px] flex items-center justify-center flex-shrink-0"
+            style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.24)" }}>
+            <BarChart3 className="w-[22px] h-[22px]" style={{ color: "rgba(255,255,255,0.92)" }} strokeWidth={2.1} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] mb-[5px]" style={{ color: "rgba(255,255,255,0.50)" }}>
+              School Avg · {teachers.length} Teacher{teachers.length === 1 ? "" : "s"}
+            </div>
+            <div className="text-[34px] font-bold text-white leading-none tracking-[-1px]">
+              {loading ? "—" : `${schoolAvg}%`}
+            </div>
+          </div>
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-3xl border border-slate-100 text-center">
-          <GraduationCap className="w-8 h-8 text-slate-200 mb-2" />
-          <p className="text-sm font-semibold text-slate-400">No teacher data found</p>
-          <p className="text-xs text-slate-300 mt-1">Assign teachers to classes to see performance</p>
+        <div className="flex items-center gap-3 flex-shrink-0 relative z-10">
+          <div className="flex items-center gap-[5px] px-[14px] py-[7px] rounded-full"
+            style={{ background: dSchoolAvgTier.bg, border: `0.5px solid ${dSchoolAvgTier.bdr}` }}>
+            <span className="text-[12px] font-bold" style={{ color: dSchoolAvgTier.c }}>{dSchoolAvgTier.label} tier</span>
+          </div>
+          <div className="grid grid-cols-3 gap-[1px] rounded-[13px] overflow-hidden" style={{ background: "rgba(255,255,255,0.12)" }}>
+            {[
+              { val: teachers.length, label: "Faculty", color: "#fff" },
+              { val: dTopPerformers, label: "Top Tier", color: "#66EE88" },
+              { val: dNeedsSupport, label: "Support", color: dNeedsSupport > 0 ? "#FF99AA" : "#FFDD88" },
+            ].map(({ val, label, color }) => (
+              <div key={label} className="py-[10px] px-[14px] text-center min-w-[72px]" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <div className="text-[17px] font-bold leading-none mb-[3px]" style={{ color, letterSpacing: "-0.4px" }}>{val}</div>
+                <div className="text-[8px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.40)" }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bright stat cards 4-wide */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        {[
+          { label: "Total Teachers", val: teachers.length, sub: "In branch", variant: "blue", Icon: Users },
+          { label: "Avg Class Score", val: loading ? "—" : `${schoolAvg}%`, sub: dSchoolAvgTier.label, variant: "violet", Icon: BarChart3 },
+          { label: "Top Performers", val: dTopPerformers, sub: "Score ≥ 80%", variant: "green", Icon: Star },
+          { label: "Needs Support", val: dNeedsSupport, sub: "Score < 60%", variant: "gold", Icon: AlertTriangle },
+        ].map((s, i) => {
+          const styles: Record<string, { bg: string; bdr: string; lbl: string; val: string; icoColor: string }> = {
+            blue:   { bg: "linear-gradient(140deg, #DDEAFF 0%, #A8C5FF 55%, #7AA5FF 100%)", bdr: "rgba(0,85,255,0.4)",   lbl: "#002080", val: "#001055", icoColor: "#001055" },
+            violet: { bg: "linear-gradient(140deg, #EEE0FF 0%, #C9A8FF 55%, #A880FF 100%)", bdr: "rgba(123,63,244,0.4)", lbl: "#3A1580", val: "#280C5C", icoColor: "#3A1580" },
+            green:  { bg: "linear-gradient(140deg, #DEFCE8 0%, #8CF0B0 55%, #50E088 100%)", bdr: "rgba(0,200,83,0.4)",   lbl: "#005A20", val: "#004018", icoColor: "#005A20" },
+            gold:   { bg: "linear-gradient(140deg, #FFF6D1 0%, #FFE488 55%, #FFCC33 100%)", bdr: "rgba(255,170,0,0.4)",  lbl: "#664400", val: "#472A00", icoColor: "#664400" },
+          };
+          const st = styles[s.variant];
+          const Icon = s.Icon;
+          return (
+            <div key={i} className="rounded-[20px] p-5 relative overflow-hidden"
+              style={{ background: st.bg, border: `0.5px solid ${st.bdr}`, boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
+              <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
+              <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
+                style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)", boxShadow: "0 2px 6px rgba(0,0,0,0.05)" }}>
+                <Icon className="w-[15px] h-[15px]" style={{ color: st.icoColor }} strokeWidth={2.5} />
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px] relative z-[1]" style={{ color: st.lbl }}>{s.label}</div>
+              <div className="text-[34px] font-bold leading-none tracking-[-1px] mb-[5px] relative z-[1]" style={{ color: st.val }}>{s.val}</div>
+              <div className="text-[11px] font-semibold relative z-[1]" style={{ color: st.lbl }}>{s.sub}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Section label */}
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] mb-3" style={{ color: "#99AACC" }}>
+        Faculty Performance Roster
+        <span className="px-[10px] py-[3px] rounded-full text-[10px] font-bold ml-1"
+          style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}>
+          {dFiltered.length} {dFiltered.length === 1 ? "teacher" : "teachers"}
+        </span>
+        <div className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
+      </div>
+
+      {/* Teacher table */}
+      {loading ? (
+        <div className="rounded-[22px] py-16 text-center bg-white"
+          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+          <Loader2 className="w-9 h-9 animate-spin mx-auto mb-3" style={{ color: "#0055FF" }} />
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "#99AACC" }}>Loading teacher performance…</p>
+        </div>
+      ) : dFiltered.length === 0 ? (
+        <div className="rounded-[22px] py-16 text-center bg-white"
+          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+          <div className="w-16 h-16 rounded-[20px] mx-auto mb-4 flex items-center justify-center"
+            style={{ background: "rgba(0,85,255,0.08)", border: "0.5px solid rgba(0,85,255,0.14)" }}>
+            <GraduationCap className="w-7 h-7" style={{ color: "rgba(0,85,255,0.45)" }} strokeWidth={2} />
+          </div>
+          <p className="text-[13px] font-bold mb-1" style={{ color: "#001040" }}>No teacher data found</p>
+          <p className="text-[12px]" style={{ color: "#99AACC" }}>{search ? "Try a different search term." : "Assign teachers to classes to see performance."}</p>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="rounded-[22px] bg-white overflow-hidden"
+          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
           <div className="overflow-x-auto">
-            <table className="w-full text-left min-w-[700px]">
+            <table className="w-full text-left min-w-[900px]">
               <thead>
-                <tr className="bg-slate-50/50">
-                  {["Teacher", "Subjects", "Classes", "Students", "Avg Score", "vs School", "Trend", "Detail"].map(h => (
-                    <th key={h} className="py-4 px-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                <tr style={{ background: "rgba(0,85,255,0.04)", borderBottom: "0.5px solid rgba(0,85,255,0.07)" }}>
+                  {["Teacher", "Subjects", "Classes", "Students", "Avg Score", "vs School", "Trend", ""].map(h => (
+                    <th key={h} className="py-[14px] px-5 text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "#99AACC" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filtered.map(t => {
-                  const T     = trend(t);
+              <tbody>
+                {dFiltered.map((t, i, arr) => {
+                  const T = trend(t);
                   const TIcon = T?.icon;
-                  const g     = t.avgScore != null ? grade(t.avgScore) : "—";
+                  const g = t.avgScore != null ? grade(t.avgScore) : "—";
+                  const scoreColor = t.avgScore == null ? "#99AACC" : t.avgScore >= 80 ? "#00C853" : t.avgScore >= 60 ? "#0055FF" : t.avgScore >= 40 ? "#FF8800" : "#FF3355";
+                  const gradeStyle = g === "A" ? { bg: "rgba(0,200,83,0.10)", c: "#007830", bdr: "rgba(0,200,83,0.22)" }
+                    : g === "B" ? { bg: "rgba(0,85,255,0.10)", c: "#0055FF", bdr: "rgba(0,85,255,0.22)" }
+                    : g === "C" ? { bg: "rgba(255,170,0,0.10)", c: "#884400", bdr: "rgba(255,170,0,0.22)" }
+                    : { bg: "rgba(255,51,85,0.10)", c: "#FF3355", bdr: "rgba(255,51,85,0.22)" };
                   return (
-                    <tr key={t.id} className="hover:bg-slate-50/40 transition-colors">
-                      <td className="py-4 px-5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-[#1e3a8a]/10 flex items-center justify-center text-[11px] font-black text-[#1e3a8a]">
-                            {t.name.substring(0,2).toUpperCase()}
+                    <tr key={t.id} className="transition-colors hover:bg-[#F5F9FF]"
+                      style={i < arr.length - 1 ? { borderBottom: "0.5px solid rgba(0,85,255,0.05)" } : {}}>
+                      <td className="py-[14px] px-5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-[11px] flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0"
+                            style={{ background: "linear-gradient(135deg, #0044EE, #2277FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.24)" }}>
+                            {t.name.substring(0, 2).toUpperCase()}
                           </div>
-                          <span className="text-xs font-bold text-[#1e294b]">{t.name}</span>
+                          <span className="text-[13px] font-bold tracking-[-0.2px]" style={{ color: "#001040" }}>{t.name}</span>
                         </div>
                       </td>
-                      <td className="py-4 px-5">
-                        <div className="flex flex-wrap gap-1">
-                          {t.subjects.slice(0,2).map(s => (
-                            <span key={s} className="text-[9px] font-bold text-[#1e3a8a] bg-blue-50 px-2 py-0.5 rounded-full">{s}</span>
+                      <td className="py-[14px] px-5">
+                        <div className="flex flex-wrap gap-[5px]">
+                          {t.subjects.slice(0, 2).map(s => (
+                            <span key={s} className="text-[10px] font-bold px-[10px] py-[3px] rounded-full"
+                              style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.18)" }}>{s}</span>
                           ))}
-                          {t.subjects.length > 2 && <span className="text-[9px] text-slate-400 font-bold">+{t.subjects.length-2}</span>}
-                          {t.subjects.length === 0 && <span className="text-[10px] text-slate-300">—</span>}
+                          {t.subjects.length > 2 && <span className="text-[10px] font-bold self-center" style={{ color: "#99AACC" }}>+{t.subjects.length - 2}</span>}
+                          {t.subjects.length === 0 && <span className="text-[11px]" style={{ color: "#99AACC" }}>—</span>}
                         </div>
                       </td>
-                      <td className="py-4 px-5 text-xs font-semibold text-slate-500">{t.classCount || "—"}</td>
-                      <td className="py-4 px-5 text-xs font-semibold text-slate-500">{t.studentCount || "—"}</td>
-                      <td className="py-4 px-5">
+                      <td className="py-[14px] px-5 text-[12px] font-semibold" style={{ color: "#5070B0" }}>{t.classCount || "—"}</td>
+                      <td className="py-[14px] px-5 text-[12px] font-semibold" style={{ color: "#5070B0" }}>{t.studentCount || "—"}</td>
+                      <td className="py-[14px] px-5">
                         {t.avgScore != null ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-[#1e294b]">{t.avgScore}%</span>
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${gradeColor(g)}`}>{g}</span>
+                            <span className="text-[14px] font-bold" style={{ color: scoreColor, letterSpacing: "-0.2px" }}>{t.avgScore}%</span>
+                            <span className="px-[8px] py-[2px] rounded-full text-[10px] font-bold"
+                              style={{ background: gradeStyle.bg, color: gradeStyle.c, border: `0.5px solid ${gradeStyle.bdr}` }}>{g}</span>
                           </div>
-                        ) : <span className="text-xs text-slate-300">No data</span>}
+                        ) : <span className="text-[11px]" style={{ color: "#99AACC" }}>No data</span>}
                       </td>
-                      <td className="py-4 px-5">
+                      <td className="py-[14px] px-5">
                         {t.vsSchoolAvg != null ? (
-                          <span className={`text-xs font-bold ${t.vsSchoolAvg >= 0 ? "text-green-600" : "text-red-500"}`}>
+                          <span className="text-[12px] font-bold" style={{ color: t.vsSchoolAvg >= 0 ? "#00C853" : "#FF3355" }}>
                             {t.vsSchoolAvg >= 0 ? "+" : ""}{t.vsSchoolAvg}%
                           </span>
-                        ) : <span className="text-xs text-slate-300">—</span>}
+                        ) : <span className="text-[11px]" style={{ color: "#99AACC" }}>—</span>}
                       </td>
-                      <td className="py-4 px-5">
+                      <td className="py-[14px] px-5">
                         {T && TIcon ? (
-                          <div className={`flex items-center gap-1 ${T.color}`}>
-                            <TIcon className="w-3.5 h-3.5" />
-                            <span className="text-[10px] font-black">{T.label}</span>
+                          <div className="flex items-center gap-[5px]">
+                            <TIcon className={`w-[14px] h-[14px] ${T.color}`} strokeWidth={2.3} />
+                            <span className={`text-[11px] font-bold ${T.color}`}>{T.label}</span>
                           </div>
-                        ) : <span className="text-xs text-slate-300">—</span>}
+                        ) : <span className="text-[11px]" style={{ color: "#99AACC" }}>—</span>}
                       </td>
-                      <td className="py-4 px-5">
+                      <td className="py-[14px] px-5">
                         <button onClick={() => setSelected(t)}
-                          className="flex items-center gap-1 text-[10px] font-black text-[#1e3a8a] hover:underline">
-                          View <ChevronRight className="w-3 h-3" />
+                          className="h-8 px-[12px] rounded-[10px] flex items-center gap-[5px] text-[11px] font-bold text-white transition-transform active:scale-95 hover:scale-[1.03] relative overflow-hidden"
+                          style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.26)" }}>
+                          <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+                          <span className="relative z-10">View</span>
+                          <ChevronRight className="w-3 h-3 relative z-10" strokeWidth={2.5} />
                         </button>
                       </td>
                     </tr>

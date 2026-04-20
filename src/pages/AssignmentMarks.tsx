@@ -652,106 +652,171 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
   }
 
   return (
-    <div className="animate-in fade-in duration-300 pb-10">
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-300" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-        <button onClick={onBack} className="hover:text-foreground transition-colors">Assignments & Marks</button>
-        <span>/</span>
-        <span className="text-foreground font-semibold">{group.title}</span>
+      <div className="pt-2 pb-3 flex items-center gap-[6px]">
+        <button onClick={onBack}
+          className="flex items-center gap-1 text-[11px] font-bold transition-opacity active:opacity-60 hover:opacity-80"
+          style={{ color: "#0055FF" }}>
+          <ChevronLeft className="w-3 h-3" strokeWidth={2.5} />
+          Assignments &amp; Marks
+        </button>
+        <span className="text-[11px]" style={{ color: "#99AACC" }}>/</span>
+        <span className="text-[11px] font-bold truncate max-w-[280px] capitalize" style={{ color: "#002080" }}>{group.title}</span>
       </div>
 
-      {/* Header */}
-      <div className="bg-card border border-border rounded-2xl p-6 mb-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-foreground mb-1">{group.title}</h1>
-            <p className="text-sm text-muted-foreground">
-              {group.className} &nbsp;•&nbsp; Teacher: {group.teacherName} &nbsp;•&nbsp; Due: {fmtDate(group.dueDate)}
-            </p>
+      {/* Marks hero card */}
+      <div className="rounded-[22px] bg-white p-6 relative overflow-hidden mb-4"
+        style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+        <div className="absolute -top-6 -right-5 w-[130px] h-[130px] rounded-full pointer-events-none"
+          style={{ background: `radial-gradient(circle, rgba(0,85,255,0.06) 0%, transparent 70%)` }} />
+        <div className="flex items-start justify-between gap-4 relative">
+          <div className="min-w-0 flex-1">
+            <div className="text-[24px] font-bold leading-tight tracking-[-0.5px] capitalize mb-[8px]" style={{ color: "#001040" }}>
+              {group.title}
+            </div>
+            <div className="text-[12px] font-semibold flex items-center gap-[8px] flex-wrap" style={{ color: "#5070B0" }}>
+              <span className="px-[10px] py-[3px] rounded-full text-[11px] font-bold text-white"
+                style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)" }}>{group.className}</span>
+              <span>Teacher: <strong style={{ color: "#002080", fontWeight: 700 }}>{group.teacherName}</strong></span>
+              <span className="w-[3px] h-[3px] rounded-full" style={{ background: "#99AACC" }} />
+              <span>Due: {fmtDate(group.dueDate)}</span>
+            </div>
           </div>
           <button onClick={handleDownload}
-            className="flex items-center gap-2 px-4 py-2 bg-[#1e3a8a] text-white text-sm font-bold rounded-xl hover:bg-[#1e3a8a]/90 transition-colors shrink-0">
-            <Download className="w-4 h-4" /> Download Marks
+            className="h-[42px] px-5 rounded-[12px] flex items-center gap-[7px] text-[12px] font-bold text-white uppercase tracking-[0.06em] transition-transform active:scale-95 hover:scale-[1.02] relative overflow-hidden flex-shrink-0"
+            style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)" }}>
+            <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+            <Download className="w-[14px] h-[14px] relative z-10" strokeWidth={2.4} />
+            <span className="relative z-10">Download Marks</span>
           </button>
+        </div>
+        {/* Progress bar */}
+        <div className="h-2 rounded-[4px] overflow-hidden mt-5" style={{ background: "#E0ECFF" }}>
+          <div className="h-full rounded-[4px]"
+            style={{ width: `${Math.max(0, Math.min(100, group.avgScore))}%`, background: `linear-gradient(90deg, #0055FF, #66BBFF)` }} />
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* Bright stat cards 4-wide */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Total Graded", val: group.gradedCount, icon: Check,        color: "bg-green-50 text-green-600" },
-          { label: "Avg Score",    val: `${group.avgScore}%`, icon: TrendingUp, color: "bg-blue-50 text-blue-600" },
-          { label: "Top Score",    val: `${group.topScore}%`, icon: Trophy,     color: "bg-amber-50 text-amber-600" },
-          { label: "Top Student",  val: group.topStudent || "—", icon: Users,   color: "bg-purple-50 text-purple-600" },
-        ].map(s => (
-          <div key={s.label} className="bg-card border border-border rounded-2xl p-4 shadow-sm flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${s.color}`}>
-              <s.icon className="w-4 h-4" />
+          { label: "Total Graded", val: group.gradedCount, sub: "Students", variant: "green", Icon: Check },
+          { label: "Avg Score", val: `${group.avgScore}%`, sub: group.avgScore >= 70 ? "Strong" : group.avgScore >= 50 ? "Average" : "Needs work", variant: "blue", Icon: TrendingUp },
+          { label: "Top Score", val: `${group.topScore}%`, sub: "Highest", variant: "gold", Icon: Trophy },
+          { label: "Top Student", val: (group.topStudent || "—").split(" ").slice(0, 2).join(" "), sub: "Topper", variant: "violet", Icon: Users, isText: true },
+        ].map((s, i) => {
+          const styles: Record<string, { bg: string; bdr: string; lbl: string; val: string; icoColor: string }> = {
+            blue:   { bg: "linear-gradient(140deg, #DDEAFF 0%, #A8C5FF 55%, #7AA5FF 100%)", bdr: "rgba(0,85,255,0.4)",   lbl: "#002080", val: "#001055", icoColor: "#001055" },
+            violet: { bg: "linear-gradient(140deg, #EEE0FF 0%, #C9A8FF 55%, #A880FF 100%)", bdr: "rgba(123,63,244,0.4)", lbl: "#3A1580", val: "#280C5C", icoColor: "#3A1580" },
+            green:  { bg: "linear-gradient(140deg, #DEFCE8 0%, #8CF0B0 55%, #50E088 100%)", bdr: "rgba(0,200,83,0.4)",   lbl: "#005A20", val: "#004018", icoColor: "#005A20" },
+            gold:   { bg: "linear-gradient(140deg, #FFF6D1 0%, #FFE488 55%, #FFCC33 100%)", bdr: "rgba(255,170,0,0.4)",  lbl: "#664400", val: "#472A00", icoColor: "#664400" },
+          };
+          const st = styles[s.variant];
+          const Icon = s.Icon;
+          return (
+            <div key={i} className="rounded-[20px] p-5 relative overflow-hidden"
+              style={{ background: st.bg, border: `0.5px solid ${st.bdr}`, boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
+              <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
+              <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
+                style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)", boxShadow: "0 2px 6px rgba(0,0,0,0.05)" }}>
+                <Icon className="w-[15px] h-[15px]" style={{ color: st.icoColor }} strokeWidth={2.5} />
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px] relative z-[1]" style={{ color: st.lbl }}>{s.label}</div>
+              {s.isText ? (
+                <div className="text-[18px] font-bold leading-tight tracking-[-0.3px] mb-[5px] relative z-[1] truncate" style={{ color: st.val }}>{s.val}</div>
+              ) : (
+                <div className="text-[34px] font-bold leading-none tracking-[-1px] mb-[5px] relative z-[1]" style={{ color: st.val }}>{s.val}</div>
+              )}
+              <div className="text-[11px] font-semibold relative z-[1]" style={{ color: st.lbl }}>{s.sub}</div>
             </div>
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground font-semibold">{s.label}</p>
-              <p className="text-sm font-black text-foreground truncate">{s.val}</p>
-            </div>
-          </div>
-        ))}
+          );
+        })}
+      </div>
+
+      {/* Section label */}
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] mb-3" style={{ color: "#99AACC" }}>
+        Student-wise Marks
+        <span className="px-[10px] py-[3px] rounded-full text-[10px] font-bold ml-1"
+          style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}>
+          {sorted.length} {sorted.length === 1 ? "student" : "students"}
+        </span>
+        <div className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
       </div>
 
       {/* Student marks table */}
-      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-border">
-          <h2 className="text-base font-bold text-foreground">Student-wise Marks</h2>
-        </div>
+      <div className="rounded-[22px] bg-white overflow-hidden"
+        style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[480px]">
+          <table className="w-full min-w-[720px]">
             <thead>
-              <tr className="border-b border-border bg-muted/20">
-                {["#", "Student Name", "Score /100", "Grade", "Feedback"].map(h => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">{h}</th>
+              <tr style={{ background: "rgba(0,85,255,0.04)", borderBottom: "0.5px solid rgba(0,85,255,0.07)" }}>
+                {["#", "Student", "Score", "Grade", "AI Feedback"].map(h => (
+                  <th key={h} className="px-5 py-[14px] text-left text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "#99AACC" }}>{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {sorted.map((r, i) => {
+            <tbody>
+              {sorted.map((r, i, arr) => {
                 const score  = r.score !== null && r.score !== undefined ? parseFloat(r.score) : null;
                 const graded = score !== null && !isNaN(score);
                 const lg     = graded ? scoreLetter(score!) : null;
+                const scoreColor = !graded ? "#99AACC" : score! >= 80 ? "#00C853" : score! >= 60 ? "#0055FF" : score! >= 40 ? "#FF8800" : "#FF3355";
+                const gStyle = !lg ? null
+                  : lg.letter === "A" ? { bg: "rgba(0,200,83,0.10)", c: "#007830", bdr: "rgba(0,200,83,0.22)", fill: "linear-gradient(90deg, #00C853, #66EE88)" }
+                  : lg.letter === "B" ? { bg: "rgba(0,85,255,0.10)", c: "#0055FF", bdr: "rgba(0,85,255,0.22)", fill: "linear-gradient(90deg, #0055FF, #4499FF)" }
+                  : lg.letter === "C" ? { bg: "rgba(255,136,0,0.10)", c: "#884400", bdr: "rgba(255,136,0,0.22)", fill: "linear-gradient(90deg, #FF8800, #FFCC22)" }
+                  : { bg: "rgba(255,51,85,0.10)", c: "#FF3355", bdr: "rgba(255,51,85,0.22)", fill: "linear-gradient(90deg, #FF3355, #FF88AA)" };
+                const name = r.studentName || "—";
                 return (
-                  <tr key={r.studentId || i} className="hover:bg-muted/10 transition-colors">
-                    <td className="px-5 py-3 text-sm text-muted-foreground">{i + 1}</td>
-                    <td className="px-5 py-3">
+                  <tr key={r.studentId || i} className="transition-colors hover:bg-[#F5F9FF]"
+                    style={i < arr.length - 1 ? { borderBottom: "0.5px solid rgba(0,85,255,0.05)" } : {}}>
+                    <td className="px-5 py-[14px] text-[11px] font-bold" style={{ color: "#99AACC" }}>{i + 1}</td>
+                    <td className="px-5 py-[14px]">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#1e3a8a]/10 flex items-center justify-center text-[11px] font-bold text-[#1e3a8a] shrink-0">
-                          {(r.studentName || "?").substring(0, 2).toUpperCase()}
+                        <div className="w-9 h-9 rounded-[11px] flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0"
+                          style={{ background: "linear-gradient(135deg, #0044EE, #2277FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.24)" }}>
+                          {name.substring(0, 2).toUpperCase()}
                         </div>
-                        <p className="text-sm font-semibold text-foreground">{r.studentName || "—"}</p>
+                        <span className="text-[13px] font-bold tracking-[-0.2px]" style={{ color: "#001040" }}>{name}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-5 py-[14px]">
                       {graded ? (
-                        <span className="text-sm font-bold text-foreground">{score}/100</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[15px] font-bold tracking-[-0.3px]" style={{ color: scoreColor }}>{score}/100</span>
+                          <div className="h-1 w-[80px] rounded-[2px] overflow-hidden" style={{ background: "#E0ECFF" }}>
+                            <div className="h-full rounded-[2px]" style={{ width: `${Math.max(0, Math.min(100, score!))}%`, background: gStyle!.fill }} />
+                          </div>
+                        </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground font-semibold">Not graded</span>
+                        <span className="text-[11px] font-semibold" style={{ color: "#99AACC" }}>Not graded</span>
                       )}
                     </td>
-                    <td className="px-5 py-3">
-                      {lg ? (
-                        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-black ${lg.color}`}>
+                    <td className="px-5 py-[14px]">
+                      {lg && gStyle ? (
+                        <span className="inline-flex items-center justify-center w-9 h-9 rounded-[11px] text-[13px] font-bold"
+                          style={{ background: gStyle.bg, color: gStyle.c, border: `0.5px solid ${gStyle.bdr}` }}>
                           {lg.letter}
                         </span>
-                      ) : <span className="text-muted-foreground">—</span>}
+                      ) : <span style={{ color: "#99AACC" }}>—</span>}
                     </td>
-                    <td className="px-5 py-3 max-w-xs">
+                    <td className="px-5 py-[14px] max-w-md">
                       {r.feedback ? (
-                        <span className="text-sm text-muted-foreground">{r.feedback}</span>
+                        <span className="text-[12px] leading-[1.55]" style={{ color: "#5070B0" }}>{r.feedback}</span>
                       ) : graded ? (
                         <div>
-                          <p className="text-sm text-muted-foreground leading-snug">{aiFeedback(score!, r.studentName || "", group.title)}</p>
-                          <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-purple-500 bg-purple-50 px-1.5 py-0.5 rounded-full">
-                            ✦ AI
+                          <p className="text-[12px] leading-[1.55]" style={{ color: "#5070B0" }}>
+                            {aiFeedback(score!, r.studentName || "", group.title)}
+                          </p>
+                          <span className="inline-flex items-center gap-1 mt-[6px] px-[9px] py-[3px] rounded-full text-[10px] font-bold"
+                            style={{ background: "rgba(123,63,244,0.10)", color: "#7B3FF4", border: "0.5px solid rgba(123,63,244,0.22)" }}>
+                            <Sparkles className="w-[10px] h-[10px]" strokeWidth={2.3} /> AI
                           </span>
                         </div>
                       ) : (
-                        <span className="text-muted-foreground/50">—</span>
+                        <span style={{ color: "#99AACC" }}>—</span>
                       )}
                     </td>
                   </tr>
@@ -762,13 +827,13 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
         </div>
       </div>
 
-      {/* Back */}
-      <div className="mt-6">
-        <button onClick={onBack}
-          className="flex items-center gap-2 px-5 py-2.5 bg-card border border-border rounded-xl text-sm font-bold text-foreground shadow-sm hover:bg-muted/30 transition-colors">
-          <ChevronLeft className="w-4 h-4" /> Back to Assignments
-        </button>
-      </div>
+      {/* Back button */}
+      <button onClick={onBack}
+        className="mt-5 h-[42px] px-5 rounded-[12px] flex items-center gap-[7px] text-[12px] font-bold bg-white transition-transform active:scale-95 hover:scale-[1.02]"
+        style={{ color: "#002080", border: "0.5px solid rgba(0,85,255,0.14)", boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.09)" }}>
+        <ChevronLeft className="w-[14px] h-[14px]" strokeWidth={2.4} />
+        Back to Assignments
+      </button>
     </div>
   );
 }
@@ -892,145 +957,258 @@ export default function AssignmentMarks() {
     return <AssignmentDetail group={selectedGroup} onBack={() => setSelectedGroup(null)} />;
   }
 
-  /* ── list view ── */
+  /* ── list view (desktop) ── */
+  const dSchoolAvgTier = !stats.totalGraded ? { label: "No data", c: "#CCDDEE", bg: "rgba(153,170,204,.18)", bdr: "rgba(153,170,204,.32)" }
+    : stats.avgScore >= 80 ? { label: "Excellent", c: "#66EE88", bg: "rgba(0,200,83,0.22)", bdr: "rgba(0,200,83,0.4)" }
+    : stats.avgScore >= 60 ? { label: "Strong", c: "#66EE88", bg: "rgba(0,200,83,0.22)", bdr: "rgba(0,200,83,0.4)" }
+    : stats.avgScore >= 45 ? { label: "Average", c: "#FFDD88", bg: "rgba(255,170,0,0.22)", bdr: "rgba(255,170,0,0.4)" }
+    : { label: "Needs Work", c: "#FF99AA", bg: "rgba(255,51,85,0.22)", bdr: "rgba(255,51,85,0.4)" };
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Assignments &amp; Marks</h1>
-        <p className="text-sm text-muted-foreground">Class-wise assignment marks submitted by teachers</p>
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+
+      {/* Top toolbar */}
+      <div className="flex items-start justify-between gap-4 pt-2 mb-5">
+        <div className="min-w-0">
+          <div className="text-[28px] font-bold leading-tight tracking-[-0.7px] flex items-center gap-[10px]" style={{ color: "#001040" }}>
+            <div className="w-9 h-9 rounded-[12px] flex items-center justify-center flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 4px 12px rgba(0,85,255,0.32)" }}>
+              <FileText className="w-[19px] h-[19px] text-white" strokeWidth={2.4} />
+            </div>
+            Assignments &amp; Marks
+          </div>
+          <div className="text-[12px] font-normal mt-[6px] ml-[46px] flex items-center gap-[6px]" style={{ color: "#5070B0" }}>
+            <span>Class-wise Marks</span>
+            <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
+            <span>Teacher Submissions</span>
+            <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
+            <span>AI Feedback Engine</span>
+          </div>
+        </div>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Total Assignments", val: loading ? "…" : stats.totalAssignments, icon: BookOpen, color: "bg-blue-50 text-blue-600" },
-          { label: "Total Graded",      val: loading ? "…" : stats.totalGraded,      icon: Check,    color: "bg-green-50 text-green-600" },
-          { label: "School Avg Score",  val: loading ? "…" : `${stats.avgScore}%`,   icon: TrendingUp, color: "bg-amber-50 text-amber-600" },
-          { label: "Top Performer",     val: loading ? "…" : stats.topStudent,       icon: Trophy,   color: "bg-purple-50 text-purple-600" },
-        ].map(s => (
-          <div key={s.label} className="bg-card border border-border rounded-2xl p-5 shadow-sm flex items-center gap-4">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${s.color}`}>
-              <s.icon className="w-5 h-5" />
+      {/* Dark hero banner */}
+      <div className="rounded-[22px] px-6 py-5 relative overflow-hidden flex items-center justify-between gap-5 mb-4"
+        style={{
+          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+          boxShadow: "0 8px 26px rgba(0,8,60,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+        }}>
+        <div className="absolute -top-12 -right-8 w-[180px] h-[180px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+        <div className="flex items-center gap-[12px] min-w-0 relative z-10">
+          <div className="w-11 h-11 rounded-[13px] flex items-center justify-center flex-shrink-0"
+            style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.24)" }}>
+            <TrendingUp className="w-[22px] h-[22px]" style={{ color: "rgba(255,255,255,0.92)" }} strokeWidth={2.1} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] mb-[5px]" style={{ color: "rgba(255,255,255,0.50)" }}>
+              School Avg Score · {stats.totalGraded} Graded Submission{stats.totalGraded === 1 ? "" : "s"}
             </div>
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground font-semibold">{s.label}</p>
-              <p className="text-lg font-black text-foreground truncate">{s.val}</p>
+            <div className="text-[34px] font-bold text-white leading-none tracking-[-1px]">
+              {loading ? "—" : `${stats.avgScore}%`}
             </div>
           </div>
-        ))}
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0 relative z-10">
+          <div className="flex items-center gap-[5px] px-[14px] py-[7px] rounded-full"
+            style={{ background: dSchoolAvgTier.bg, border: `0.5px solid ${dSchoolAvgTier.bdr}` }}>
+            <span className="text-[12px] font-bold" style={{ color: dSchoolAvgTier.c }}>{dSchoolAvgTier.label}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-[1px] rounded-[13px] overflow-hidden" style={{ background: "rgba(255,255,255,0.12)" }}>
+            {[
+              { val: stats.totalAssignments, label: "Assignments", color: "#fff" },
+              { val: stats.totalGraded, label: "Graded", color: "#66EE88" },
+              { val: stats.topStudent && stats.topStudent !== "—" ? stats.topStudent.split(" ")[0] : "—", label: "Topper", color: "#FFDD88" },
+            ].map(({ val, label, color }) => (
+              <div key={label} className="py-[10px] px-[14px] text-center min-w-[80px]" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <div className="text-[17px] font-bold leading-none mb-[3px] truncate" style={{ color, letterSpacing: "-0.4px" }}>{val}</div>
+                <div className="text-[8px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.40)" }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Class filter tabs */}
+      {/* Bright stat cards 4-wide */}
+      <div className="grid grid-cols-4 gap-4 mb-5">
+        {[
+          { label: "Total Assignments", val: loading ? "—" : stats.totalAssignments, sub: "This term", variant: "blue", Icon: BookOpen },
+          { label: "Total Graded", val: loading ? "—" : stats.totalGraded, sub: stats.totalAssignments > 0 ? `Across ${stats.totalAssignments} assignment${stats.totalAssignments === 1 ? "" : "s"}` : "No data", variant: "green", Icon: Check },
+          { label: "School Avg Score", val: loading ? "—" : stats.totalGraded > 0 ? `${stats.avgScore}%` : "—", sub: dSchoolAvgTier.label, variant: "gold", Icon: TrendingUp },
+          { label: "Top Performer", val: loading ? "—" : stats.topStudent, sub: stats.topStudent && stats.topStudent !== "—" ? "Highest across submissions" : "No data", variant: "violet", Icon: Trophy, isText: true },
+        ].map((s, i) => {
+          const styles: Record<string, { bg: string; bdr: string; lbl: string; val: string; icoColor: string }> = {
+            blue:   { bg: "linear-gradient(140deg, #DDEAFF 0%, #A8C5FF 55%, #7AA5FF 100%)", bdr: "rgba(0,85,255,0.4)",   lbl: "#002080", val: "#001055", icoColor: "#001055" },
+            violet: { bg: "linear-gradient(140deg, #EEE0FF 0%, #C9A8FF 55%, #A880FF 100%)", bdr: "rgba(123,63,244,0.4)", lbl: "#3A1580", val: "#280C5C", icoColor: "#3A1580" },
+            green:  { bg: "linear-gradient(140deg, #DEFCE8 0%, #8CF0B0 55%, #50E088 100%)", bdr: "rgba(0,200,83,0.4)",   lbl: "#005A20", val: "#004018", icoColor: "#005A20" },
+            gold:   { bg: "linear-gradient(140deg, #FFF6D1 0%, #FFE488 55%, #FFCC33 100%)", bdr: "rgba(255,170,0,0.4)",  lbl: "#664400", val: "#472A00", icoColor: "#664400" },
+          };
+          const st = styles[s.variant];
+          const Icon = s.Icon;
+          return (
+            <div key={i} className="rounded-[20px] p-5 relative overflow-hidden"
+              style={{ background: st.bg, border: `0.5px solid ${st.bdr}`, boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
+              <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
+              <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
+                style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)", boxShadow: "0 2px 6px rgba(0,0,0,0.05)" }}>
+                <Icon className="w-[15px] h-[15px]" style={{ color: st.icoColor }} strokeWidth={2.5} />
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px] relative z-[1]" style={{ color: st.lbl }}>{s.label}</div>
+              {s.isText ? (
+                <div className="text-[18px] font-bold leading-tight tracking-[-0.3px] mb-[5px] relative z-[1] truncate" style={{ color: st.val }}>{s.val}</div>
+              ) : (
+                <div className="text-[34px] font-bold leading-none tracking-[-1px] mb-[5px] relative z-[1]" style={{ color: st.val }}>{s.val}</div>
+              )}
+              <div className="text-[11px] font-semibold relative z-[1] truncate" style={{ color: st.lbl }}>{s.sub}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Class filter pills */}
       {!loading && classes.length > 1 && (
-        <div className="flex gap-2 flex-wrap">
-          {classes.map(cls => (
-            <button key={cls} onClick={() => setClassFilter(cls)}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors border ${
-                classFilter === cls
-                  ? "bg-[#1e3a8a] text-white border-[#1e3a8a]"
-                  : "bg-card text-muted-foreground border-border hover:border-[#1e3a8a] hover:text-[#1e3a8a]"
-              }`}>
-              {cls}
-            </button>
-          ))}
+        <div className="flex gap-[7px] flex-wrap mb-5">
+          {classes.map(cls => {
+            const active = classFilter === cls;
+            return (
+              <button key={cls} onClick={() => setClassFilter(cls)}
+                className="h-[36px] px-4 rounded-[12px] text-[12px] font-bold whitespace-nowrap transition-transform active:scale-95 hover:scale-[1.03] relative overflow-hidden"
+                style={active
+                  ? { background: "linear-gradient(135deg, #0055FF, #1166FF)", color: "#fff", boxShadow: "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)", letterSpacing: "0.04em" }
+                  : { background: "#fff", color: "#5070B0", border: "0.5px solid rgba(0,85,255,0.14)", boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.09)", letterSpacing: "0.04em" }}>
+                {active && <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />}
+                <span className="relative z-10">{cls}</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* Assignments table */}
-      <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <h2 className="text-base font-bold text-foreground">
-            {classFilter === "All" ? "All Assignments" : `${classFilter} — Assignments`}
-          </h2>
-          <span className="text-xs text-muted-foreground font-semibold">{filtered.length} assignments</span>
-        </div>
+      {/* Section label */}
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] mb-3" style={{ color: "#99AACC" }}>
+        {classFilter === "All" ? "All Assignments" : `${classFilter} Assignments`}
+        <span className="px-[10px] py-[3px] rounded-full text-[10px] font-bold ml-1"
+          style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}>
+          {filtered.length} {filtered.length === 1 ? "assignment" : "assignments"}
+        </span>
+        <div className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
+      </div>
 
-        {loading ? (
-          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center px-6">
-            <FileText className="w-12 h-12 text-muted-foreground/30 mb-4" />
-            <p className="text-sm font-bold text-muted-foreground">No assignment marks yet</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Teachers enter marks via Teacher Dashboard → Assignments → Grade Assignment.
-            </p>
+      {/* Assignments table */}
+      {loading ? (
+        <div className="rounded-[22px] py-16 text-center bg-white"
+          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+          <Loader2 className="w-9 h-9 animate-spin mx-auto mb-3" style={{ color: "#0055FF" }} />
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "#99AACC" }}>Loading assignments…</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-[22px] py-16 text-center bg-white"
+          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+          <div className="w-16 h-16 rounded-[20px] mx-auto mb-4 flex items-center justify-center"
+            style={{ background: "rgba(0,85,255,0.08)", border: "0.5px solid rgba(0,85,255,0.14)" }}>
+            <FileText className="w-7 h-7" style={{ color: "rgba(0,85,255,0.45)" }} strokeWidth={2} />
           </div>
-        ) : (
+          <p className="text-[13px] font-bold mb-1" style={{ color: "#001040" }}>No assignment marks yet</p>
+          <p className="text-[12px] max-w-[440px] mx-auto leading-[1.55]" style={{ color: "#99AACC" }}>
+            Teachers enter marks via Teacher Dashboard → Assignments → Grade Assignment.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-[22px] bg-white overflow-hidden"
+          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px]">
+            <table className="w-full min-w-[900px]">
               <thead>
-                <tr className="border-b border-border bg-muted/20">
+                <tr style={{ background: "rgba(0,85,255,0.04)", borderBottom: "0.5px solid rgba(0,85,255,0.07)" }}>
                   {["Assignment", "Class", "Teacher", "Due Date", "Graded", "Avg Score", "Top Score", ""].map(h => (
-                    <th key={h} className="px-5 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{h}</th>
+                    <th key={h} className="px-5 py-[14px] text-left text-[10px] font-bold uppercase tracking-[0.10em] whitespace-nowrap" style={{ color: "#99AACC" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
-                {filtered.map((g, i) => (
-                  <tr key={g.homeworkId || i} className="hover:bg-muted/10 transition-colors">
-                    {/* Assignment name */}
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-[#1e3a8a]/10 flex items-center justify-center shrink-0">
-                          <FileText className="w-3.5 h-3.5 text-[#1e3a8a]" />
+              <tbody>
+                {filtered.map((g, i, arr) => {
+                  const allGraded = g.gradedCount === g.results.length && g.gradedCount > 0;
+                  const avgColor = g.avgScore >= 70 ? "#00C853" : g.avgScore >= 50 ? "#FF8800" : "#FF3355";
+                  return (
+                    <tr key={g.homeworkId || i} className="transition-colors hover:bg-[#F5F9FF]"
+                      style={i < arr.length - 1 ? { borderBottom: "0.5px solid rgba(0,85,255,0.05)" } : {}}>
+                      {/* Assignment name */}
+                      <td className="px-5 py-[14px]">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-[11px] flex items-center justify-center flex-shrink-0"
+                            style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.28)" }}>
+                            <FileText className="w-[16px] h-[16px] text-white" strokeWidth={2.3} />
+                          </div>
+                          <p className="text-[13px] font-bold tracking-[-0.2px] capitalize" style={{ color: "#001040" }}>{g.title}</p>
                         </div>
-                        <p className="text-sm font-bold text-foreground">{g.title}</p>
-                      </div>
-                    </td>
-                    {/* Class */}
-                    <td className="px-5 py-4">
-                      <span className="text-sm font-semibold text-foreground">{g.className}</span>
-                    </td>
-                    {/* Teacher */}
-                    <td className="px-5 py-4 text-sm text-muted-foreground">{g.teacherName}</td>
-                    {/* Due date */}
-                    <td className="px-5 py-4">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> {fmtDate(g.dueDate)}
-                      </span>
-                    </td>
-                    {/* Graded */}
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-foreground">{g.gradedCount}</span>
-                        <span className="text-xs text-muted-foreground">/ {g.results.length}</span>
-                        {g.gradedCount === g.results.length && g.gradedCount > 0 && (
-                          <span className="w-4 h-4 rounded-full bg-green-100 flex items-center justify-center">
-                            <Check className="w-2.5 h-2.5 text-green-600" />
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    {/* Avg score */}
-                    <td className="px-5 py-4">
-                      <span className={`text-sm font-bold ${g.avgScore >= 70 ? "text-green-600" : g.avgScore >= 50 ? "text-amber-500" : "text-red-500"}`}>
-                        {g.gradedCount > 0 ? `${g.avgScore}%` : "—"}
-                      </span>
-                    </td>
-                    {/* Top score */}
-                    <td className="px-5 py-4">
-                      {g.gradedCount > 0 ? (
-                        <div>
-                          <p className="text-sm font-bold text-green-600">{g.topScore}%</p>
-                          <p className="text-[11px] text-muted-foreground truncate max-w-[100px]">{g.topStudent}</p>
+                      </td>
+                      {/* Class */}
+                      <td className="px-5 py-[14px]">
+                        <span className="px-[10px] py-[3px] rounded-full text-[11px] font-bold text-white"
+                          style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 2px 7px rgba(0,85,255,0.28)" }}>
+                          {g.className}
+                        </span>
+                      </td>
+                      {/* Teacher */}
+                      <td className="px-5 py-[14px] text-[12px] font-semibold" style={{ color: "#5070B0" }}>{g.teacherName}</td>
+                      {/* Due date */}
+                      <td className="px-5 py-[14px]">
+                        <span className="text-[11px] font-semibold flex items-center gap-[4px]" style={{ color: "#99AACC" }}>
+                          <Clock className="w-3 h-3" strokeWidth={2.3} /> {fmtDate(g.dueDate)}
+                        </span>
+                      </td>
+                      {/* Graded */}
+                      <td className="px-5 py-[14px]">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] font-bold" style={{ color: "#001040" }}>{g.gradedCount}</span>
+                          <span className="text-[11px] font-semibold" style={{ color: "#99AACC" }}>/ {g.results.length}</span>
+                          {allGraded && (
+                            <span className="flex items-center gap-[3px] px-[7px] py-[2px] rounded-full text-[10px] font-bold"
+                              style={{ background: "rgba(0,200,83,0.10)", color: "#007830", border: "0.5px solid rgba(0,200,83,0.22)" }}>
+                              <Check className="w-[10px] h-[10px]" strokeWidth={2.6} /> Complete
+                            </span>
+                          )}
                         </div>
-                      ) : <span className="text-muted-foreground">—</span>}
-                    </td>
-                    {/* View button */}
-                    <td className="px-5 py-4">
-                      <button onClick={() => setSelectedGroup(g)}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-[#1e3a8a] text-white text-xs font-bold rounded-lg hover:bg-[#1e3a8a]/90 transition-colors whitespace-nowrap">
-                        View Marks <ChevronRight className="w-3 h-3" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      {/* Avg score */}
+                      <td className="px-5 py-[14px]">
+                        {g.gradedCount > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[14px] font-bold" style={{ color: avgColor, letterSpacing: "-0.2px" }}>{g.avgScore}%</span>
+                            <div className="h-1 w-[70px] rounded-[2px] overflow-hidden" style={{ background: "#E0ECFF" }}>
+                              <div className="h-full rounded-[2px]"
+                                style={{ width: `${Math.max(0, Math.min(100, g.avgScore))}%`, background: `linear-gradient(90deg, ${avgColor}, ${avgColor}AA)` }} />
+                            </div>
+                          </div>
+                        ) : <span className="text-[11px]" style={{ color: "#99AACC" }}>—</span>}
+                      </td>
+                      {/* Top score */}
+                      <td className="px-5 py-[14px]">
+                        {g.gradedCount > 0 ? (
+                          <div>
+                            <p className="text-[14px] font-bold" style={{ color: "#00C853" }}>{g.topScore}%</p>
+                            <p className="text-[11px] font-semibold truncate max-w-[120px]" style={{ color: "#99AACC" }}>{g.topStudent}</p>
+                          </div>
+                        ) : <span className="text-[11px]" style={{ color: "#99AACC" }}>—</span>}
+                      </td>
+                      {/* View button */}
+                      <td className="px-5 py-[14px]">
+                        <button onClick={() => setSelectedGroup(g)}
+                          className="h-9 px-4 rounded-[11px] flex items-center gap-[5px] text-[11px] font-bold text-white transition-transform active:scale-95 hover:scale-[1.03] relative overflow-hidden whitespace-nowrap"
+                          style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.26)" }}>
+                          <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+                          <span className="relative z-10">View Marks</span>
+                          <ChevronRight className="w-3 h-3 relative z-10" strokeWidth={2.5} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

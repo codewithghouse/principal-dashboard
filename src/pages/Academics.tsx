@@ -49,6 +49,394 @@ const getSubjectStatus = (avg: number) =>
     ? { status: "Average", statusStyle: "bg-amber-50 text-amber-600 border-amber-100" }
     : { status: "Weak",    statusStyle: "bg-red-50 text-red-500 border-red-100" };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// AcademicsDesktop — Blue Apple Design
+// ═══════════════════════════════════════════════════════════════════════════
+const AcademicsDesktop = ({
+  loading, subjects, gradeDistData, curriculumData, weakItems,
+  onSelectSubject, onOpenSchedule, onGenerateReport,
+}: {
+  loading: boolean;
+  subjects: any[];
+  gradeDistData: any[];
+  curriculumData: any[];
+  weakItems: any[];
+  onSelectSubject: (s: any) => void;
+  onOpenSchedule: () => void;
+  onGenerateReport: () => void;
+}) => {
+  const B1 = "#0055FF", B2 = "#1166FF", B4 = "#4499FF";
+  const BG = "#EEF4FF", BG2 = "#E0ECFF";
+  const T1 = "#001040", T2 = "#002080", T3 = "#5070B0", T4 = "#99AACC";
+  const SEP = "rgba(0,85,255,0.08)";
+  const GREEN = "#00C853", GREEN_D = "#007830", GREEN_S = "rgba(0,200,83,0.10)", GREEN_B = "rgba(0,200,83,0.22)";
+  const RED = "#FF3355", RED_S = "rgba(255,51,85,0.10)", RED_B = "rgba(255,51,85,0.22)";
+  const ORANGE = "#FF8800";
+  const GOLD = "#FFAA00";
+  const VIOLET = "#7B3FF4";
+  const SH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 10px rgba(0,85,255,0.07), 0 10px 28px rgba(0,85,255,0.09)";
+  const SH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.12)";
+  const SH_BTN = "0 6px 22px rgba(0,85,255,0.38), 0 2px 5px rgba(0,85,255,0.18)";
+
+  const subjectGrad = (name: string) => {
+    const n = (name || "").toLowerCase();
+    if (n.includes("math")) return `linear-gradient(135deg, ${RED}, #FF6688)`;
+    if (n.includes("sci") || n.includes("bio") || n.includes("chem") || n.includes("phy")) return `linear-gradient(135deg, ${VIOLET}, #A07CF8)`;
+    if (n.includes("eng") || n.includes("lang") || n.includes("lit")) return `linear-gradient(135deg, ${GOLD}, #FFDD44)`;
+    if (n.includes("social") || n.includes("sst") || n.includes("hist") || n.includes("geo")) return `linear-gradient(135deg, ${GREEN}, #22EE66)`;
+    return `linear-gradient(135deg, ${B1}, ${B2})`;
+  };
+
+  const statusTheme = (status: string) => {
+    if (status === "Good")    return { color: GREEN_D, bg: GREEN_S, border: GREEN_B };
+    if (status === "Average") return { color: "#884400", bg: "rgba(255,170,0,0.10)", border: "rgba(255,170,0,0.22)" };
+    return                        { color: RED, bg: RED_S, border: RED_B };
+  };
+
+  const scoreColor = (avg: number) => avg >= 75 ? GREEN_D : avg >= 60 ? ORANGE : RED;
+
+  const totalSubjects = subjects.length;
+  const weakCount = subjects.filter(s => s.status === "Weak").length;
+  const goodCount = subjects.filter(s => s.status === "Good").length;
+  const avgCount  = subjects.filter(s => s.status === "Average").length;
+  const overallAvg = subjects.length > 0 ? Math.round(subjects.reduce((s, x) => s + x.avgNum, 0) / subjects.length) : 0;
+  const topSubject = subjects.length > 0 ? [...subjects].sort((a, b) => b.avgNum - a.avgNum)[0] : null;
+
+  return (
+    <div className="pb-10 max-w-[1400px] mx-auto px-2"
+      style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-4 pt-2 pb-5 flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0"
+            style={{ background: `linear-gradient(135deg, ${B1}, ${B2})`, boxShadow: "0 6px 18px rgba(0,85,255,0.28)" }}>
+            <GraduationCap className="w-[22px] h-[22px] text-white" strokeWidth={2.4} />
+          </div>
+          <div>
+            <div className="text-[24px] font-bold leading-none" style={{ color: T1, letterSpacing: "-0.6px" }}>Academic Performance</div>
+            <div className="text-[12px] mt-1" style={{ color: T3 }}>Subject-wise performance across all classes</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={onGenerateReport}
+            className="h-11 px-4 rounded-[13px] flex items-center gap-2 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02]"
+            style={{ border: `0.5px solid ${SEP}`, color: T2, boxShadow: SH }}>
+            <FileText className="w-[14px] h-[14px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
+            Generate Report
+          </button>
+          <button onClick={onOpenSchedule}
+            className="h-11 px-5 rounded-[13px] flex items-center gap-2 text-[13px] font-bold text-white relative overflow-hidden transition-transform hover:scale-[1.02]"
+            style={{ background: `linear-gradient(135deg, ${B1}, ${B2})`, boxShadow: SH_BTN }}>
+            <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+            <CalendarCheck className="w-[14px] h-[14px] relative z-10" strokeWidth={2.5} />
+            <span className="relative z-10">Schedule Remedial</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Dark Hero */}
+      <div className="rounded-[22px] px-7 py-6 relative overflow-hidden text-white"
+        style={{
+          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+          boxShadow: "0 10px 36px rgba(0,51,204,0.30), 0 0 0 0.5px rgba(255,255,255,0.10)",
+        }}>
+        <div className="absolute -right-12 -top-12 w-[220px] h-[220px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+        <div className="flex items-center justify-between gap-6 flex-wrap relative z-10">
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 rounded-[16px] flex items-center justify-center shrink-0"
+              style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+              <TrendingUp className="w-7 h-7 text-white" strokeWidth={2.2} />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] mb-[6px]" style={{ color: "rgba(255,255,255,0.55)" }}>School Average Score</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[48px] font-bold leading-none tracking-tight">{loading ? "—" : `${overallAvg}%`}</span>
+                <span className="text-[14px] font-semibold" style={{ color: "rgba(255,255,255,0.50)" }}>across {totalSubjects} subject{totalSubjects === 1 ? "" : "s"}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-5 flex-wrap">
+            {[
+              { label: "Good",    val: goodCount, color: "#66EE88" },
+              { label: "Average", val: avgCount,  color: "#FFDD44" },
+              { label: "Weak",    val: weakCount, color: "#FF88AA" },
+            ].map(s => (
+              <div key={s.label} className="flex items-center gap-2">
+                <span className="w-[10px] h-[10px] rounded-full" style={{ background: s.color, boxShadow: `0 0 0 3px ${s.color}33` }} />
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.50)" }}>{s.label}</div>
+                  <div className="text-[22px] font-bold leading-none" style={{ letterSpacing: "-0.5px" }}>{s.val}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 4 summary stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
+        {[
+          { title: "Total Subjects", val: totalSubjects, valColor: B1, sub: "Being tracked", Icon: BookText, grad: `linear-gradient(135deg, ${B1}, ${B2})`, glow: "rgba(0,85,255,0.10)", shadow: "0 4px 14px rgba(0,85,255,0.26)" },
+          { title: "Top Performer", val: topSubject ? `${topSubject.avgNum}%` : "—", valColor: GREEN_D, sub: topSubject ? topSubject.name : "No data yet", Icon: TrendingUp, grad: `linear-gradient(135deg, ${GREEN}, #22EE66)`, glow: "rgba(0,200,83,0.10)", shadow: "0 4px 14px rgba(0,200,83,0.22)" },
+          { title: "Weak Subjects", val: weakCount, valColor: RED, sub: weakCount > 0 ? "Needs remedial" : "All clear", Icon: AlertTriangle, grad: `linear-gradient(135deg, ${RED}, #FF6688)`, glow: "rgba(255,51,85,0.12)", shadow: "0 4px 14px rgba(255,51,85,0.26)" },
+          { title: "Classes Flagged", val: weakItems.length, valColor: GOLD, sub: "Class sections", Icon: Users, grad: `linear-gradient(135deg, ${GOLD}, #FFDD44)`, glow: "rgba(255,170,0,0.12)", shadow: "0 4px 14px rgba(255,170,0,0.26)" },
+        ].map(({ title, val, valColor, sub, Icon, grad, glow, shadow }) => (
+          <div key={title} className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+            style={{ boxShadow: SH_LG, border: `0.5px solid ${SEP}` }}>
+            <div className="absolute -top-6 -right-6 w-[100px] h-[100px] rounded-full pointer-events-none"
+              style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)` }} />
+            <div className="flex items-center justify-between mb-4 relative">
+              <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: T4 }}>{title}</span>
+              <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+                style={{ background: grad, boxShadow: shadow }}>
+                <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
+              </div>
+            </div>
+            <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: valColor, letterSpacing: "-1.2px" }}>{val}</p>
+            <p className="text-[11px] font-semibold truncate" style={{ color: T3 }}>{sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Section Label */}
+      <div className="flex items-center gap-3 mt-6 mb-3">
+        <div className="w-9 h-9 rounded-[11px] flex items-center justify-center"
+          style={{ background: `linear-gradient(135deg, ${B1}, ${B2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.26)" }}>
+          <BookText className="w-4 h-4 text-white" strokeWidth={2.4} />
+        </div>
+        <div className="text-[15px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>Subject Performance</div>
+        <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+          style={{ background: "rgba(0,85,255,0.10)", color: B1, border: "0.5px solid rgba(0,85,255,0.18)" }}>
+          {subjects.length} subject{subjects.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      {/* Subject Grid */}
+      {loading ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-white rounded-[20px] p-5 animate-pulse" style={{ boxShadow: SH_LG, border: `0.5px solid ${SEP}` }}>
+              <div className="w-10 h-10 rounded-[12px] mb-4" style={{ background: BG2 }} />
+              <div className="h-3 rounded w-24 mb-3" style={{ background: BG2 }} />
+              <div className="h-8 rounded w-20 mb-2" style={{ background: BG2 }} />
+              <div className="h-2 rounded w-32" style={{ background: BG2 }} />
+            </div>
+          ))}
+        </div>
+      ) : subjects.length === 0 ? (
+        <div className="bg-white rounded-[20px] py-20 flex flex-col items-center gap-3 text-center" style={{ boxShadow: SH_LG, border: `0.5px solid ${SEP}` }}>
+          <div className="w-16 h-16 rounded-[18px] flex items-center justify-center"
+            style={{ background: BG, border: `0.5px solid ${SEP}` }}>
+            <GraduationCap className="w-8 h-8" style={{ color: T4 }} strokeWidth={2} />
+          </div>
+          <p className="text-[14px] font-bold" style={{ color: T1 }}>No exam scores recorded yet</p>
+          <p className="text-[11px] max-w-[280px]" style={{ color: T4 }}>Subject performance will appear once teachers record results</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {subjects.map(s => {
+            const theme = statusTheme(s.status);
+            const grad = subjectGrad(s.name);
+            return (
+              <button key={s.id}
+                onClick={() => onSelectSubject(s)}
+                className="bg-white rounded-[20px] p-5 relative overflow-hidden group text-left transition-transform hover:scale-[1.03]"
+                style={{ boxShadow: SH_LG, border: `0.5px solid ${SEP}` }}>
+                <div className="absolute -top-6 -right-6 w-[100px] h-[100px] rounded-full pointer-events-none opacity-60"
+                  style={{ background: `radial-gradient(circle, ${theme.bg} 0%, transparent 70%)` }} />
+                <div className="flex items-center justify-between mb-4 relative">
+                  <div className="w-11 h-11 rounded-[13px] flex items-center justify-center"
+                    style={{ background: grad, boxShadow: "0 4px 14px rgba(0,85,255,0.22)" }}>
+                    <s.icon className="w-5 h-5 text-white" strokeWidth={2.3} />
+                  </div>
+                  <span className="text-[9px] font-bold uppercase tracking-[0.08em] px-[10px] py-[4px] rounded-full"
+                    style={{ background: theme.bg, color: theme.color, border: `0.5px solid ${theme.border}` }}>
+                    {s.status}
+                  </span>
+                </div>
+                <h3 className="text-[14px] font-bold mb-1 truncate" style={{ color: T1, letterSpacing: "-0.1px" }}>{s.name}</h3>
+                <div className="text-[30px] font-bold leading-none mb-3" style={{ color: scoreColor(s.avgNum), letterSpacing: "-1px" }}>{s.avg}</div>
+                <div className="h-1.5 rounded-[2px] overflow-hidden mb-3" style={{ background: BG2 }}>
+                  <div className="h-full rounded-[2px]" style={{ width: `${s.avgNum}%`, background: grad }} />
+                </div>
+                <div className="flex items-center justify-between pt-3" style={{ borderTop: `0.5px solid ${SEP}` }}>
+                  <span className="text-[10px] font-bold" style={{ color: T3 }}>
+                    {s.weakSections > 0 ? `${s.weakSections} weak section${s.weakSections === 1 ? "" : "s"}` : "All sections good"}
+                  </span>
+                  <ArrowRight className="w-[14px] h-[14px] transition-transform group-hover:translate-x-1" style={{ color: B1 }} strokeWidth={2.4} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Analytics row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
+
+        {/* Grade Distribution */}
+        <div className="bg-white rounded-[20px] overflow-hidden"
+          style={{ boxShadow: SH_LG, border: `0.5px solid ${SEP}` }}>
+          <div className="flex items-center gap-[10px] px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${SEP}` }}>
+            <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+              style={{ background: "rgba(123,63,244,0.10)", border: "0.5px solid rgba(123,63,244,0.22)" }}>
+              <FileText className="w-4 h-4" style={{ color: VIOLET }} strokeWidth={2.4} />
+            </div>
+            <h2 className="text-[15px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>Grade Distribution</h2>
+          </div>
+          <div className="p-6">
+            {gradeDistData.reduce((s, g) => s + g.value, 0) === 0 ? (
+              <div className="flex items-center justify-center h-48">
+                <p className="text-[13px] font-bold" style={{ color: T4 }}>No data yet</p>
+              </div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={240}>
+                  <PieChart>
+                    <Pie data={gradeDistData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" animationDuration={1000}>
+                      {gradeDistData.map((entry, i) => (
+                        <Cell key={i} fill={i === 0 ? GREEN : i === 1 ? B1 : i === 2 ? GOLD : RED} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: any, name: any) => [value, name]}
+                      contentStyle={{ borderRadius: 12, border: `0.5px solid ${SEP}`, boxShadow: SH, fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                  {gradeDistData.map((g, i) => {
+                    const c = i === 0 ? GREEN : i === 1 ? B1 : i === 2 ? GOLD : RED;
+                    return (
+                      <div key={g.name} className="flex items-center gap-2 px-3 py-2 rounded-[12px]"
+                        style={{ background: BG, border: `0.5px solid ${SEP}` }}>
+                        <span className="w-3 h-3 rounded-[4px]" style={{ background: c }} />
+                        <span className="text-[11px] font-bold flex-1 truncate" style={{ color: T2 }}>{g.name}</span>
+                        <span className="text-[13px] font-bold" style={{ color: c }}>{g.value}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Curriculum Progress */}
+        <div className="bg-white rounded-[20px] overflow-hidden"
+          style={{ boxShadow: SH_LG, border: `0.5px solid ${SEP}` }}>
+          <div className="flex items-center gap-[10px] px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${SEP}` }}>
+            <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+              style={{ background: GREEN_S, border: `0.5px solid ${GREEN_B}` }}>
+              <TrendingUp className="w-4 h-4" style={{ color: GREEN }} strokeWidth={2.4} />
+            </div>
+            <h2 className="text-[15px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>Curriculum Progress</h2>
+          </div>
+          <div className="p-6">
+            {curriculumData.length === 0 ? (
+              <div className="flex items-center justify-center h-48">
+                <p className="text-[13px] font-bold" style={{ color: T4 }}>No data yet</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {curriculumData.map(c => {
+                  const grad = c.progress >= 75 ? `linear-gradient(90deg, ${GREEN}, #66EE88)` :
+                               c.progress >= 55 ? `linear-gradient(90deg, ${B1}, ${B2})` :
+                                                   `linear-gradient(90deg, ${GOLD}, #FFDD44)`;
+                  const color = c.progress >= 75 ? GREEN_D : c.progress >= 55 ? B1 : "#884400";
+                  return (
+                    <div key={c.subject}>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-[13px] font-bold" style={{ color: T1 }}>{c.subject}</span>
+                        <span className="text-[13px] font-bold" style={{ color }}>{c.progress}%</span>
+                      </div>
+                      <div className="h-2.5 rounded-[3px] overflow-hidden" style={{ background: BG2 }}>
+                        <div className="h-full rounded-[3px] transition-all duration-700" style={{ width: `${c.progress}%`, background: grad }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Weak Subjects Section */}
+      {weakItems.length > 0 && (
+        <div className="mt-5 rounded-[22px] overflow-hidden relative"
+          style={{
+            background: "linear-gradient(145deg, rgba(255,51,85,0.04) 0%, rgba(255,255,255,0.6) 100%)",
+            boxShadow: SH_LG,
+            border: `0.5px solid ${RED_B}`,
+          }}>
+          <div className="flex items-center gap-[10px] px-6 py-[18px] bg-white" style={{ borderBottom: `0.5px solid ${SEP}` }}>
+            <div className="w-9 h-9 rounded-[11px] flex items-center justify-center"
+              style={{ background: `linear-gradient(135deg, ${RED}, #FF6688)`, boxShadow: "0 4px 14px rgba(255,51,85,0.26)" }}>
+              <AlertTriangle className="w-4 h-4 text-white" strokeWidth={2.4} />
+            </div>
+            <h2 className="text-[15px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>Weak Subjects Requiring Attention</h2>
+            <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+              style={{ background: RED_S, color: RED, border: `0.5px solid ${RED_B}` }}>
+              {weakItems.length}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-6">
+            {weakItems.map((w, i) => (
+              <div key={i} className="bg-white rounded-[16px] p-4 flex items-center justify-between"
+                style={{ border: `0.5px solid ${RED_B}`, boxShadow: SH }}>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-bold" style={{ color: T1 }}>{w.subject}</p>
+                  <p className="text-[11px] mt-0.5 flex items-center gap-1" style={{ color: T3 }}>
+                    <Users className="w-[11px] h-[11px]" strokeWidth={2.3} />
+                    {w.className} · {w.studentCount} students
+                  </p>
+                </div>
+                <div className="text-right ml-3">
+                  <div className="text-[22px] font-bold leading-none" style={{ color: RED, letterSpacing: "-0.5px" }}>{w.avg}%</div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.08em] mt-1" style={{ color: T4 }}>Avg</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* AI Intelligence Card */}
+      {!loading && subjects.length > 0 && (
+        <div className="mt-5 rounded-[22px] px-7 py-6 relative overflow-hidden"
+          style={{
+            background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
+            boxShadow: "0 10px 36px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+          }}>
+          <div className="absolute -top-10 -right-7 w-[200px] h-[200px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+          <div className="flex items-center gap-2 mb-3 relative z-10">
+            <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+              style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+              <TrendingUp className="w-4 h-4 text-white" strokeWidth={2.4} />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI Academic Intelligence</span>
+          </div>
+          <p className="text-[14px] leading-[1.75] font-normal relative z-10 max-w-[900px]" style={{ color: "rgba(255,255,255,0.88)" }}>
+            School is averaging <strong style={{ color: "#fff", fontWeight: 700 }}>{overallAvg}%</strong> across <strong style={{ color: "#fff", fontWeight: 700 }}>{totalSubjects} subjects</strong>.
+            {topSubject && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{topSubject.name}</strong> leads with <strong style={{ color: "#fff", fontWeight: 700 }}>{topSubject.avg}</strong>.</>}
+            {weakCount > 0 && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{weakCount}</strong> subject{weakCount === 1 ? " needs" : "s need"} remedial action across <strong style={{ color: "#fff", fontWeight: 700 }}>{weakItems.length} class section{weakItems.length === 1 ? "" : "s"}</strong>.</>}
+            {" "}Schedule focused revision to lift underperforming cohorts before next assessment.
+          </p>
+          <div className="flex items-center gap-2 mt-4 pt-3 relative z-10" style={{ borderTop: "0.5px solid rgba(255,255,255,0.12)" }}>
+            <div className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ background: B4 }} />
+            <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.45)" }}>Auto-generated · Real-time data</span>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};
+
 // ─── component ───────────────────────────────────────────────────────────────
 const Academics = () => {
   const { userData } = useAuth();
@@ -270,216 +658,39 @@ const Academics = () => {
           }}
         />
       ) : (
-      <>
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-black text-foreground tracking-tight">Academic Performance</h1>
-        <p className="text-sm text-muted-foreground font-medium mt-1">Subject-wise academic performance overview</p>
-      </div>
-
-      {/* ── SUBJECT STAT CARDS ───────────────────────────────────────────────── */}
-      {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
-          {[1,2,3,4].map((i) => (
-            <div key={i} className="bg-card border border-border rounded-2xl p-6 shadow-sm animate-pulse">
-              <div className="h-4 bg-slate-100 rounded w-24 mb-4" />
-              <div className="h-10 bg-slate-100 rounded w-20 mb-3" />
-              <div className="h-3 bg-slate-100 rounded w-32" />
-            </div>
-          ))}
-        </div>
-      ) : subjects.length === 0 ? (
-        <div className="col-span-4 py-20 text-center bg-card rounded-2xl border border-dashed border-border">
-          <GraduationCap className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-          <p className="text-sm font-bold text-slate-400">No exam scores recorded yet</p>
-          <p className="text-xs text-slate-300 mt-1">Subject performance will appear once teachers record results</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
-          {subjects.map((s) => (
-            <div
-              key={s.id}
-              onClick={() => setSelectedSubject(s)}
-              className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-            >
-              <div className="flex items-center justify-between mb-5">
-                <div className={`w-11 h-11 rounded-xl ${s.iconBg} flex items-center justify-center`}>
-                  <s.icon className={`w-5 h-5 ${s.iconColor}`} />
-                </div>
-                <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border ${s.statusStyle}`}>
-                  {s.status}
-                </span>
-              </div>
-              <h3 className="text-base font-bold text-foreground mb-1">{s.name}</h3>
-              <div className={`text-3xl font-black mb-3 ${s.avgNum < 60 ? "text-red-500" : s.avgNum < 75 ? "text-amber-500" : "text-green-600"}`}>
-                {s.avg}
-              </div>
-              <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-muted-foreground">
-                  Weak Sections: {s.weakSections}
-                </span>
-                <ArrowRight className="w-4 h-4 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── ANALYTICS ROW ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* Grade Distribution Donut */}
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-base font-bold text-foreground mb-6">Grade Distribution – Latest Exam</h2>
-          {gradeDistData.reduce((s, g) => s + g.value, 0) === 0 ? (
-            <div className="flex items-center justify-center h-48 text-slate-400 text-sm font-bold">
-              No data yet
-            </div>
-          ) : (
-          <ResponsiveContainer width="100%" height={280}>
-            <PieChart>
-              <Pie
-                data={gradeDistData}
-                cx="50%" cy="45%"
-                innerRadius={65} outerRadius={100}
-                paddingAngle={4}
-                dataKey="value"
-                animationDuration={1200}
-                label={({ cx, cy, midAngle, innerRadius, outerRadius, name }: any) => {
-                  const RADIAN = Math.PI / 180;
-                  const r = innerRadius + (outerRadius - innerRadius) * 0.5;
-                  const x = cx + (r + 28) * Math.cos(-midAngle * RADIAN);
-                  const y = cy + (r + 28) * Math.sin(-midAngle * RADIAN);
-                  return (
-                    <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize={10} fontWeight={700} fill="#64748b">
-                      {name}
-                    </text>
-                  );
-                }}
-                labelLine={false}
-              >
-                {gradeDistData.map((entry, i) => (
-                  <Cell key={i} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value: any, name: any) => [value, name]}
-                contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)", fontSize: "12px", fontWeight: 700 }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          )}
-          {/* Legend */}
-          <div className="flex flex-wrap justify-center gap-x-5 gap-y-2 mt-2">
-            {gradeDistData.map((g) => (
-              <div key={g.name} className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: g.color }} />
-                <span className="text-[11px] font-semibold text-muted-foreground">{g.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Curriculum Progress */}
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-base font-bold text-foreground mb-6">Curriculum Progress</h2>
-          {curriculumData.length === 0 ? (
-            <div className="flex items-center justify-center h-48 text-slate-400 text-sm font-bold">
-              No data yet
-            </div>
-          ) : (
-            <div className="space-y-5">
-              {curriculumData.map((c) => (
-                <div key={c.subject}>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <span className="text-sm font-bold text-foreground">{c.subject}</span>
-                    <span className="text-sm font-black text-foreground">{c.progress}%</span>
-                  </div>
-                  <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{
-                        width: `${c.progress}%`,
-                        background: c.progress >= 75 ? "#22c55e" : c.progress >= 55 ? "#1e3a8a" : "#f59e0b",
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── WEAK SUBJECTS REQUIRING ATTENTION ────────────────────────────────── */}
-      {weakItems.length > 0 && (
-        <div className="bg-red-50/50 border border-red-100 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center gap-2 mb-5">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
-            <h2 className="text-base font-bold text-foreground">Weak Subjects Requiring Attention</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {weakItems.map((w, i) => (
-              <div key={i} className="bg-card border border-red-100 rounded-xl p-5 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-bold text-foreground">{w.subject} – {w.className}</p>
-                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                    <Users className="w-3 h-3" />
-                    {w.studentCount} students
-                  </p>
-                </div>
-                <span className="text-lg font-black text-red-500">{w.avg}% avg</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── ACTION BUTTONS ────────────────────────────────────────────────────── */}
-      <div className="bg-card border border-border rounded-2xl p-5 shadow-sm flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => subjects.length > 0 && setSelectedSubject(subjects[0])}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shadow-sm"
-        >
-          <TrendingUp className="w-4 h-4" /> View Subject Details
-        </button>
-        <button
-          onClick={() => {
-            const html = buildReport({
-              title: "Academic Performance Report",
-              badge: "Academics",
-              heroStats: [
-                { label: "Subjects Tracked", value: subjects.length },
-                { label: "Weak Subjects",    value: subjects.filter(s => s.status === "Weak").length,    color: "#f87171" },
-                { label: "Good Subjects",    value: subjects.filter(s => s.status === "Good").length,    color: "#4ade80" },
-                { label: "Average Subjects", value: subjects.filter(s => s.status === "Average").length, color: "#fbbf24" },
-              ],
-              sections: [
-                {
-                  title: "Subject-wise Performance",
-                  type: "table",
-                  headers: ["Subject", "Average", "Status", "Weak Sections"],
-                  rows: subjects.map(s => ({
-                    cells: [s.name, s.avg, s.status, s.weakSections],
-                    highlight: s.status === "Weak",
-                  })),
-                },
-              ],
-            });
-            openReportWindow(html);
-          }}
-          className="flex items-center gap-2 px-5 py-2.5 border border-border rounded-xl text-sm font-bold text-foreground hover:bg-secondary transition-colors"
-        >
-          <FileText className="w-4 h-4" /> Generate Academic Report
-        </button>
-        <button
-          onClick={() => setShowScheduleModal(true)}
-          className="flex items-center gap-2 px-5 py-2.5 border border-border rounded-xl text-sm font-bold text-foreground hover:bg-secondary transition-colors"
-        >
-          <CalendarCheck className="w-4 h-4" /> Schedule Remedial
-        </button>
-      </div>
-      </>
+      <AcademicsDesktop
+        loading={loading}
+        subjects={subjects}
+        gradeDistData={gradeDistData}
+        curriculumData={curriculumData}
+        weakItems={weakItems}
+        onSelectSubject={(s: any) => setSelectedSubject(s)}
+        onOpenSchedule={() => setShowScheduleModal(true)}
+        onGenerateReport={() => {
+          const html = buildReport({
+            title: "Academic Performance Report",
+            badge: "Academics",
+            heroStats: [
+              { label: "Subjects Tracked", value: subjects.length },
+              { label: "Weak Subjects",    value: subjects.filter(s => s.status === "Weak").length,    color: "#f87171" },
+              { label: "Good Subjects",    value: subjects.filter(s => s.status === "Good").length,    color: "#4ade80" },
+              { label: "Average Subjects", value: subjects.filter(s => s.status === "Average").length, color: "#fbbf24" },
+            ],
+            sections: [
+              {
+                title: "Subject-wise Performance",
+                type: "table",
+                headers: ["Subject", "Average", "Status", "Weak Sections"],
+                rows: subjects.map(s => ({
+                  cells: [s.name, s.avg, s.status, s.weakSections],
+                  highlight: s.status === "Weak",
+                })),
+              },
+            ],
+          });
+          openReportWindow(html);
+        }}
+      />
       )}
 
       {/* ── SCHEDULE REMEDIAL MODAL ───────────────────────────────────────────── */}

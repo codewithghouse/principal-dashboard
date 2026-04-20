@@ -40,32 +40,6 @@ const TEMPLATE_DATA = [
   { Name: "Dr. Rajesh Kumar",   Email: "rajesh@example.com", Subject: "Physics",     Phone: "9876543211", Experience: "8 years" },
 ];
 
-// ─── Stat Card (custom, matches mockup) ─────────────────────────────────────
-const StatCard = ({
-  title, value, subtitle, subtitleGreen = false, subtitleOrange = false, icon: Icon, iconBg
-}: {
-  title: string; value: string | number; subtitle?: string;
-  subtitleGreen?: boolean; subtitleOrange?: boolean;
-  icon: any; iconBg: string;
-}) => (
-  <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-    <div className="flex items-center justify-between mb-3">
-      <span className="text-sm text-slate-500 font-medium">{title}</span>
-      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${iconBg}`}>
-        <Icon className="w-4.5 h-4.5" />
-      </div>
-    </div>
-    <div className="text-2xl font-bold text-slate-800 mb-1">{value}</div>
-    {subtitle && (
-      <span className={`text-xs font-semibold ${
-        subtitleGreen ? "text-green-600" : subtitleOrange ? "text-amber-600" : "text-slate-400"
-      }`}>
-        {subtitle}
-      </span>
-    )}
-  </div>
-);
-
 // ─── Component ────────────────────────────────────────────────────────────────
 const Teachers = () => {
   const { userData } = useAuth();
@@ -1040,123 +1014,202 @@ const Teachers = () => {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  //  DESKTOP — Blue Apple Design
+  // ═══════════════════════════════════════════════════════════════
+  const dB1 = "#0055FF", dB2 = "#1166FF", dB4 = "#4499FF";
+  const dBG = "#EEF4FF", dBG2 = "#E0ECFF";
+  const dT1 = "#001040", dT2 = "#002080", dT3 = "#5070B0", dT4 = "#99AACC";
+  const dSEP = "rgba(0,85,255,0.08)";
+  const dGREEN = "#00C853", dGREEN_D = "#007830", dGREEN_S = "rgba(0,200,83,0.10)", dGREEN_B = "rgba(0,200,83,0.22)";
+  const dRED = "#FF3355";
+  const dORANGE = "#FF8800";
+  const dGOLD = "#FFAA00";
+  const dVIOLET = "#7B3FF4";
+  const dSH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 10px rgba(0,85,255,0.07), 0 10px 28px rgba(0,85,255,0.09)";
+  const dSH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.12)";
+  const dSH_BTN = "0 6px 22px rgba(0,85,255,0.38), 0 2px 5px rgba(0,85,255,0.18)";
+
+  // Avatar gradient
+  const avatarGradD = (color: string) => {
+    if (color?.includes("emerald"))  return { bg: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, shadow: "0 4px 14px rgba(0,200,83,0.26)" };
+    if (color?.includes("amber"))    return { bg: `linear-gradient(135deg, ${dORANGE}, #FFCC22)`, shadow: "0 4px 14px rgba(255,136,0,0.26)" };
+    if (color?.includes("rose"))     return { bg: `linear-gradient(135deg, ${dRED}, #FF88AA)`, shadow: "0 4px 14px rgba(255,51,85,0.26)" };
+    if (color?.includes("indigo"))   return { bg: `linear-gradient(135deg, ${dVIOLET}, #A07CF8)`, shadow: "0 4px 14px rgba(123,63,244,0.26)" };
+    if (color?.includes("teal"))     return { bg: "linear-gradient(135deg, #00C4B4, #22DDCC)", shadow: "0 4px 14px rgba(0,196,180,0.22)" };
+    return                            { bg: `linear-gradient(135deg, ${dB1}, ${dB2})`, shadow: "0 4px 14px rgba(0,85,255,0.26)" };
+  };
+
+  const statusChipD = (status: string) => {
+    if (status === "Active")   return { bg: dGREEN_S, color: dGREEN_D, border: dGREEN_B };
+    if (status === "On Leave") return { bg: "rgba(255,136,0,0.10)", color: "#884400", border: "rgba(255,136,0,0.22)" };
+    if (status === "Invited")  return { bg: "rgba(0,85,255,0.10)", color: dB1, border: "rgba(0,85,255,0.20)" };
+    return                     { bg: "rgba(153,170,204,0.10)", color: dT3, border: "rgba(153,170,204,0.22)" };
+  };
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
+      style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
 
-      {/* ── PAGE HEADER ───────────────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">Teachers</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Manage teaching staff and monitor performance</p>
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-4 pt-2 pb-5 flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0"
+            style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 6px 18px rgba(0,85,255,0.28)" }}>
+            <GraduationCap className="w-[22px] h-[22px] text-white" strokeWidth={2.4} />
+          </div>
+          <div>
+            <div className="text-[24px] font-bold leading-none" style={{ color: dT1, letterSpacing: "-0.6px" }}>Teachers</div>
+            <div className="text-[12px] mt-1" style={{ color: dT3 }}>Manage teaching staff and monitor performance</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsBulkOpen(true)}
+            className="h-11 px-4 rounded-[13px] flex items-center gap-2 text-[12px] font-bold transition-transform hover:scale-[1.02]"
+            style={{ background: dGREEN_S, border: `0.5px solid ${dGREEN_B}`, color: dGREEN_D }}>
+            <Upload className="w-[14px] h-[14px]" strokeWidth={2.3} />
+            Bulk Import
+          </button>
+          <button
+            onClick={() => setIsInviteOpen(true)}
+            className="h-11 px-5 rounded-[13px] flex items-center gap-2 text-[13px] font-bold text-white relative overflow-hidden transition-transform hover:scale-[1.02]"
+            style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: dSH_BTN }}>
+            <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+            <Plus className="w-[14px] h-[14px] relative z-10" strokeWidth={2.5} />
+            <span className="relative z-10">Add Teacher</span>
+          </button>
+        </div>
       </div>
 
-      {/* ── STAT CARDS (4) ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Avg Class Performance"
-          value={avgClassPerf !== null ? `${avgClassPerf}%` : "—"}
-          subtitle={avgClassPerf !== null ? "Based on recorded results" : "No results yet"}
-          subtitleGreen={avgClassPerf !== null && avgClassPerf >= 60}
-          icon={TrendingUp}
-          iconBg="bg-blue-50 text-blue-600"
-        />
-        <StatCard
-          title="Teacher Attendance"
-          value={teacherAttPct !== null ? `${teacherAttPct}%` : "—"}
-          subtitle={teacherAttPct !== null
-            ? teacherAttPct >= 90 ? "Excellent" : teacherAttPct >= 75 ? "Good" : "Needs attention"
-            : "No records yet"}
-          subtitleGreen={teacherAttPct !== null && teacherAttPct >= 75}
-          icon={CalendarCheck}
-          iconBg="bg-green-50 text-green-600"
-        />
-        <StatCard
-          title="Parent Feedback"
-          value={avgRating !== null ? `${avgRating}/5` : "—"}
-          subtitle={reviewCount > 0 ? `Based on ${reviewCount} reviews` : "No reviews yet"}
-          icon={Star}
-          iconBg="bg-amber-50 text-amber-500"
-        />
-        <StatCard
-          title="Active Teachers"
-          value={`${activeCount}/${totalCount}`}
-          subtitle={onLeaveCount > 0 ? `${onLeaveCount} on leave` : "All present"}
-          subtitleOrange={onLeaveCount > 0}
-          subtitleGreen={onLeaveCount === 0}
-          icon={Users}
-          iconBg="bg-indigo-50 text-indigo-600"
-        />
+      {/* Dark Hero */}
+      <div className="rounded-[22px] px-7 py-6 relative overflow-hidden text-white"
+        style={{
+          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+          boxShadow: "0 10px 36px rgba(0,51,204,0.30), 0 0 0 0.5px rgba(255,255,255,0.10)",
+        }}>
+        <div className="absolute -right-12 -top-12 w-[220px] h-[220px] rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+        <div className="flex items-center justify-between gap-6 flex-wrap relative z-10">
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 rounded-[16px] flex items-center justify-center shrink-0"
+              style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+              <Users className="w-7 h-7 text-white" strokeWidth={2.2} />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] mb-[6px]" style={{ color: "rgba(255,255,255,0.55)" }}>Faculty Directory</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[48px] font-bold leading-none tracking-tight">{totalCount}</span>
+                <span className="text-[14px] font-semibold" style={{ color: "rgba(255,255,255,0.50)" }}>active teachers</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-5 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                <CheckCircle className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.50)" }}>Active</div>
+                <div className="text-[22px] font-bold leading-none" style={{ letterSpacing: "-0.5px" }}>{activeCount}</div>
+              </div>
+            </div>
+            <div className="w-px h-10" style={{ background: "rgba(255,255,255,0.18)" }} />
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                <Star className="w-[18px] h-[18px] text-white" strokeWidth={2.3} fill="white" />
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.50)" }}>Avg Rating</div>
+                <div className="text-[22px] font-bold leading-none" style={{ letterSpacing: "-0.5px" }}>{avgRating !== null ? `${avgRating}/5` : "—"}</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* ── TOOLBAR ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[160px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+      {/* 4 Stat Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
+        {[
+          { title: "Avg Class Performance", val: avgClassPerf !== null ? `${avgClassPerf}%` : "—", valColor: dB1, sub: avgClassPerf !== null ? "Based on recorded results" : "No results yet", subColor: dT3, Icon: TrendingUp, grad: `linear-gradient(135deg, ${dB1}, ${dB2})`, glow: "rgba(0,85,255,0.10)", shadow: "0 4px 14px rgba(0,85,255,0.26)", onClick: () => navigate("/teacher-performance") },
+          { title: "Teacher Attendance", val: teacherAttPct !== null ? `${teacherAttPct}%` : "—", valColor: dGREEN_D, sub: teacherAttPct !== null ? (teacherAttPct >= 90 ? "Excellent" : teacherAttPct >= 75 ? "Good" : "Needs attention") : "No records yet", subColor: dGREEN_D, Icon: CalendarCheck, grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, glow: "rgba(0,200,83,0.10)", shadow: "0 4px 14px rgba(0,200,83,0.22)", onClick: () => navigate("/attendance") },
+          { title: "Parent Feedback", val: avgRating !== null ? `${avgRating}/5` : "—", valColor: dGOLD, sub: reviewCount > 0 ? `Based on ${reviewCount} reviews` : "No reviews yet", subColor: dT3, Icon: Star, grad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, glow: "rgba(255,170,0,0.12)", shadow: "0 4px 14px rgba(255,170,0,0.26)", onClick: () => navigate("/teacher-leaderboard") },
+          { title: "Active Teachers", val: totalCount > 0 ? `${activeCount}/${totalCount}` : "0", valColor: dVIOLET, sub: onLeaveCount > 0 ? `${onLeaveCount} on leave` : activeCount === totalCount && totalCount > 0 ? "All present" : "—", subColor: onLeaveCount > 0 ? dORANGE : dGREEN_D, Icon: Users, grad: `linear-gradient(135deg, ${dVIOLET}, #A07CF8)`, glow: "rgba(123,63,244,0.10)", shadow: "0 4px 14px rgba(123,63,244,0.24)", onClick: () => navigate("/teacher-performance") },
+        ].map(({ title, val, valColor, sub, subColor, Icon, grad, glow, shadow, onClick }) => (
+          <button key={title} onClick={onClick}
+            className="bg-white rounded-[20px] p-5 relative overflow-hidden text-left transition-transform hover:scale-[1.02]"
+            style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+            <div className="absolute -top-6 -right-6 w-[100px] h-[100px] rounded-full pointer-events-none"
+              style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)` }} />
+            <div className="flex items-center justify-between mb-4 relative">
+              <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>{title}</span>
+              <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+                style={{ background: grad, boxShadow: shadow }}>
+                <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
+              </div>
+            </div>
+            <p className="text-[30px] font-bold tracking-tight leading-none mb-1.5" style={{ color: valColor, letterSpacing: "-1px" }}>{val}</p>
+            <p className="text-[11px] font-semibold truncate" style={{ color: subColor }}>{sub}</p>
+          </button>
+        ))}
+      </div>
+
+      {/* Filter Row */}
+      <div className="flex items-center gap-3 mt-5 flex-wrap">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
           <input
             type="text"
             placeholder="Search teachers…"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+            className="w-full h-11 pl-11 pr-4 bg-white rounded-[14px] text-[13px] font-medium outline-none"
+            style={{ border: `0.5px solid ${dSEP}`, color: dT1, boxShadow: dSH, fontFamily: "inherit" }}
           />
         </div>
-
-        {/* Subject Filter */}
-        <select
-          value={subjectFilter}
-          onChange={e => setSubjectFilter(e.target.value)}
-          className="py-2.5 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
-        >
-          <option value="">All Subjects</option>
-          {allSubjects.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-
-        {/* Status Filter */}
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className="py-2.5 px-3 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
-        >
-          <option value="">All Status</option>
-          <option value="Active">Active</option>
-          <option value="On Leave">On Leave</option>
-          <option value="Invited">Invited</option>
-        </select>
-
-        <div className="flex-1" />
-
-        {/* View Toggle */}
-        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
+        {[
+          { value: subjectFilter, set: setSubjectFilter, all: "All Subjects", opts: allSubjects.map(s => ({ value: s, label: s })) },
+          { value: statusFilter, set: setStatusFilter, all: "All Status", opts: [{ value: "Active", label: "Active" }, { value: "On Leave", label: "On Leave" }, { value: "Invited", label: "Invited" }] },
+        ].map((f, i) => (
+          <select key={i}
+            value={f.value}
+            onChange={e => f.set(e.target.value)}
+            className="h-11 px-4 pr-10 bg-white rounded-[14px] text-[13px] font-semibold outline-none cursor-pointer appearance-none"
+            style={{
+              border: `0.5px solid ${dSEP}`,
+              color: dT2,
+              boxShadow: dSH,
+              fontFamily: "inherit",
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230055FF' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 14px center",
+            }}>
+            <option value="">{f.all}</option>
+            {f.opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        ))}
+        <div className="flex items-center gap-1 bg-white rounded-[13px] p-1" style={{ border: `0.5px solid ${dSEP}`, boxShadow: dSH }}>
           <button
             onClick={() => setViewMode("grid")}
-            className={`p-1.5 rounded-md transition-colors ${viewMode === "grid" ? "bg-[#1e3a8a] text-white" : "text-slate-400 hover:text-slate-600"}`}
-          >
-            <LayoutGrid className="w-4 h-4" />
+            className="w-9 h-9 rounded-[10px] flex items-center justify-center transition-transform hover:scale-[1.06]"
+            style={{
+              background: viewMode === "grid" ? `linear-gradient(135deg, ${dB1}, ${dB2})` : "transparent",
+              color: viewMode === "grid" ? "#fff" : dT4,
+            }}>
+            <LayoutGrid className="w-4 h-4" strokeWidth={2.3} />
           </button>
           <button
             onClick={() => setViewMode("list")}
-            className={`p-1.5 rounded-md transition-colors ${viewMode === "list" ? "bg-[#1e3a8a] text-white" : "text-slate-400 hover:text-slate-600"}`}
-          >
-            <List className="w-4 h-4" />
+            className="w-9 h-9 rounded-[10px] flex items-center justify-center transition-transform hover:scale-[1.06]"
+            style={{
+              background: viewMode === "list" ? `linear-gradient(135deg, ${dB1}, ${dB2})` : "transparent",
+              color: viewMode === "list" ? "#fff" : dT4,
+            }}>
+            <List className="w-4 h-4" strokeWidth={2.3} />
           </button>
         </div>
-
-        {/* Bulk Import */}
-        <button
-          onClick={() => setIsBulkOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-        >
-          <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Bulk Import
-        </button>
-
-        {/* Add Teacher */}
-        <button
-          onClick={() => setIsInviteOpen(true)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a8a] text-white rounded-lg text-sm font-semibold hover:bg-[#1e3a8a]/90 transition-colors shadow-md"
-        >
-          <Plus className="w-4 h-4" /> Add Teacher
-        </button>
       </div>
 
       {/* ── BULK IMPORT DIALOG ────────────────────────────────────────────── */}
@@ -1332,193 +1385,225 @@ const Teachers = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ── TEACHER GRID / LIST ───────────────────────────────────────────── */}
+      {/* Section Label */}
+      <div className="flex items-center gap-3 mt-6 mb-3">
+        <div className="w-9 h-9 rounded-[11px] flex items-center justify-center"
+          style={{ background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.22)" }}>
+          <GraduationCap className="w-4 h-4" style={{ color: dB1 }} strokeWidth={2.4} />
+        </div>
+        <div className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Faculty Directory</div>
+        <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+          style={{ background: "rgba(0,85,255,0.10)", color: dB1, border: "0.5px solid rgba(0,85,255,0.18)" }}>
+          {filtered.length} teacher{filtered.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      {/* Teacher Grid / List / Empty */}
       {filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-28 bg-white rounded-2xl border border-dashed border-slate-200">
-          <GraduationCap className="w-12 h-12 text-slate-200 mb-4" />
-          <p className="text-base font-bold text-slate-400">No teachers found</p>
-          <p className="text-sm text-slate-300 mt-1">Try changing your search or filters</p>
+        <div className="bg-white rounded-[20px] py-20 flex flex-col items-center gap-3 text-center" style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="w-16 h-16 rounded-[18px] flex items-center justify-center"
+            style={{ background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.22)" }}>
+            <GraduationCap className="w-8 h-8" style={{ color: dB1 }} strokeWidth={2} />
+          </div>
+          <p className="text-[14px] font-bold" style={{ color: dT1 }}>No teachers found</p>
+          <p className="text-[11px]" style={{ color: dT4 }}>Try changing your search or filters</p>
         </div>
       ) : viewMode === "grid" ? (
-        /* ── GRID VIEW ────────────────────────────────────────────────────── */
+        /* GRID */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map(t => (
-            <div
-              key={t.id}
-              onClick={() => setSelectedTeacher(t)}
-              className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-lg transition-all cursor-pointer group relative"
-            >
-              {/* Hover actions */}
-              <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                <button
-                  onClick={e => { e.stopPropagation(); handleOpenRoster(t); }}
-                  className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-[#1e3a8a] hover:border-[#1e3a8a]/30 transition-colors shadow-sm"
-                  title="View Roster"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); handleTogglePrimary(t); }}
-                  className={`w-8 h-8 border rounded-lg flex items-center justify-center transition-colors shadow-sm ${
-                    t.isPrimarySchool
-                      ? "bg-amber-50 border-amber-300 text-amber-500"
-                      : "bg-white border-slate-200 text-slate-400 hover:text-amber-500 hover:border-amber-200"
-                  }`}
-                  title={t.isPrimarySchool ? "Primary school (click to unset)" : "Mark as teacher's primary school"}
-                >
-                  <Star className={`w-3.5 h-3.5 ${t.isPrimarySchool ? "fill-amber-500" : ""}`} />
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); handleStartEdit(t); }}
-                  className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-amber-500 hover:border-amber-200 transition-colors shadow-sm"
-                  title="Edit Name"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={e => { e.stopPropagation(); handleDeleteTeacher(t.id, t.name); }}
-                  className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 hover:border-rose-200 transition-colors shadow-sm"
-                  title="Archive"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+          {filtered.map(t => {
+            const av = avatarGradD(t.color);
+            const chip = statusChipD(t.status);
+            return (
+              <div key={t.id}
+                onClick={() => setSelectedTeacher(t)}
+                className="bg-white rounded-[20px] p-5 cursor-pointer group relative overflow-hidden transition-transform hover:scale-[1.02]"
+                style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
 
-              {/* Teacher Info Header */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className={`w-12 h-12 rounded-xl ${t.color} flex items-center justify-center text-white text-base font-bold shrink-0 group-hover:scale-105 transition-transform shadow-sm`}>
-                  {t.initials}
+                {/* Hover actions */}
+                <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                  <button onClick={e => { e.stopPropagation(); handleOpenRoster(t); }}
+                    className="w-8 h-8 bg-white rounded-[10px] flex items-center justify-center"
+                    style={{ border: `0.5px solid ${dSEP}`, color: dT4, boxShadow: dSH }}
+                    title="View Roster">
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={e => { e.stopPropagation(); handleTogglePrimary(t); }}
+                    className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                    style={{
+                      background: t.isPrimarySchool ? "rgba(255,170,0,0.12)" : "#fff",
+                      border: `0.5px solid ${t.isPrimarySchool ? "rgba(255,170,0,0.30)" : dSEP}`,
+                      color: t.isPrimarySchool ? dGOLD : dT4,
+                      boxShadow: dSH,
+                    }}
+                    title={t.isPrimarySchool ? "Primary school" : "Mark as primary"}>
+                    <Star className={`w-3.5 h-3.5 ${t.isPrimarySchool ? "fill-current" : ""}`} />
+                  </button>
+                  <button onClick={e => { e.stopPropagation(); handleStartEdit(t); }}
+                    className="w-8 h-8 bg-white rounded-[10px] flex items-center justify-center"
+                    style={{ border: `0.5px solid ${dSEP}`, color: dT4, boxShadow: dSH }}
+                    title="Edit Name">
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={e => { e.stopPropagation(); handleDeleteTeacher(t.id, t.name); }}
+                    className="w-8 h-8 bg-white rounded-[10px] flex items-center justify-center"
+                    style={{ border: `0.5px solid ${dSEP}`, color: dT4, boxShadow: dSH }}
+                    title="Archive">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <div className="min-w-0">
-                  {editingId === t.id ? (
-                    <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-                      <input
-                        autoFocus
-                        value={editName}
-                        onChange={e => setEditName(e.target.value)}
-                        onKeyDown={e => e.key === "Enter" && handleSaveName(t.id)}
-                        className="w-full text-sm font-bold border border-[#1e3a8a]/40 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
-                      />
-                      <button onClick={() => handleSaveName(t.id)} className="w-7 h-7 bg-green-500 text-white rounded-lg flex items-center justify-center shrink-0">
-                        <Save className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <h3 className="text-sm font-bold text-slate-800 truncate group-hover:text-[#1e3a8a] transition-colors leading-tight">{t.name}</h3>
-                  )}
-                  <p className="text-xs text-slate-400 mt-0.5 truncate">{t.subject}</p>
-                </div>
-              </div>
 
-              {/* Stats Rows */}
-              <div className="space-y-2.5 border-t border-slate-50 pt-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-500">Classes</span>
-                  <span className="text-sm font-bold text-slate-800">
-                    {t.classCount === null ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-300 inline" /> : t.classCount}
+                {/* Avatar row */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-[14px] flex items-center justify-center text-white text-[15px] font-bold shrink-0"
+                    style={{ background: av.bg, boxShadow: av.shadow }}>
+                    {t.initials}
+                  </div>
+                  <div className="min-w-0">
+                    {editingId === t.id ? (
+                      <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                        <input autoFocus value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          onKeyDown={e => e.key === "Enter" && handleSaveName(t.id)}
+                          className="w-full text-[14px] font-bold rounded-[8px] px-2 py-1 outline-none"
+                          style={{ border: `1px solid ${dB1}66`, color: dT1 }} />
+                        <button onClick={() => handleSaveName(t.id)}
+                          className="w-7 h-7 rounded-[8px] flex items-center justify-center text-white shrink-0"
+                          style={{ background: dGREEN }}>
+                          <Save className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <h3 className="text-[14px] font-bold truncate leading-tight" style={{ color: dT1, letterSpacing: "-0.1px" }}>{t.name}</h3>
+                    )}
+                    <p className="text-[11px] mt-0.5 truncate" style={{ color: dT3 }}>{t.subject}</p>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div className="space-y-[10px] pt-3" style={{ borderTop: `0.5px solid ${dSEP}` }}>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: dT3 }}>
+                      <BookOpen className="w-[12px] h-[12px]" strokeWidth={2.2} />
+                      Classes
+                    </span>
+                    <span className="text-[13px] font-bold" style={{ color: dT1 }}>
+                      {t.classCount === null ? <Loader2 className="w-3.5 h-3.5 animate-spin inline" style={{ color: dT4 }} /> : t.classCount}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: dT3 }}>
+                      <MapPin className="w-[12px] h-[12px]" strokeWidth={2.2} />
+                      Experience
+                    </span>
+                    <span className="text-[13px] font-bold" style={{ color: dT1 }}>{t.experience}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: dT3 }}>
+                      <Star className="w-[12px] h-[12px]" strokeWidth={2.2} />
+                      Rating
+                    </span>
+                    <span className="flex items-center gap-1 px-2 py-[2px] rounded-full"
+                      style={{ background: "rgba(255,170,0,0.10)", border: "0.5px solid rgba(255,170,0,0.22)" }}>
+                      <Star className="w-[11px] h-[11px]" style={{ color: dGOLD, fill: dGOLD }} />
+                      <span className="text-[12px] font-bold" style={{ color: "#884400" }}>{t.rating}</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Status Badge */}
+                <div className="mt-4">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-[5px] rounded-full text-[10px] font-bold uppercase tracking-[0.08em]"
+                    style={{ background: chip.bg, color: chip.color, border: `0.5px solid ${chip.border}` }}>
+                    <span className="w-[6px] h-[6px] rounded-full" style={{ background: chip.color }} />
+                    {t.status}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-500">Experience</span>
-                  <span className="text-sm font-bold text-slate-800">{t.experience}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-500">Rating</span>
-                  <span className="flex items-center gap-1 text-sm font-bold text-slate-800">
-                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                    {t.rating}
-                  </span>
-                </div>
               </div>
-
-              {/* Status Badge */}
-              <div className="mt-4">
-                <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full ${
-                  t.status === "Active"   ? "bg-green-50 text-green-600"  :
-                  t.status === "On Leave" ? "bg-amber-50 text-amber-600"  :
-                  t.status === "Invited"  ? "bg-blue-50 text-blue-600"    :
-                  "bg-slate-50 text-slate-500"
-                }`}>
-                  {t.status}
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
-        /* ── LIST VIEW ────────────────────────────────────────────────────── */
-        <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+        /* LIST */
+        <div className="bg-white rounded-[20px] overflow-hidden"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
           <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[640px]">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Teacher</th>
-                <th className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Subject</th>
-                <th className="px-5 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Classes</th>
-                <th className="px-5 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Experience</th>
-                <th className="px-5 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Rating</th>
-                <th className="px-5 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
-                <th className="px-5 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {filtered.map(t => (
-                <tr
-                  key={t.id}
-                  onClick={() => setSelectedTeacher(t)}
-                  className="hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-xl ${t.color} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
-                        {t.initials}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-800">{t.name}</p>
-                        <p className="text-xs text-slate-400">{t.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-4 text-slate-600">{t.subject}</td>
-                  <td className="px-5 py-4 text-center font-semibold text-slate-800">
-                    {t.classCount === null ? "…" : t.classCount}
-                  </td>
-                  <td className="px-5 py-4 text-center text-slate-600">{t.experience}</td>
-                  <td className="px-5 py-4 text-center">
-                    <span className="flex items-center justify-center gap-1 font-semibold text-slate-800">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />{t.rating}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-center">
-                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase ${
-                      t.status === "Active"   ? "bg-green-50 text-green-600"  :
-                      t.status === "On Leave" ? "bg-amber-50 text-amber-600"  :
-                      t.status === "Invited"  ? "bg-blue-50 text-blue-600"    :
-                      "bg-slate-50 text-slate-500"
-                    }`}>{t.status}</span>
-                  </td>
-                  <td className="px-5 py-4" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button onClick={() => handleOpenRoster(t)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-[#1e3a8a] transition-colors" title="View Roster"><Eye className="w-4 h-4" /></button>
-                      <button
-                        onClick={() => handleTogglePrimary(t)}
-                        className={`p-1.5 rounded-lg transition-colors ${
-                          t.isPrimarySchool
-                            ? "bg-amber-50 text-amber-500"
-                            : "text-slate-400 hover:bg-amber-50 hover:text-amber-500"
-                        }`}
-                        title={t.isPrimarySchool ? "Primary school (click to unset)" : "Mark as primary school"}
-                      >
-                        <Star className={`w-4 h-4 ${t.isPrimarySchool ? "fill-amber-500" : ""}`} />
-                      </button>
-                      <button onClick={() => handleStartEdit(t)} className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-500 transition-colors" title="Edit Name"><Edit3 className="w-4 h-4" /></button>
-                      <button onClick={() => handleDeleteTeacher(t.id, t.name)} className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-500 transition-colors" title="Archive"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  </td>
+            <table className="w-full text-sm min-w-[720px]">
+              <thead>
+                <tr style={{ background: dBG, borderBottom: `0.5px solid ${dSEP}` }}>
+                  {["Teacher", "Subject", "Classes", "Experience", "Rating", "Status", "Actions"].map((h, i) => (
+                    <th key={h} className={`px-5 py-3 text-[10px] font-bold uppercase tracking-[0.10em] ${i >= 2 && i <= 5 ? "text-center" : i === 6 ? "text-right" : "text-left"}`}
+                      style={{ color: dT4 }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map(t => {
+                  const av = avatarGradD(t.color);
+                  const chip = statusChipD(t.status);
+                  return (
+                    <tr key={t.id}
+                      onClick={() => setSelectedTeacher(t)}
+                      className="cursor-pointer transition-colors hover:bg-[#F8FAFF]"
+                      style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-[12px] flex items-center justify-center text-white text-[12px] font-bold shrink-0"
+                            style={{ background: av.bg, boxShadow: av.shadow }}>
+                            {t.initials}
+                          </div>
+                          <div>
+                            <p className="text-[13px] font-bold" style={{ color: dT1 }}>{t.name}</p>
+                            <p className="text-[11px] font-medium" style={{ color: dT3 }}>{t.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="inline-flex items-center px-3 py-[4px] rounded-full text-[11px] font-bold"
+                          style={{ background: "rgba(0,85,255,0.10)", color: dB1, border: "0.5px solid rgba(0,85,255,0.20)" }}>
+                          {t.subject}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-center text-[13px] font-bold" style={{ color: dT1 }}>
+                        {t.classCount === null ? "…" : t.classCount}
+                      </td>
+                      <td className="px-5 py-4 text-center text-[12px] font-medium" style={{ color: dT3 }}>{t.experience}</td>
+                      <td className="px-5 py-4 text-center">
+                        <span className="inline-flex items-center justify-center gap-1 px-3 py-[4px] rounded-full"
+                          style={{ background: "rgba(255,170,0,0.10)", border: "0.5px solid rgba(255,170,0,0.22)" }}>
+                          <Star className="w-[11px] h-[11px]" style={{ color: dGOLD, fill: dGOLD }} />
+                          <span className="text-[12px] font-bold" style={{ color: "#884400" }}>{t.rating}</span>
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-[4px] rounded-full text-[10px] font-bold uppercase tracking-[0.08em]"
+                          style={{ background: chip.bg, color: chip.color, border: `0.5px solid ${chip.border}` }}>
+                          <span className="w-[6px] h-[6px] rounded-full" style={{ background: chip.color }} />
+                          {t.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          {[
+                            { onClick: () => handleOpenRoster(t), Icon: Eye, title: "View Roster", color: dB1 },
+                            { onClick: () => handleTogglePrimary(t), Icon: Star, title: t.isPrimarySchool ? "Primary school" : "Mark as primary", color: dGOLD, active: t.isPrimarySchool },
+                            { onClick: () => handleStartEdit(t), Icon: Edit3, title: "Edit Name", color: dORANGE },
+                            { onClick: () => handleDeleteTeacher(t.id, t.name), Icon: Trash2, title: "Archive", color: dRED },
+                          ].map(({ onClick, Icon, title, color, active }, i) => (
+                            <button key={i} onClick={onClick}
+                              className="w-8 h-8 rounded-[10px] flex items-center justify-center transition-colors hover:bg-[#F0F5FF]"
+                              style={{ color: active ? color : dT4 }}
+                              title={title}>
+                              <Icon className={`w-[14px] h-[14px] ${active ? "fill-current" : ""}`} strokeWidth={2.2} />
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

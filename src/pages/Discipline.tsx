@@ -1377,223 +1377,324 @@ const Discipline = () => {
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  DESKTOP — Blue Apple Design
+  // ═══════════════════════════════════════════════════════════════
+  const dB1 = "#0055FF", dB2 = "#1166FF", dB4 = "#4499FF";
+  const dBG = "#EEF4FF", dBG2 = "#E0ECFF";
+  const dT1 = "#001040", dT2 = "#002080", dT3 = "#5070B0", dT4 = "#99AACC";
+  const dSEP = "rgba(0,85,255,0.08)";
+  const dGREEN = "#00C853", dGREEN_D = "#007830", dGREEN_S = "rgba(0,200,83,0.10)", dGREEN_B = "rgba(0,200,83,0.22)";
+  const dRED = "#FF3355", dRED_S = "rgba(255,51,85,0.10)", dRED_B = "rgba(255,51,85,0.22)";
+  const dORANGE = "#FF8800";
+  const dGOLD = "#FFAA00";
+  const dVIOLET = "#7B3FF4";
+  const dSH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 10px rgba(0,85,255,0.07), 0 10px 28px rgba(0,85,255,0.09)";
+  const dSH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.12)";
+  const dSH_BTN = "0 6px 22px rgba(0,85,255,0.38), 0 2px 5px rgba(0,85,255,0.18)";
+
+  const sevTheme = (sev: string) => {
+    const s = (sev || "").toUpperCase();
+    if (s === "CRITICAL") return { grad: `linear-gradient(135deg, ${dRED}, #FF6688)`, bg: dRED_S, color: dRED, border: dRED_B };
+    if (s === "HIGH")     return { grad: `linear-gradient(135deg, ${dORANGE}, #FFAA66)`, bg: "rgba(255,136,0,0.10)", color: dORANGE, border: "rgba(255,136,0,0.22)" };
+    if (s === "MEDIUM")   return { grad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, bg: "rgba(255,170,0,0.10)", color: "#884400", border: "rgba(255,170,0,0.22)" };
+    return                  { grad: `linear-gradient(135deg, ${dT3}, ${dT4})`, bg: "rgba(153,170,204,0.10)", color: dT3, border: "rgba(153,170,204,0.22)" };
+  };
+
+  const statusTheme = (status: string) => {
+    if (status === "Resolved")     return { bg: dGREEN_S, color: dGREEN_D, border: dGREEN_B, dot: dGREEN };
+    if (status === "Under Review") return { bg: "rgba(255,170,0,0.10)", color: "#884400", border: "rgba(255,170,0,0.22)", dot: dGOLD };
+    if (status === "Open")         return { bg: "rgba(0,85,255,0.10)", color: dB1, border: "rgba(0,85,255,0.20)", dot: dB1 };
+    return                             { bg: "rgba(153,170,204,0.10)", color: dT3, border: "rgba(153,170,204,0.22)", dot: dT4 };
+  };
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Discipline & Incidents</h1>
-        <p className="text-sm text-muted-foreground">Track and manage disciplinary incidents</p>
+    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
+      style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-4 pt-2 pb-5 flex-wrap">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0"
+            style={{ background: `linear-gradient(135deg, ${dRED}, #FF6688)`, boxShadow: "0 6px 18px rgba(255,51,85,0.28)" }}>
+            <ShieldAlert className="w-[22px] h-[22px] text-white" strokeWidth={2.4} />
+          </div>
+          <div>
+            <div className="text-[24px] font-bold leading-none" style={{ color: dT1, letterSpacing: "-0.6px" }}>Discipline & Incidents</div>
+            <div className="text-[12px] mt-1" style={{ color: dT3 }}>Track and manage disciplinary incidents</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={generateReport}
+            className="h-11 px-4 rounded-[13px] flex items-center gap-2 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02]"
+            style={{ border: `0.5px solid ${dSEP}`, color: dT2, boxShadow: dSH }}>
+            <FileText className="w-[14px] h-[14px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
+            Generate Report
+          </button>
+          <button
+            onClick={() => setShowLogModal(true)}
+            className="h-11 px-5 rounded-[13px] flex items-center gap-2 text-[13px] font-bold text-white relative overflow-hidden transition-transform hover:scale-[1.02]"
+            style={{ background: `linear-gradient(135deg, ${dRED}, #FF6688)`, boxShadow: "0 6px 22px rgba(255,51,85,0.36), 0 2px 5px rgba(255,51,85,0.18)" }}>
+            <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+            <Plus className="w-[14px] h-[14px] relative z-10" strokeWidth={2.5} />
+            <span className="relative z-10">Log New Incident</span>
+          </button>
+        </div>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin w-8 h-8 border-4 border-[#1e3a8a] border-t-transparent rounded-full" />
+        <div className="bg-white rounded-[20px] py-24 flex flex-col items-center gap-3" style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="w-10 h-10 rounded-full border-[3px] border-t-transparent animate-spin" style={{ borderColor: dB1, borderTopColor: "transparent" }} />
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: dT4 }}>Loading incidents…</p>
         </div>
       ) : (
         <>
-          {/* ===== 4 STAT CARDS ===== */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5">
-            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-medium text-muted-foreground">Today's Incidents</span>
-                <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
-                  <AlertCircle className="w-4 h-4 text-red-500" />
+          {/* Red Hero Banner */}
+          <div className="rounded-[22px] px-7 py-6 relative overflow-hidden text-white"
+            style={{
+              background: "linear-gradient(135deg, #660011 0%, #990022 35%, #CC0033 70%, #FF3355 100%)",
+              boxShadow: "0 10px 36px rgba(204,0,51,0.30), 0 0 0 0.5px rgba(255,255,255,0.10)",
+            }}>
+            <div className="absolute -right-12 -top-12 w-[220px] h-[220px] rounded-full pointer-events-none"
+              style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+            <div className="flex items-center justify-between gap-6 flex-wrap relative z-10">
+              <div className="flex items-center gap-5">
+                <div className="w-14 h-14 rounded-[16px] flex items-center justify-center shrink-0"
+                  style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                  <AlertTriangle className="w-7 h-7 text-white" strokeWidth={2.2} />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] mb-[6px]" style={{ color: "rgba(255,255,255,0.55)" }}>This Week's Incidents</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[48px] font-bold leading-none tracking-tight">{stats.weekCount}</span>
+                    <span className="text-[14px] font-semibold" style={{ color: "rgba(255,255,255,0.50)" }}>logged · {stats.pendingCount} pending</span>
+                  </div>
                 </div>
               </div>
-              <p className="text-4xl font-black text-foreground mb-1">{stats.todayCount}</p>
-              <p className="text-xs text-muted-foreground font-medium">Logged today</p>
-            </div>
-
-            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-medium text-muted-foreground">Pending Actions</span>
-                <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center">
-                  <Clock className="w-4 h-4 text-amber-500" />
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-bold"
+                  style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.28)" }}>
+                  <Sparkles className="w-[13px] h-[13px]" strokeWidth={2.4} />
+                  {stats.criticalCount > 0 ? `${stats.criticalCount} Critical` : "All Clear"}
+                </div>
+                <div className="flex items-center gap-2 text-[12px] font-bold" style={{ color: "rgba(255,255,255,0.82)" }}>
+                  <AlertCircle className="w-[14px] h-[14px]" strokeWidth={2.4} />
+                  {stats.todayCount} today
                 </div>
               </div>
-              <p className="text-4xl font-black text-amber-500 mb-1">{stats.pendingCount}</p>
-              <p className="text-xs text-muted-foreground font-medium">Require follow-up</p>
-            </div>
-
-            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-medium text-muted-foreground">This Week</span>
-                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
-                  <Calendar className="w-4 h-4 text-blue-600" />
-                </div>
-              </div>
-              <p className="text-4xl font-black text-foreground mb-1">{stats.weekCount}</p>
-              <p className="text-xs text-muted-foreground font-medium">Total incidents</p>
-            </div>
-
-            <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-medium text-muted-foreground">Critical Cases</span>
-                <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
-                  <AlertTriangle className="w-4 h-4 text-red-600" />
-                </div>
-              </div>
-              <p className="text-4xl font-black text-red-500 mb-1">{stats.criticalCount}</p>
-              <p className="text-xs text-muted-foreground font-medium">High priority</p>
             </div>
           </div>
 
-          {/* ===== FILTER ROW + LOG BUTTON ===== */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Quick filters */}
-              {(['all', 'week', 'critical'] as const).map((f, i) => (
-                <button
-                  key={f}
+          {/* 4 Stat Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
+            {[
+              { title: "Today's Incidents", val: stats.todayCount, valColor: dRED, sub: "Logged today", Icon: AlertCircle, grad: `linear-gradient(135deg, ${dRED}, #FF6688)`, glow: "rgba(255,51,85,0.12)", shadow: "0 4px 14px rgba(255,51,85,0.26)" },
+              { title: "Pending Actions", val: stats.pendingCount, valColor: dGOLD, sub: "Require follow-up", Icon: Clock, grad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, glow: "rgba(255,170,0,0.12)", shadow: "0 4px 14px rgba(255,170,0,0.26)" },
+              { title: "This Week", val: stats.weekCount, valColor: dB1, sub: "Total incidents", Icon: Calendar, grad: `linear-gradient(135deg, ${dB1}, ${dB2})`, glow: "rgba(0,85,255,0.10)", shadow: "0 4px 14px rgba(0,85,255,0.26)" },
+              { title: "Critical Cases", val: stats.criticalCount, valColor: dVIOLET, sub: "High priority", Icon: AlertTriangle, grad: `linear-gradient(135deg, ${dVIOLET}, #A07CF8)`, glow: "rgba(123,63,244,0.10)", shadow: "0 4px 14px rgba(123,63,244,0.24)" },
+            ].map(({ title, val, valColor, sub, Icon, grad, glow, shadow }) => (
+              <div key={title} className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+                style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+                <div className="absolute -top-6 -right-6 w-[100px] h-[100px] rounded-full pointer-events-none"
+                  style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)` }} />
+                <div className="flex items-center justify-between mb-4 relative">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>{title}</span>
+                  <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+                    style={{ background: grad, boxShadow: shadow }}>
+                    <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
+                  </div>
+                </div>
+                <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: valColor, letterSpacing: "-1.2px" }}>{val}</p>
+                <p className="text-[11px] font-semibold truncate" style={{ color: dT3 }}>{sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Filters Row */}
+          <div className="flex items-center gap-2 mt-5 flex-wrap">
+            {(['all', 'week', 'critical'] as const).map((f, i) => {
+              const active = filterType === f;
+              return (
+                <button key={f}
                   onClick={() => setFilterType(f)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${
-                    filterType === f ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]' : 'bg-card border-border text-muted-foreground hover:bg-secondary'
-                  }`}
-                >
+                  className="h-10 px-5 rounded-[13px] text-[12px] font-bold transition-transform hover:scale-[1.02]"
+                  style={{
+                    background: active ? `linear-gradient(135deg, ${dB1}, ${dB2})` : "#FFFFFF",
+                    color: active ? "#fff" : dT3,
+                    border: active ? "0.5px solid transparent" : `0.5px solid ${dSEP}`,
+                    boxShadow: active ? dSH_BTN : dSH,
+                  }}>
                   {['All Types', 'This Week', 'Critical Only'][i]}
                 </button>
-              ))}
-              {/* Status filter */}
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="px-3 py-2 rounded-xl text-xs font-bold border border-border bg-card text-muted-foreground focus:outline-none cursor-pointer"
-              >
-                <option value="all">All Status</option>
-                <option value="open">Open</option>
-                <option value="under review">Under Review</option>
-                <option value="resolved">Resolved</option>
-              </select>
-              {/* Search */}
+              );
+            })}
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="h-10 px-4 pr-9 rounded-[13px] text-[12px] font-bold bg-white outline-none appearance-none cursor-pointer"
+              style={{
+                border: `0.5px solid ${dSEP}`,
+                color: dT2,
+                boxShadow: dSH,
+                fontFamily: "inherit",
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230055FF' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 12px center",
+              }}>
+              <option value="all">All Status</option>
+              <option value="open">Open</option>
+              <option value="under review">Under Review</option>
+              <option value="resolved">Resolved</option>
+            </select>
+            <div className="relative flex-1 min-w-[200px] max-w-[300px]">
               <input
                 type="text"
                 placeholder="Search student / type..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="px-3 py-2 rounded-xl text-xs font-medium border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 placeholder:text-muted-foreground w-48"
+                className="w-full h-10 px-4 rounded-[13px] bg-white text-[12px] font-medium outline-none"
+                style={{ border: `0.5px solid ${dSEP}`, color: dT1, boxShadow: dSH, fontFamily: "inherit" }}
               />
             </div>
-            <button
-              onClick={() => setShowLogModal(true)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-[#e11d48] text-white rounded-xl text-sm font-bold shadow-lg shadow-red-200 hover:bg-red-600 transition-all"
-            >
-              <Plus className="w-4 h-4" /> Log New Incident
-            </button>
           </div>
 
-          {/* ===== PIE CHART + RECENT INCIDENTS ===== */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Incident Type Breakdown */}
-            <div className="lg:col-span-4 bg-card border border-border rounded-2xl p-7 shadow-sm">
-              <h3 className="text-base font-bold text-foreground mb-2">Incident Type Breakdown</h3>
-              {pieData.length === 0 ? (
-                <div className="flex items-center justify-center h-60">
-                  <p className="text-sm text-muted-foreground">No data available</p>
+          {/* Pie Chart + Recent Incidents */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 mt-5">
+            {/* Pie */}
+            <div className="lg:col-span-4 bg-white rounded-[20px] overflow-hidden"
+              style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+              <div className="flex items-center gap-[10px] px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                  style={{ background: "rgba(123,63,244,0.10)", border: "0.5px solid rgba(123,63,244,0.22)" }}>
+                  <BookOpen className="w-4 h-4" style={{ color: dVIOLET }} strokeWidth={2.4} />
                 </div>
-              ) : (
-                <>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={80}
-                        dataKey="value"
-                        label={renderLabel}
-                        labelLine={{ stroke: '#cbd5e1', strokeWidth: 1 }}
-                        animationBegin={0}
-                        animationDuration={1200}
-                      >
-                        {pieData.map((entry, i) => (
-                          <Cell key={`cell-${i}`} fill={entry.color} stroke="none" />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value: number, name: string) => [`${value}%`, name]}
-                        contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 'bold' }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  {/* Legend */}
-                  <div className="space-y-2 mt-2">
-                    {pieData.map((p, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
-                          <span className="font-medium text-muted-foreground">{p.name}</span>
-                        </div>
-                        <span className="font-black text-foreground">{p.value}%</span>
-                      </div>
-                    ))}
+                <h3 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Incident Types</h3>
+              </div>
+              <div className="p-6">
+                {pieData.length === 0 ? (
+                  <div className="flex items-center justify-center h-[220px]">
+                    <p className="text-[13px] font-bold" style={{ color: dT4 }}>No data available</p>
                   </div>
-                </>
-              )}
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <PieChart>
+                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={85}
+                          paddingAngle={3} dataKey="value" animationDuration={1200}>
+                          {pieData.map((entry, i) => (
+                            <Cell key={`cell-${i}`} fill={entry.color} stroke="none" />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value: number, name: string) => [`${value}%`, name]}
+                          contentStyle={{ borderRadius: 12, border: `0.5px solid ${dSEP}`, boxShadow: dSH, fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="space-y-2 mt-4">
+                      {pieData.map((p, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-2 rounded-[10px]"
+                          style={{ background: dBG, border: `0.5px solid ${dSEP}` }}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-[10px] h-[10px] rounded-[3px]" style={{ background: p.color }} />
+                            <span className="text-[12px] font-bold" style={{ color: dT2 }}>{p.name}</span>
+                          </div>
+                          <span className="text-[13px] font-bold" style={{ color: p.color }}>{p.value}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
-            {/* Recent Incidents Table */}
-            <div className="lg:col-span-8 bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-              <div className="px-7 py-5 border-b border-border">
-                <h3 className="text-base font-bold text-foreground">Recent Incidents</h3>
+            {/* Table */}
+            <div className="lg:col-span-8 bg-white rounded-[20px] overflow-hidden"
+              style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+              <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                <div className="flex items-center gap-[10px]">
+                  <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                    style={{ background: `linear-gradient(135deg, ${dRED}, #FF6688)`, boxShadow: "0 4px 14px rgba(255,51,85,0.26)" }}>
+                    <ShieldAlert className="w-4 h-4 text-white" strokeWidth={2.4} />
+                  </div>
+                  <h3 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Recent Incidents</h3>
+                  <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+                    style={{ background: "rgba(0,85,255,0.10)", color: dB1, border: "0.5px solid rgba(0,85,255,0.18)" }}>
+                    {filteredIncidents.length}
+                  </span>
+                </div>
               </div>
               {filteredIncidents.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <ShieldAlert className="w-12 h-12 text-slate-300 mb-3" />
-                  <p className="text-sm font-bold text-muted-foreground">No incidents found</p>
-                  <p className="text-xs text-muted-foreground mt-1">Try adjusting your filters</p>
+                <div className="py-16 flex flex-col items-center gap-3 text-center">
+                  <div className="w-16 h-16 rounded-[18px] flex items-center justify-center"
+                    style={{ background: dGREEN_S, border: `0.5px solid ${dGREEN_B}`, boxShadow: "0 0 0 8px rgba(0,200,83,0.05)" }}>
+                    <ShieldAlert className="w-8 h-8" style={{ color: dGREEN }} strokeWidth={2.2} />
+                  </div>
+                  <p className="text-[14px] font-bold" style={{ color: dT1 }}>No incidents found</p>
+                  <p className="text-[11px]" style={{ color: dT4 }}>Try adjusting your filters</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[500px]">
+                  <table className="w-full text-sm min-w-[580px]">
                     <thead>
-                      <tr className="border-b border-border bg-secondary/20">
-                        <th className="text-left px-6 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Date</th>
-                        <th className="text-left px-6 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Student</th>
-                        <th className="text-left px-6 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Type</th>
-                        <th className="text-left px-6 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Severity</th>
-                        <th className="text-left px-6 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Status</th>
-                        <th className="text-left px-6 py-4 text-[#1e3a8a] font-bold text-xs uppercase tracking-wider">Actions</th>
+                      <tr style={{ background: dBG, borderBottom: `0.5px solid ${dSEP}` }}>
+                        {["Date", "Student", "Type", "Severity", "Status", ""].map((h, i) => (
+                          <th key={i} className={`px-5 py-3 text-[10px] font-bold uppercase tracking-[0.10em] ${i === 5 ? "text-right" : "text-left"}`}
+                            style={{ color: dT4 }}>{h}</th>
+                        ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border">
-                      {filteredIncidents.slice(0, 20).map((inc, i) => (
-                        <tr
-                          key={inc.id || i}
-                          className={`hover:bg-secondary/30 transition-colors ${
-                            ['HIGH','CRITICAL'].includes((inc.severity||'').toUpperCase()) ? 'bg-red-50/30' : ''
-                          }`}
-                        >
-                          <td className="px-6 py-4 text-sm font-medium text-muted-foreground whitespace-nowrap">
-                            {inc.date ? new Date(inc.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                                {(inc.student?.name || 'UK').substring(0, 2).toUpperCase()}
+                    <tbody>
+                      {filteredIncidents.slice(0, 20).map((inc, i) => {
+                        const sev = sevTheme(inc.severity);
+                        const st = statusTheme(inc.status || "Open");
+                        const isSevere = ['HIGH', 'CRITICAL'].includes((inc.severity || '').toUpperCase());
+                        return (
+                          <tr key={inc.id || i}
+                            className="transition-colors hover:bg-[#F8FAFF] cursor-pointer"
+                            style={{ borderBottom: `0.5px solid ${dSEP}`, background: isSevere ? "rgba(255,51,85,0.02)" : "transparent" }}
+                            onClick={() => setSelectedIncident(inc)}>
+                            <td className="px-5 py-4 whitespace-nowrap text-[12px] font-medium" style={{ color: dT3 }}>
+                              {inc.date ? new Date(inc.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'}
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-[11px] flex items-center justify-center text-white text-[11px] font-bold shrink-0"
+                                  style={{ background: sev.grad, boxShadow: "0 3px 10px rgba(0,85,255,0.22)" }}>
+                                  {(inc.student?.name || 'UK').split(" ").map((w: string) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[13px] font-bold truncate" style={{ color: dT1 }}>{inc.student?.name || 'Unknown'}</p>
+                                  {inc.student?.grade && <p className="text-[10px] font-medium mt-0.5" style={{ color: dT3 }}>{inc.student.grade}</p>}
+                                </div>
                               </div>
-                              <div>
-                                <p className="text-sm font-bold text-foreground">{inc.student?.name || 'Unknown'}</p>
-                                {inc.student?.grade && <p className="text-[10px] text-muted-foreground font-medium">{inc.student.grade}</p>}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-sm font-medium text-foreground">{inc.type || inc.title || '—'}</td>
-                          <td className="px-6 py-4">{getSeverityBadge(inc.severity)}</td>
-                          <td className="px-6 py-4">
-                            <span className={`text-sm font-bold ${getStatusColor(inc.status)}`}>
-                              {inc.status || 'Open'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <button
-                              onClick={() => setSelectedIncident(inc)}
-                              className="px-3 py-1.5 text-xs font-bold text-[#1e3a8a] border border-[#1e3a8a]/30 rounded-lg hover:bg-blue-50 transition-colors"
-                            >
-                              View
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="text-[12px] font-bold" style={{ color: dT2 }}>{inc.type || inc.title || '—'}</span>
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="inline-flex items-center px-[10px] py-[4px] rounded-full text-[10px] font-bold uppercase tracking-[0.08em]"
+                                style={{ background: sev.bg, color: sev.color, border: `0.5px solid ${sev.border}` }}>
+                                {(inc.severity || 'LOW').toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-[4px] rounded-full text-[10px] font-bold uppercase tracking-[0.08em]"
+                                style={{ background: st.bg, color: st.color, border: `0.5px solid ${st.border}` }}>
+                                <span className="w-[6px] h-[6px] rounded-full" style={{ background: st.dot }} />
+                                {inc.status || 'Open'}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-right" onClick={e => e.stopPropagation()}>
+                              <button onClick={() => setSelectedIncident(inc)}
+                                className="inline-flex items-center gap-1 h-9 px-3 rounded-[11px] text-[11px] font-bold text-white transition-transform hover:scale-[1.04]"
+                                style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 3px 10px rgba(0,85,255,0.22)" }}>
+                                View <ChevronRight className="w-3 h-3" strokeWidth={2.5} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1601,20 +1702,31 @@ const Discipline = () => {
             </div>
           </div>
 
-          {/* ===== ACTION BUTTONS ===== */}
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => setFilterType('all')}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors"
-            >
-              <ShieldAlert className="w-4 h-4 text-muted-foreground" /> View All Incidents
-            </button>
-            <button
-              onClick={generateReport}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-sm font-bold text-foreground hover:bg-secondary transition-colors"
-            >
-              <FileText className="w-4 h-4 text-muted-foreground" /> Generate Report
-            </button>
+          {/* AI Intelligence */}
+          <div className="mt-5 rounded-[22px] px-7 py-6 relative overflow-hidden"
+            style={{
+              background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
+              boxShadow: "0 10px 36px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+            }}>
+            <div className="absolute -top-10 -right-7 w-[200px] h-[200px] rounded-full pointer-events-none"
+              style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+            <div className="flex items-center gap-2 mb-3 relative z-10">
+              <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                <Sparkles className="w-4 h-4 text-white" strokeWidth={2.4} />
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI Discipline Intelligence</span>
+            </div>
+            <p className="text-[14px] leading-[1.75] font-normal relative z-10 max-w-[900px]" style={{ color: "rgba(255,255,255,0.88)" }}>
+              <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.weekCount} incident{stats.weekCount === 1 ? "" : "s"}</strong> logged this week with <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.pendingCount}</strong> awaiting follow-up.
+              {stats.criticalCount > 0 && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.criticalCount} critical case{stats.criticalCount === 1 ? "" : "s"}</strong> require immediate attention.</>}
+              {pieData.length > 0 && <> Most common type: <strong style={{ color: "#fff", fontWeight: 700 }}>{pieData[0].name}</strong> at <strong style={{ color: "#fff", fontWeight: 700 }}>{pieData[0].value}%</strong>.</>}
+              {" "}Review pending cases and schedule counseling sessions for chronic offenders.
+            </p>
+            <div className="flex items-center gap-2 mt-4 pt-3 relative z-10" style={{ borderTop: "0.5px solid rgba(255,255,255,0.12)" }}>
+              <div className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ background: dB4 }} />
+              <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.45)" }}>Auto-generated · Real-time data</span>
+            </div>
           </div>
         </>
       )}

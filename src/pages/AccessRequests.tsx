@@ -3,7 +3,9 @@ import {
   ShieldCheck, Clock, CheckCircle2, XCircle,
   Mail, Phone, FileText, Loader2, Link2,
   UserCheck, UserX, RefreshCw, Pencil, Trash2, AlertTriangle, Shield,
+  Sparkles,
 } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { db } from "@/lib/firebase";
 import {
   collection, query, where, onSnapshot,
@@ -49,6 +51,7 @@ type TabKey = "pending" | "approved" | "rejected" | "revoked";
 // ── Component ─────────────────────────────────────────────────────────────────
 const AccessRequests = () => {
   const { userData } = useAuth();
+  const isMobile = useIsMobile();
 
   const [requests, setRequests]         = useState<any[]>([]);
   const [deoDocs, setDeoDocs]           = useState<any[]>([]);   // live data_entry_staff docs
@@ -282,190 +285,727 @@ const AccessRequests = () => {
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
-  return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-12 text-left">
+  const B1 = "#0055FF";
+  const B2 = "#1166FF";
+  const B3 = "#2277FF";
+  const BG = "#EEF4FF";
+  const T1 = "#001040";
+  const T2 = "#002080";
+  const T3 = "#5070B0";
+  const T4 = "#99AACC";
+  const SEP = "rgba(0,85,255,0.07)";
+  const GREEN = "#00C853";
+  const GREEN_D = "#007830";
+  const RED = "#FF3355";
+  const RED_D = "#B01030";
+  const ORANGE_D = "#884400";
+  const VIOLET = "#7B3FF4";
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+  const GRAD_PRIMARY = `linear-gradient(135deg, ${B1}, ${B2})`;
+  const SHADOW_SM = "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08), 0 10px 26px rgba(0,85,255,.10)";
+  const SHADOW_LG = "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 18px 44px rgba(0,85,255,.13)";
+  const SHADOW_BTN = "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)";
+
+  const AV_PALETTE = [
+    `linear-gradient(135deg, ${B1}, ${B3})`,
+    `linear-gradient(135deg, ${VIOLET}, #A075FF)`,
+    `linear-gradient(135deg, ${GREEN}, #22DD77)`,
+    `linear-gradient(135deg, #FF8800, #FFCC44)`,
+  ];
+  const avGrad = (seed: string) => {
+    let h = 0;
+    for (const ch of seed || "") h = (h * 31 + ch.charCodeAt(0)) & 0xff;
+    return AV_PALETTE[h % AV_PALETTE.length];
+  };
+
+  const statTabs: Array<{ k: TabKey; label: string; color: "yellow" | "green" | "red" | "grey"; icon: any; iconColor: string; numColor: string; lblColor: string }> = [
+    { k: "pending",  label: "Pending",  color: "yellow", icon: Clock,        iconColor: "#FF8800", numColor: "#664400", lblColor: "#664400" },
+    { k: "approved", label: "Approved", color: "green",  icon: CheckCircle2, iconColor: GREEN,     numColor: "#004018", lblColor: "#005A20" },
+    { k: "rejected", label: "Rejected", color: "red",    icon: XCircle,      iconColor: RED,       numColor: "#60081A", lblColor: "#8A0A22" },
+    { k: "revoked",  label: "Revoked",  color: "grey",   icon: Shield,       iconColor: "#3A4358", numColor: "#3A4358", lblColor: "#3A4358" },
+  ];
+  const tabBgMap: Record<"yellow" | "green" | "red" | "grey", string> = {
+    yellow: "linear-gradient(135deg,#FFF4D1 0%,#FFE58A 55%,#FFD55C 100%)",
+    green:  "linear-gradient(135deg,#DEFCE8 0%,#8CF0B0 55%,#50E088 100%)",
+    red:    "linear-gradient(135deg,#FFE3E8 0%,#FFA8B8 55%,#FF7085 100%)",
+    grey:   "linear-gradient(135deg,#E8ECF5 0%,#C8D0E0 55%,#AEB8CC 100%)",
+  };
+  const tabBorderMap: Record<"yellow" | "green" | "red" | "grey", string> = {
+    yellow: "rgba(255,170,0,0.4)",
+    green:  "rgba(0,200,83,0.4)",
+    red:    "rgba(255,51,85,0.4)",
+    grey:   "rgba(120,130,155,0.4)",
+  };
+  const slblBadgeStyle: Record<TabKey, React.CSSProperties> = {
+    pending:  { background: "rgba(255,170,0,0.14)", color: "#885500", border: "0.5px solid rgba(255,170,0,0.32)" },
+    approved: { background: "rgba(0,200,83,0.10)", color: GREEN_D, border: "0.5px solid rgba(0,200,83,0.22)" },
+    rejected: { background: "rgba(255,51,85,0.10)", color: RED_D, border: "0.5px solid rgba(255,51,85,0.22)" },
+    revoked:  { background: "rgba(120,130,155,0.10)", color: "#3A4358", border: "0.5px solid rgba(120,130,155,0.22)" },
+  };
+
+  const renderStaffCard = (req: any, compact: boolean = false) => {
+    const deo = deoByRequestId.get(req.id);
+    const allowedPages = (req.allowedPages as string[]) || deo?.allowedPages || [];
+    const initials = (req.name || "?")
+      .split(" ")
+      .map((n: string) => n[0])
+      .filter(Boolean)
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+    const statusTag = req.status === "approved"
+      ? { label: "✓ Approved", bg: "rgba(0,200,83,0.10)", color: GREEN_D, border: "0.5px solid rgba(0,200,83,0.22)" }
+      : req.status === "rejected"
+      ? { label: "Rejected", bg: "rgba(255,51,85,0.10)", color: RED_D, border: "0.5px solid rgba(255,51,85,0.22)" }
+      : req.status === "revoked"
+      ? { label: "Revoked", bg: "rgba(120,130,155,0.10)", color: "#3A4358", border: "0.5px solid rgba(120,130,155,0.22)" }
+      : { label: "Pending", bg: "rgba(255,170,0,0.14)", color: "#885500", border: "0.5px solid rgba(255,170,0,0.32)" };
+
+    const stripeGradient = req.status === "approved"
+      ? `linear-gradient(180deg, ${GREEN}, #66EE88)`
+      : req.status === "rejected"
+      ? `linear-gradient(180deg, ${RED}, #FF7788)`
+      : req.status === "revoked"
+      ? "linear-gradient(180deg, #AEB8CC, #C8D0E0)"
+      : "linear-gradient(180deg, #FF8800, #FFCC44)";
+
+    return (
+      <div
+        key={req.id}
+        style={{
+          margin: compact ? "10px 0 0" : "0 0 14px",
+          background: "#fff",
+          borderRadius: 20,
+          boxShadow: SHADOW_LG,
+          border: "0.5px solid rgba(0,85,255,0.10)",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: stripeGradient }} />
+
+        <div style={{ padding: compact ? "14px 16px" : "18px 22px", display: "flex", alignItems: "center", gap: compact ? 11 : 16 }}>
+          <div
+            style={{
+              width: compact ? 42 : 56,
+              height: compact ? 42 : 56,
+              borderRadius: compact ? 13 : 16,
+              background: avGrad(req.name || req.email || ""),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: compact ? 15 : 19,
+              fontWeight: 700,
+              color: "#fff",
+              flexShrink: 0,
+              boxShadow: "0 4px 12px rgba(0,85,255,0.24)",
+            }}
+          >
+            {initials}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: compact ? 6 : 10, marginBottom: compact ? 3 : 7, flexWrap: "wrap" }}>
+              <div style={{ fontSize: compact ? 15 : 18, fontWeight: 700, color: T1, letterSpacing: "-0.25px" }}>
+                {req.name || "—"}
+              </div>
+              <div
+                style={{
+                  padding: compact ? "2px 8px" : "4px 11px",
+                  borderRadius: 100,
+                  fontSize: compact ? 8 : 9,
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  background: statusTag.bg,
+                  color: statusTag.color,
+                  border: statusTag.border,
+                }}
+              >
+                {statusTag.label}
+              </div>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: compact ? 8 : 14, marginBottom: compact ? 0 : 9 }}>
+              <span style={{ fontSize: compact ? 10 : 12, color: T3, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <Mail size={compact ? 11 : 13} strokeWidth={2.2} />
+                {req.email || "—"}
+              </span>
+              {req.phone && (
+                <span style={{ fontSize: compact ? 10 : 12, color: T3, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Phone size={compact ? 11 : 13} strokeWidth={2.2} />
+                  {req.phone}
+                </span>
+              )}
+              <span style={{ fontSize: compact ? 10 : 12, color: T3, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <Clock size={compact ? 11 : 13} strokeWidth={2.2} />
+                {formatDate(req.createdAt)}
+              </span>
+            </div>
+            {!compact && allowedPages.length > 0 && req.status === "approved" && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {allowedPages.map((p) => {
+                  const pg = ALL_PAGES.find((x) => x.path === p);
+                  return (
+                    <span
+                      key={p}
+                      style={{
+                        padding: "4px 11px",
+                        borderRadius: 100,
+                        background: "rgba(0,200,83,0.10)",
+                        color: GREEN_D,
+                        border: "0.5px solid rgba(0,200,83,0.22)",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: "0.02em",
+                      }}
+                    >
+                      {pg?.label || p}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {compact && allowedPages.length > 0 && req.status === "approved" && (
+          <div style={{ padding: "0 16px 12px", display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {allowedPages.map((p) => {
+              const pg = ALL_PAGES.find((x) => x.path === p);
+              return (
+                <span
+                  key={p}
+                  style={{
+                    padding: "3px 9px",
+                    borderRadius: 100,
+                    background: "rgba(0,200,83,0.10)",
+                    color: GREEN_D,
+                    border: "0.5px solid rgba(0,200,83,0.22)",
+                    fontSize: 9,
+                    fontWeight: 700,
+                  }}
+                >
+                  {pg?.label || p}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {req.reason && (
+          <div style={{ padding: compact ? "8px 16px" : "10px 22px", background: "rgba(0,85,255,0.03)", borderTop: `0.5px solid ${SEP}`, fontSize: compact ? 10 : 12, color: T3, fontWeight: 500, display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <FileText size={compact ? 11 : 13} strokeWidth={2.2} color={T3} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span><strong style={{ color: T1, fontWeight: 700 }}>Reason:</strong> {req.reason}</span>
+          </div>
+        )}
+        {req.status === "rejected" && req.rejectionReason && (
+          <div style={{ padding: compact ? "8px 16px" : "10px 22px", background: "rgba(255,51,85,0.04)", borderTop: `0.5px solid ${SEP}`, fontSize: compact ? 10 : 12, color: RED_D, fontWeight: 500 }}>
+            <strong style={{ fontWeight: 700 }}>Rejection:</strong> {req.rejectionReason}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ padding: compact ? "10px 12px" : "12px 18px", display: "flex", gap: compact ? 6 : 10, background: "rgba(0,85,255,0.03)", borderTop: `0.5px solid ${SEP}` }}>
+          {req.status === "pending" && (
+            <>
+              <button
+                onClick={() => { setModalMode("approve"); setEditingDeoDoc(null); setApprovingReq(req); setAllowedPages(DEFAULT_ALLOWED); }}
+                style={{
+                  flex: 1,
+                  height: compact ? 34 : 40,
+                  borderRadius: compact ? 10 : 12,
+                  background: `linear-gradient(135deg, ${GREEN}, #22DD77)`,
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                  fontSize: compact ? 10 : 12,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  border: "none",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(0,200,83,0.32)",
+                  fontFamily: "inherit",
+                }}
+              >
+                <UserCheck size={compact ? 11 : 13} strokeWidth={2.5} />
+                Approve
+              </button>
+              <button
+                onClick={() => { setRejectingReq(req); setRejectReason(""); }}
+                style={{
+                  flex: 1,
+                  height: compact ? 34 : 40,
+                  borderRadius: compact ? 10 : 12,
+                  background: "rgba(255,51,85,0.10)",
+                  color: RED_D,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                  fontSize: compact ? 10 : 12,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  border: "0.5px solid rgba(255,51,85,0.22)",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                <UserX size={compact ? 11 : 13} strokeWidth={2.5} />
+                Reject
+              </button>
+            </>
+          )}
+          {req.status === "approved" && (
+            <>
+              <div
+                style={{
+                  flex: 1,
+                  height: compact ? 34 : 40,
+                  borderRadius: compact ? 10 : 12,
+                  background: "rgba(0,200,83,0.10)",
+                  color: GREEN_D,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                  fontSize: compact ? 10 : 12,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  border: "0.5px solid rgba(0,200,83,0.22)",
+                }}
+              >
+                <CheckCircle2 size={compact ? 11 : 13} strokeWidth={2.5} />
+                Active
+              </div>
+              <button
+                onClick={() => openEdit(req)}
+                style={{
+                  flex: 1,
+                  height: compact ? 34 : 40,
+                  borderRadius: compact ? 10 : 12,
+                  background: "#fff",
+                  color: B1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                  fontSize: compact ? 10 : 12,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  border: "0.5px solid rgba(0,85,255,0.22)",
+                  boxShadow: "0 2px 6px rgba(0,85,255,0.10)",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                <Pencil size={compact ? 11 : 13} strokeWidth={2.5} />
+                Edit
+              </button>
+              <button
+                onClick={() => setRevokingReq(req)}
+                style={{
+                  flex: 1,
+                  height: compact ? 34 : 40,
+                  borderRadius: compact ? 10 : 12,
+                  background: "rgba(255,51,85,0.10)",
+                  color: RED_D,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                  fontSize: compact ? 10 : 12,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  border: "0.5px solid rgba(255,51,85,0.22)",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                <Trash2 size={compact ? 11 : 13} strokeWidth={2.5} />
+                Revoke
+              </button>
+            </>
+          )}
+          {(req.status === "rejected" || req.status === "revoked") && (
+            <button
+              onClick={() => handleReset(req)}
+              style={{
+                flex: 1,
+                height: compact ? 34 : 40,
+                borderRadius: compact ? 10 : 12,
+                background: GRAD_PRIMARY,
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 5,
+                fontSize: compact ? 10 : 12,
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                border: "none",
+                cursor: "pointer",
+                boxShadow: SHADOW_BTN,
+                position: "relative",
+                overflow: "hidden",
+                fontFamily: "inherit",
+              }}
+            >
+              <RefreshCw size={compact ? 11 : 13} strokeWidth={2.5} />
+              {req.status === "rejected" ? "Re-open" : "Re-approve"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ─── MOBILE RETURN ──────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div style={{ fontFamily: "'DM Sans', -apple-system, sans-serif", background: BG, minHeight: "100vh", margin: "-12px -12px 0", paddingBottom: 24 }}>
+        {/* Page head */}
+        <div style={{ padding: "14px 20px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: T1, letterSpacing: "-0.6px", marginBottom: 3, display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 10, background: GRAD_PRIMARY, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(0,85,255,.32)" }}>
+                <Shield size={16} color="#fff" strokeWidth={2.4} />
+              </div>
+              Staff Access
+            </div>
+            <div style={{ fontSize: 11, color: T3, fontWeight: 400, lineHeight: 1.5, display: "flex", alignItems: "center", gap: 5 }}>
+              <span>DEO Requests</span>
+              <span style={{ color: T4, fontWeight: 700 }}>·</span>
+              <span>Approval Flow</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Copy link button */}
+        <button
+          onClick={copyLink}
+          style={{
+            margin: "12px 20px 0",
+            width: "calc(100% - 40px)",
+            height: 44,
+            borderRadius: 14,
+            background: GRAD_PRIMARY,
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 7,
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+            border: "none",
+            boxShadow: SHADOW_BTN,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            fontFamily: "inherit",
+          }}
+        >
+          <Link2 size={15} strokeWidth={2.4} />
+          Copy Request Link
+        </button>
+
+        {/* Info card */}
+        <div style={{ margin: "14px 20px 0", background: "#fff", borderRadius: 18, padding: "14px 16px", boxShadow: SHADOW_SM, border: "0.5px solid rgba(0,85,255,.12)", position: "relative", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 9, background: "rgba(0,85,255,.10)", border: "0.5px solid rgba(0,85,255,.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Link2 size={14} color={B1} strokeWidth={2.3} />
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: B1 }}>How to invite a DEO</div>
+          </div>
+          <div style={{ fontSize: 10, color: T3, fontWeight: 500, lineHeight: 1.6, marginBottom: 8 }}>
+            Click <strong style={{ color: T1, fontWeight: 700 }}>"Copy Request Link"</strong> and share it. They fill the form — request appears here as <em style={{ color: ORANGE_D, fontStyle: "italic", fontWeight: 600 }}>Pending</em>. You approve and choose which pages they can access.
+          </div>
+          <div style={{ padding: "8px 11px", background: "rgba(0,200,83,0.08)", borderRadius: 10, border: "0.5px solid rgba(0,200,83,0.2)", display: "flex", alignItems: "flex-start", gap: 7 }}>
+            <ShieldCheck size={13} color={GREEN_D} strokeWidth={2.5} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div style={{ fontSize: 10, color: GREEN_D, fontWeight: 500, lineHeight: 1.55 }}>
+              <strong style={{ color: "#004018", fontWeight: 700 }}>Data is safe:</strong> editing pages or revoking access <em style={{ fontStyle: "italic", fontWeight: 600 }}>never deletes</em> records the DEO created.
+            </div>
+          </div>
+        </div>
+
+        {/* Hero */}
+        <div style={{ margin: "14px 20px 0", background: "linear-gradient(135deg,#001040 0%,#001888 35%,#0033CC 70%,#0055FF 100%)", borderRadius: 22, padding: "16px 18px", position: "relative", overflow: "hidden", boxShadow: "0 8px 26px rgba(0,8,60,.28), 0 0 0 .5px rgba(255,255,255,.12)" }}>
+          <div style={{ position: "absolute", top: -36, right: -24, width: 150, height: 150, background: "radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 65%)", borderRadius: "50%", pointerEvents: "none" }} />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, position: "relative", zIndex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(255,255,255,.16)", border: "0.5px solid rgba(255,255,255,.24)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ShieldCheck size={18} color="rgba(255,255,255,.92)" strokeWidth={2.1} />
+              </div>
+              <div>
+                <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,.50)", marginBottom: 3 }}>Access Workflow</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: "-0.8px", lineHeight: 1 }}>{counts.approved + counts.pending} Active</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 100, background: "rgba(0,200,83,.22)", border: "0.5px solid rgba(0,200,83,.4)", fontSize: 11, fontWeight: 700, color: "#66FFAA" }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#66FFAA", boxShadow: "0 0 8px rgba(102,255,170,.8)" }} />
+              Secure
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1, background: "rgba(255,255,255,.12)", borderRadius: 14, overflow: "hidden", position: "relative", zIndex: 1 }}>
+            {[
+              { v: counts.pending, l: "Pending", c: "#FFDD88" },
+              { v: counts.approved, l: "Approved", c: "#66EE88" },
+              { v: counts.rejected, l: "Rejected", c: "#FF99AA" },
+              { v: counts.revoked, l: "Revoked", c: "#fff" },
+            ].map((s, i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,.08)", padding: "10px 6px", textAlign: "center" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: s.c, letterSpacing: "-0.2px", lineHeight: 1, marginBottom: 3 }}>{s.v}</div>
+                <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,.40)" }}>{s.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Status Tab Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 20px 0" }}>
+          {statTabs.map((t) => {
+            const active = tab === t.k;
+            const Ico = t.icon;
+            return (
+              <button
+                key={t.k}
+                onClick={() => setTab(t.k)}
+                style={{
+                  borderRadius: 18,
+                  padding: 14,
+                  position: "relative",
+                  overflow: "hidden",
+                  cursor: "pointer",
+                  background: tabBgMap[t.color],
+                  border: active ? "2px solid #000820" : `0.5px solid ${tabBorderMap[t.color]}`,
+                  boxShadow: active ? "0 0 0 3px rgba(0,0,0,.08), 0 10px 28px rgba(0,0,0,.1)" : "0 8px 22px rgba(0,0,0,.06)",
+                  fontFamily: "inherit",
+                  textAlign: "left",
+                }}
+              >
+                <div style={{ position: "absolute", top: -18, right: -18, width: 80, height: 80, borderRadius: "50%", background: "radial-gradient(circle,rgba(255,255,255,.65) 0%,transparent 70%)", pointerEvents: "none" }} />
+                <div style={{ width: 30, height: 30, borderRadius: 10, background: "rgba(255,255,255,.75)", border: "0.5px solid rgba(255,255,255,.95)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8, position: "relative", zIndex: 1, boxShadow: "0 2px 6px rgba(0,0,0,.05)" }}>
+                  <Ico size={15} color={t.iconColor} strokeWidth={2.5} />
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.9px", lineHeight: 1, marginBottom: 4, color: t.numColor, position: "relative", zIndex: 1 }}>{counts[t.k]}</div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: t.lblColor, position: "relative", zIndex: 1 }}>{t.label}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Section label */}
+        <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T4, padding: "16px 20px 0", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>{statTabs.find((s) => s.k === tab)?.label} {tab === "pending" ? "Requests" : tab === "approved" ? "Staff" : "List"}</span>
+          <span style={{ padding: "3px 9px", borderRadius: 100, fontSize: 9, fontWeight: 700, ...slblBadgeStyle[tab] }}>
+            {counts[tab]} {tab === "pending" ? "awaiting" : tab === "approved" ? "active" : "total"}
+          </span>
+          <span style={{ flex: 1, height: "0.5px", background: "rgba(0,85,255,0.12)" }} />
+        </div>
+
+        {/* Body */}
+        {loading ? (
+          <div style={{ padding: "50px 0", textAlign: "center" }}>
+            <Loader2 size={28} color={B1} style={{ animation: "spin 1s linear infinite" }} />
+            <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ margin: "14px 20px 0", background: "#fff", borderRadius: 20, padding: "40px 20px", boxShadow: SHADOW_SM, border: "0.5px dashed rgba(0,85,255,0.22)", textAlign: "center", position: "relative", overflow: "hidden" }}>
+            <div style={{ width: 60, height: 60, borderRadius: 18, background: "linear-gradient(135deg,#E5EEFF,#D4E4FF)", border: "0.5px solid rgba(0,85,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+              <ShieldCheck size={26} color={B1} strokeWidth={2.2} />
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: T3, marginBottom: 6 }}>No {tab} Requests</div>
+            {tab === "pending" && (
+              <div style={{ fontSize: 11, color: T4, fontWeight: 500, lineHeight: 1.5 }}>
+                Share the request link with<br />your data entry team
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ padding: "10px 20px 0" }}>
+            {filtered.map((req) => renderStaffCard(req, true))}
+          </div>
+        )}
+
+        {/* AI Card */}
+        <div style={{ margin: "12px 20px 0", background: "linear-gradient(140deg,#001888 0%,#0033CC 48%,#0055FF 100%)", borderRadius: 22, padding: "18px 20px", boxShadow: "0 8px 28px rgba(0,51,204,.28), 0 0 0 .5px rgba(255,255,255,.14)", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: -34, right: -22, width: 140, height: 140, background: "radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 65%)", borderRadius: "50%", pointerEvents: "none" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, position: "relative", zIndex: 1 }}>
+            <div style={{ width: 26, height: 26, borderRadius: 8, background: "rgba(255,255,255,.18)", border: "0.5px solid rgba(255,255,255,.26)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Sparkles size={13} color="rgba(255,255,255,.90)" strokeWidth={2.3} />
+            </div>
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,.55)" }}>AI Access Intelligence</span>
+          </div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,.85)", lineHeight: 1.72, position: "relative", zIndex: 1 }}>
+            Inbox has <strong style={{ color: "#fff", fontWeight: 700 }}>{counts.pending} pending</strong>. <strong style={{ color: "#fff", fontWeight: 700 }}>{counts.approved} approved DEOs</strong> actively handling data entry. {counts.pending > 0 ? "Review pending requests within 24h to keep ops moving." : "Inbox is clear — share your link with trusted team members only."}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, background: "rgba(255,255,255,.12)", borderRadius: 14, overflow: "hidden", position: "relative", zIndex: 1, marginTop: 12 }}>
+            {[
+              { v: counts.pending, l: "Pending", c: "#FFDD88" },
+              { v: counts.approved, l: "Active", c: "#66EE88" },
+              { v: counts.rejected, l: "Rejected", c: "#FF99AA" },
+            ].map((s, i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,.08)", padding: "12px", textAlign: "center" }}>
+                <div style={{ fontSize: 19, fontWeight: 700, color: s.c, letterSpacing: "-0.5px", lineHeight: 1, marginBottom: 3 }}>{s.v}</div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: "rgba(255,255,255,.40)" }}>{s.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── DESKTOP RETURN ──────────────────────────────────────────────────────
+  return (
+    <div
+      style={{
+        fontFamily: "'DM Sans', -apple-system, sans-serif",
+        background: BG,
+        minHeight: "100vh",
+        margin: "-16px -24px 0",
+        padding: "24px 32px 40px",
+      }}
+    >
+      {/* Page head */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, marginBottom: 22 }}>
         <div>
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight">Staff Access Control</h1>
-          <p className="text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-[#1e3a8a]" /> Data Entry Operator Requests · Approval Workflow
-          </p>
+          <h1 style={{ fontSize: 34, fontWeight: 700, color: T1, letterSpacing: "-1px", margin: 0, lineHeight: 1.1, display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 46, height: 46, borderRadius: 14, background: GRAD_PRIMARY, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 16px rgba(0,85,255,.32)" }}>
+              <Shield size={22} color="#fff" strokeWidth={2.3} />
+            </div>
+            Staff Access Control
+          </h1>
+          <div style={{ fontSize: 12, color: T3, fontWeight: 500, letterSpacing: "0.12em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8, paddingLeft: 58, marginTop: 8 }}>
+            <span>Data Entry Operator Requests</span>
+            <span style={{ color: T4 }}>·</span>
+            <span>Approval Workflow</span>
+          </div>
         </div>
         <button
           onClick={copyLink}
-          className="flex items-center gap-2 px-6 py-4 bg-[#1e3a8a] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg"
+          style={{
+            padding: "13px 22px",
+            borderRadius: 14,
+            background: GRAD_PRIMARY,
+            color: "#fff",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            boxShadow: SHADOW_BTN,
+            border: "none",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            fontFamily: "inherit",
+            position: "relative",
+            overflow: "hidden",
+            flexShrink: 0,
+          }}
         >
-          <Link2 className="w-4 h-4" /> Copy Request Link
+          <Link2 size={15} strokeWidth={2.4} />
+          Copy Request Link
         </button>
       </div>
 
-      {/* Info box */}
-      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 flex items-start gap-4">
-        <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
-          <Link2 className="w-5 h-5 text-blue-600" />
+      {/* Info card */}
+      <div style={{ background: "#fff", borderRadius: 18, padding: "18px 22px", boxShadow: SHADOW_SM, border: "0.5px solid rgba(0,85,255,.12)", marginBottom: 24, display: "flex", alignItems: "flex-start", gap: 14, position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -40, right: -40, width: 180, height: 180, borderRadius: "50%", background: "radial-gradient(circle,rgba(0,85,255,.04) 0%,transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ width: 38, height: 38, borderRadius: 11, background: "rgba(0,85,255,.10)", border: "0.5px solid rgba(0,85,255,.22)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Link2 size={18} color={B1} strokeWidth={2.3} />
         </div>
-        <div>
-          <p className="text-sm font-black text-blue-800">How to invite a Data Entry Operator</p>
-          <p className="text-xs text-blue-600 mt-1 leading-relaxed">
-            Click <strong>"Copy Request Link"</strong> and share it with the person. They fill in the form — their request appears here as <em>Pending</em>. You approve it and choose which pages they can access. They then log in with their Google account.
-          </p>
-          <p className="text-[11px] text-blue-700 mt-2 leading-relaxed flex items-start gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-600" />
-            <span><strong>Data is safe:</strong> editing pages or revoking access <em>never deletes</em> records the DEO created. Old attendance, marks &amp; notes stay visible even after the staff member changes.</span>
-          </p>
+        <div style={{ flex: 1, position: "relative", zIndex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: B1, marginBottom: 4 }}>How to invite a Data Entry Operator</div>
+          <div style={{ fontSize: 12, color: T3, fontWeight: 500, lineHeight: 1.65, marginBottom: 10 }}>
+            Click <strong style={{ color: T1, fontWeight: 700 }}>"Copy Request Link"</strong> and share it with the person. They fill the form — the request appears here as <em style={{ color: ORANGE_D, fontStyle: "italic", fontWeight: 600 }}>Pending</em>. You approve and choose which pages they can access. They then log in with their Google account.
+          </div>
+          <div style={{ fontSize: 12, color: GREEN_D, fontWeight: 500, lineHeight: 1.55, display: "inline-flex", alignItems: "center", gap: 7 }}>
+            <ShieldCheck size={14} color={GREEN_D} strokeWidth={2.5} />
+            <span><strong style={{ color: "#004018", fontWeight: 700 }}>Data is safe:</strong> editing pages or revoking access <em style={{ color: T2, fontStyle: "italic", fontWeight: 600 }}>never deletes</em> records the DEO created. Old attendance, marks &amp; notes stay visible.</span>
+          </div>
         </div>
       </div>
 
-      {/* Stat cards — 4 tabs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {(["pending", "approved", "rejected", "revoked"] as const).map(s => {
-          const cfg = STATUS_CONFIG[s];
+      {/* Status tab grid 4-col */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 26 }}>
+        {statTabs.map((t) => {
+          const active = tab === t.k;
+          const Ico = t.icon;
           return (
-            <div key={s} className={`${cfg.bg} rounded-2xl p-5 flex items-center gap-4 cursor-pointer border-2 transition-all ${tab === s ? "border-current opacity-100 scale-[1.02] shadow-md" : "border-transparent opacity-80"}`}
-              onClick={() => setTab(s)}>
-              <cfg.icon className={`w-7 h-7 ${cfg.text} shrink-0`} />
-              <div>
-                <p className={`text-2xl font-black ${cfg.text}`}>{counts[s]}</p>
-                <p className={`text-[10px] font-black uppercase tracking-widest ${cfg.text} opacity-70`}>{cfg.label}</p>
+            <button
+              key={t.k}
+              onClick={() => setTab(t.k)}
+              style={{
+                borderRadius: 18,
+                padding: "22px 24px",
+                position: "relative",
+                overflow: "hidden",
+                cursor: "pointer",
+                background: tabBgMap[t.color],
+                border: active ? "2px solid #000820" : `0.5px solid ${tabBorderMap[t.color]}`,
+                boxShadow: active ? "0 0 0 3px rgba(0,0,0,.08), 0 14px 34px rgba(0,0,0,.1)" : "0 8px 22px rgba(0,0,0,.06)",
+                display: "flex",
+                alignItems: "center",
+                gap: 18,
+                fontFamily: "inherit",
+                textAlign: "left",
+                transition: "transform .18s cubic-bezier(.34,1.56,.64,1)",
+              }}
+            >
+              <div style={{ position: "absolute", top: -30, right: -30, width: 130, height: 130, borderRadius: "50%", background: "radial-gradient(circle,rgba(255,255,255,.65) 0%,transparent 70%)", pointerEvents: "none" }} />
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(255,255,255,.75)", border: "0.5px solid rgba(255,255,255,.95)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative", zIndex: 1, boxShadow: "0 3px 8px rgba(0,0,0,.06)" }}>
+                <Ico size={20} color={t.iconColor} strokeWidth={2.5} />
               </div>
-            </div>
+              <div style={{ position: "relative", zIndex: 1 }}>
+                <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: "-1.2px", lineHeight: 1, marginBottom: 4, color: t.numColor }}>{counts[t.k]}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: t.lblColor }}>{t.label}</div>
+              </div>
+            </button>
           );
         })}
       </div>
 
-      {/* Tab requests */}
+      {/* Section label */}
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: T4, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+        <span>{statTabs.find((s) => s.k === tab)?.label} {tab === "pending" ? "Requests" : tab === "approved" ? "Staff" : "List"}</span>
+        <span style={{ padding: "3px 10px", borderRadius: 100, fontSize: 10, fontWeight: 700, ...slblBadgeStyle[tab] }}>
+          {counts[tab]} {tab === "pending" ? "awaiting" : tab === "approved" ? "active" : "total"}
+        </span>
+        <span style={{ flex: 1, height: "0.5px", background: "rgba(0,85,255,0.12)" }} />
+      </div>
+
+      {/* Body */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3">
-          <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loading requests...</p>
+        <div style={{ padding: "60px 0", textAlign: "center" }}>
+          <Loader2 size={32} color={B1} style={{ animation: "spin 1s linear infinite", marginBottom: 12 }} />
+          <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: T4, margin: 0 }}>
+            Loading requests...
+          </p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-3xl border-2 border-dashed border-slate-100 p-16 text-center">
-          <ShieldCheck className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-          <p className="text-sm font-black text-slate-400 uppercase tracking-widest">No {tab} requests</p>
+        <div style={{ background: "#fff", borderRadius: 24, padding: "60px 24px", boxShadow: SHADOW_SM, border: "0.5px dashed rgba(0,85,255,0.22)", textAlign: "center", position: "relative", overflow: "hidden" }}>
+          <div style={{ width: 72, height: 72, borderRadius: 22, background: "linear-gradient(135deg,#E5EEFF,#D4E4FF)", border: "0.5px solid rgba(0,85,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+            <ShieldCheck size={32} color={B1} strokeWidth={2.2} />
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: T3, marginBottom: 8 }}>No {tab} Requests</div>
           {tab === "pending" && (
-            <p className="text-xs text-slate-300 mt-1">Share the request link with your data entry team</p>
+            <div style={{ fontSize: 12, color: T4, fontWeight: 500, lineHeight: 1.5 }}>
+              Share the request link with your data entry team.
+            </div>
           )}
         </div>
       ) : (
-        <div className="space-y-4">
-          {filtered.map(req => {
-            const cfg = STATUS_CONFIG[req.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
-            return (
-              <div key={req.id} className="bg-white rounded-3xl border-2 border-slate-50 shadow-sm hover:shadow-md transition-shadow p-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-
-                  {/* Left: person info */}
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-[#1e3a8a]/10 flex items-center justify-center text-[#1e3a8a] font-black text-lg shrink-0">
-                      {(req.name || "?").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-black text-slate-800 text-base">{req.name}</p>
-                        <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${cfg.bg} ${cfg.text}`}>
-                          {cfg.label}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3 mt-1">
-                        <span className="flex items-center gap-1 text-[10px] text-slate-400 font-bold">
-                          <Mail className="w-3 h-3" /> {req.email}
-                        </span>
-                        {req.phone && (
-                          <span className="flex items-center gap-1 text-[10px] text-slate-400 font-bold">
-                            <Phone className="w-3 h-3" /> {req.phone}
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1 text-[10px] text-slate-400 font-bold">
-                          <Clock className="w-3 h-3" /> {formatDate(req.createdAt)}
-                        </span>
-                      </div>
-                      {req.reason && (
-                        <p className="text-xs text-slate-500 mt-1.5 flex items-start gap-1">
-                          <FileText className="w-3 h-3 mt-0.5 shrink-0 text-slate-300" />
-                          {req.reason}
-                        </p>
-                      )}
-                      {req.status === "approved" && req.allowedPages && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {(req.allowedPages as string[]).map(p => {
-                            const pg = ALL_PAGES.find(x => x.path === p);
-                            return (
-                              <span key={p} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black rounded-md border border-emerald-100">
-                                {pg?.label || p}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                      {req.status === "rejected" && req.rejectionReason && (
-                        <p className="text-xs text-rose-500 mt-1.5">Reason: {req.rejectionReason}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Right: actions */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    {req.status === "pending" && (
-                      <>
-                        <button
-                          onClick={() => { setModalMode("approve"); setEditingDeoDoc(null); setApprovingReq(req); setAllowedPages(DEFAULT_ALLOWED); }}
-                          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-colors shadow-sm"
-                        >
-                          <UserCheck className="w-4 h-4" /> Approve
-                        </button>
-                        <button
-                          onClick={() => { setRejectingReq(req); setRejectReason(""); }}
-                          className="flex items-center gap-2 px-5 py-2.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-colors"
-                        >
-                          <UserX className="w-4 h-4" /> Reject
-                        </button>
-                      </>
-                    )}
-                    {req.status === "rejected" && (
-                      <button
-                        onClick={() => handleReset(req)}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" /> Re-open
-                      </button>
-                    )}
-                    {req.status === "approved" && (
-                      <>
-                        <span className="hidden md:flex items-center gap-1.5 text-[10px] text-emerald-600 font-black uppercase tracking-widest">
-                          <CheckCircle2 className="w-4 h-4" /> Active
-                        </span>
-                        <button
-                          onClick={() => openEdit(req)}
-                          title="Edit allowed pages"
-                          className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 transition-colors"
-                        >
-                          <Pencil className="w-3.5 h-3.5" /> Edit
-                        </button>
-                        <button
-                          onClick={() => setRevokingReq(req)}
-                          title="Revoke access (data stays safe)"
-                          className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" /> Revoke
-                        </button>
-                      </>
-                    )}
-                    {req.status === "revoked" && (
-                      <button
-                        onClick={() => handleReset(req)}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" /> Re-approve
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div>
+          {filtered.map((req) => renderStaffCard(req, false))}
         </div>
       )}
 
