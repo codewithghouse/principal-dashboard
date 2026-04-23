@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import MigrationEngine from "@/components/MigrationEngine";
 
 const B1 = "#0055FF", B2 = "#1166FF";
-const BG = "#EEEEF3";
+const BG = "#EEF4FF";
 const T1 = "#001040", T2 = "#002080", T3 = "#5070B0", T4 = "#99AACC";
 const SEP = "rgba(0,85,255,0.08)";
 const GREEN = "#00C853", GREEN_D = "#007830", GREEN_S = "rgba(0,200,83,0.10)", GREEN_B = "rgba(0,200,83,0.22)";
@@ -123,7 +123,7 @@ const SettingsPage = () => {
   const activeMeta = TABS.find(t => t.id === activeTab);
 
   return (
-    <div className={`${isMobile ? "-mx-3 -mt-3" : "max-w-[1400px] mx-auto px-2"} pb-10 animate-in fade-in duration-500`}
+    <div className={`${isMobile ? "-mx-3 -mt-3" : "w-full px-2"} pb-10 animate-in fade-in duration-500`}
       style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif", background: isMobile ? BG : undefined, minHeight: isMobile ? "100vh" : undefined }}>
 
       <div className={`flex items-center justify-between gap-4 ${isMobile ? "px-5 pt-4 pb-2" : "pt-2 pb-5"} flex-wrap`}>

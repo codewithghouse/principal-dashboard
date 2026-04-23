@@ -45,7 +45,7 @@ const getStatusColor = (status: string) => {
 const fieldInputStyle = (t1: string, t4: string): React.CSSProperties => ({
   width: "100%",
   padding: "12px 14px",
-  background: "#EEEEF3",
+  background: "#EEF4FF",
   borderRadius: 13,
   border: "0.5px solid rgba(0,85,255,.12)",
   fontFamily: "inherit",
@@ -63,7 +63,7 @@ const fieldInputStyle = (t1: string, t4: string): React.CSSProperties => ({
 const selectInputStyle = (t1: string): React.CSSProperties => ({
   width: "100%",
   padding: "12px 14px",
-  background: "#EEEEF3",
+  background: "#EEF4FF",
   borderRadius: 13,
   border: "0.5px solid rgba(0,85,255,.12)",
   fontFamily: "inherit",
@@ -342,7 +342,7 @@ const Discipline = () => {
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEEEF3",
+          background: "#EEF4FF",
           minHeight: "100vh",
           paddingBottom: 24,
         }}
@@ -1325,7 +1325,7 @@ const Discipline = () => {
                     flex: 1,
                     height: 48,
                     borderRadius: 15,
-                    background: "#EEEEF3",
+                    background: "#EEF4FF",
                     border: "0.5px solid rgba(0,85,255,.16)",
                     display: "flex",
                     alignItems: "center",
@@ -1381,7 +1381,7 @@ const Discipline = () => {
   //  DESKTOP — Blue Apple Design
   // ═══════════════════════════════════════════════════════════════
   const dB1 = "#0055FF", dB2 = "#1166FF", dB4 = "#4499FF";
-  const dBG = "#EEEEF3", dBG2 = "#E0ECFF";
+  const dBG = "#EEF4FF", dBG2 = "#E0ECFF";
   const dT1 = "#001040", dT2 = "#002080", dT3 = "#5070B0", dT4 = "#99AACC";
   const dSEP = "rgba(0,85,255,0.08)";
   const dGREEN = "#00C853", dGREEN_D = "#007830", dGREEN_S = "rgba(0,200,83,0.10)", dGREEN_B = "rgba(0,200,83,0.22)";
@@ -1409,7 +1409,7 @@ const Discipline = () => {
   };
 
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
+    <div className="pb-10 w-full px-2 animate-in fade-in duration-500"
       style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
 
       {/* Toolbar */}

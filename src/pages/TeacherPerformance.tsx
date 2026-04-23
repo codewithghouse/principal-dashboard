@@ -354,7 +354,7 @@ const TeacherPerformance = () => {
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEEEF3",
+          background: "#EEF4FF",
           minHeight: "100vh",
           paddingBottom: 24,
         }}
@@ -709,7 +709,7 @@ const TeacherPerformance = () => {
                 let trendIconEl = <Minus size={12} color={T4} strokeWidth={2.4} />;
                 let trendColor = T4;
                 let trendLabel = "—";
-                let trendBg = "#EEEEF3";
+                let trendBg = "#EEF4FF";
                 let trendBorder = "rgba(153,170,204,.22)";
                 if (tr) {
                   trendLabel = tr.label;
@@ -1041,7 +1041,7 @@ const TeacherPerformance = () => {
                           gap: 6,
                           fontSize: 12,
                           fontWeight: 700,
-                          background: "#EEEEF3",
+                          background: "#EEF4FF",
                           color: "#002080",
                           border: "0.5px solid rgba(0,85,255,.16)",
                           cursor: "pointer",
@@ -1205,7 +1205,7 @@ const TeacherPerformance = () => {
     : { label: "Weak", c: "#FF99AA", bg: "rgba(255,51,85,0.22)", bdr: "rgba(255,51,85,0.4)" };
 
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+    <div className="pb-10 w-full px-2 animate-in fade-in duration-500" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
 
       {/* Top toolbar */}
       <div className="flex items-start justify-between gap-4 pt-2 mb-5">

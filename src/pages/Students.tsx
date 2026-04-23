@@ -553,6 +553,7 @@ const Students = () => {
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
+    <div className="min-h-screen" style={{ background: "#EEF4FF" }}>
     <div className={isMobile ? "animate-in fade-in duration-500" : "space-y-8 animate-in fade-in duration-500 pb-12 text-left"}>
 
       {isMobile ? (() => {
@@ -869,6 +870,7 @@ const Students = () => {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
     </div>
   );
 };

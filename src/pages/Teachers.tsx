@@ -474,7 +474,7 @@ const Teachers = () => {
      ═══════════════════════════════════════════════════════════════ */
   if (isMobile) {
     const B1 = "#0055FF", B2 = "#1166FF", B4 = "#4499FF";
-    const BG = "#EEEEF3", BG2 = "#E0ECFF";
+    const BG = "#EEF4FF", BG2 = "#E0ECFF";
     const T1 = "#001040", T2 = "#002080", T3 = "#5070B0", T4 = "#99AACC";
     const SEP = "rgba(0,85,255,0.07)";
     const GREEN = "#00C853", GREEN_D = "#007830", GREEN_S = "rgba(0,200,83,0.10)", GREEN_B = "rgba(0,200,83,0.22)";
@@ -1018,7 +1018,7 @@ const Teachers = () => {
   //  DESKTOP — Blue Apple Design
   // ═══════════════════════════════════════════════════════════════
   const dB1 = "#0055FF", dB2 = "#1166FF", dB4 = "#4499FF";
-  const dBG = "#EEEEF3", dBG2 = "#E0ECFF";
+  const dBG = "#EEF4FF", dBG2 = "#E0ECFF";
   const dT1 = "#001040", dT2 = "#002080", dT3 = "#5070B0", dT4 = "#99AACC";
   const dSEP = "rgba(0,85,255,0.08)";
   const dGREEN = "#00C853", dGREEN_D = "#007830", dGREEN_S = "rgba(0,200,83,0.10)", dGREEN_B = "rgba(0,200,83,0.22)";
@@ -1048,7 +1048,7 @@ const Teachers = () => {
   };
 
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
+    <div className="pb-10 w-full px-2 animate-in fade-in duration-500"
       style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
 
       {/* Toolbar */}

@@ -46,7 +46,7 @@ const queryClient = new QueryClient();
 
 // ─── Auth Loader — shown while Firebase restores session ──────────────────────
 const AuthLoader = () => (
-  <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: "#EEEEF3" }}>
+  <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: "#EEF4FF" }}>
     <div className="w-16 h-16 rounded-3xl bg-[#1e3a8a] flex items-center justify-center text-white shadow-2xl animate-bounce">
       <GraduationCap className="w-8 h-8" />
     </div>

@@ -198,7 +198,7 @@ const ExamStructure = () => {
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEEEF3",
+          background: "#EEF4FF",
           minHeight: "100vh",
           paddingBottom: 24,
         }}
@@ -714,7 +714,7 @@ const ExamStructure = () => {
                             }
                             style={{
                               padding: "10px 12px",
-                              background: "#EEEEF3",
+                              background: "#EEF4FF",
                               borderRadius: 11,
                               border: "0.5px solid rgba(0,85,255,.12)",
                               fontFamily: "inherit",
@@ -742,7 +742,7 @@ const ExamStructure = () => {
                         style={{
                           width: "100%",
                           padding: "10px 12px",
-                          background: "#EEEEF3",
+                          background: "#EEF4FF",
                           borderRadius: 11,
                           border: "0.5px solid rgba(0,85,255,.12)",
                           fontFamily: "inherit",
@@ -787,7 +787,7 @@ const ExamStructure = () => {
                       </div>
                       <div
                         style={{
-                          background: "#EEEEF3",
+                          background: "#EEF4FF",
                           borderRadius: 14,
                           overflow: "hidden",
                           border: "0.5px solid rgba(0,85,255,.1)",
@@ -1176,7 +1176,7 @@ const ExamStructure = () => {
                           style={{
                             padding: "7px 11px",
                             borderRadius: 100,
-                            background: isActive ? `linear-gradient(135deg, ${B1}, ${B2})` : "#EEEEF3",
+                            background: isActive ? `linear-gradient(135deg, ${B1}, ${B2})` : "#EEF4FF",
                             border: isActive ? "0.5px solid transparent" : "0.5px solid rgba(0,85,255,.14)",
                             fontSize: 10,
                             fontWeight: 700,
@@ -1207,7 +1207,7 @@ const ExamStructure = () => {
                     style={{
                       width: "100%",
                       padding: "11px 13px",
-                      background: "#EEEEF3",
+                      background: "#EEF4FF",
                       borderRadius: 12,
                       border: "0.5px solid rgba(0,85,255,.14)",
                       fontFamily: "inherit",
@@ -1237,7 +1237,7 @@ const ExamStructure = () => {
                         style={{
                           width: "100%",
                           padding: "11px 13px",
-                          background: "#EEEEF3",
+                          background: "#EEF4FF",
                           borderRadius: 12,
                           border: "0.5px solid rgba(0,85,255,.14)",
                           fontFamily: "inherit",
@@ -1263,7 +1263,7 @@ const ExamStructure = () => {
                     style={{
                       width: "100%",
                       padding: "11px 13px",
-                      background: "#EEEEF3",
+                      background: "#EEF4FF",
                       borderRadius: 12,
                       border: "0.5px solid rgba(0,85,255,.14)",
                       fontFamily: "inherit",
@@ -1299,7 +1299,7 @@ const ExamStructure = () => {
                   borderTop: `0.5px solid ${SEP}`,
                   display: "flex",
                   gap: 8,
-                  background: "#EEEEF3",
+                  background: "#EEF4FF",
                   flexShrink: 0,
                 }}
               >
@@ -1372,7 +1372,7 @@ const ExamStructure = () => {
     : { label: `${100 - dTotalWeight}% Short`, c: "#FFDD88", bg: "rgba(255,170,0,0.22)", bdr: "rgba(255,170,0,0.4)" };
 
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+    <div className="pb-10 w-full px-2 animate-in fade-in duration-500" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
 
       {/* ── Top toolbar ── */}
       <div className="flex items-start justify-between gap-4 pt-2 mb-5">
@@ -1556,7 +1556,7 @@ const ExamStructure = () => {
                     <Trash2 className="w-[15px] h-[15px]" style={{ color: "#FF3355" }} strokeWidth={2.2} />
                   </button>
                   <div className="w-8 h-8 rounded-[10px] flex items-center justify-center flex-shrink-0"
-                    style={isExp ? { background: "linear-gradient(135deg, #0055FF, #1166FF)" } : { background: "#EEEEF3", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+                    style={isExp ? { background: "linear-gradient(135deg, #0055FF, #1166FF)" } : { background: "#EEF4FF", border: "0.5px solid rgba(0,85,255,0.10)" }}>
                     {isExp ? <ChevronUp className="w-[14px] h-[14px] text-white" strokeWidth={2.4} /> : <ChevronDown className="w-[14px] h-[14px]" style={{ color: "#5070B0" }} strokeWidth={2.4} />}
                   </div>
                 </div>

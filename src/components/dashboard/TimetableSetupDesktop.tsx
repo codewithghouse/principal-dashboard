@@ -39,7 +39,7 @@ const subjectStyle = (s: string) => {
 
 // ── Palette (identical to mobile for continuity) ─────────────────────────────
 const B1 = "#0055FF", B2 = "#1166FF";
-const BG = "#EEEEF3", BG2 = "#E0ECFF";
+const BG = "#EEF4FF", BG2 = "#E0ECFF";
 const T1 = "#001040", T3 = "#5070B0", T4 = "#99AACC";
 const SEP = "rgba(0,85,255,0.07)";
 
@@ -371,7 +371,7 @@ const TimetableSetupDesktop = (props: TimetableSetupDesktopProps) => {
   };
 
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+    <div className="pb-10 w-full px-2" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
 
       {/* ── Top toolbar ── */}
       <div className="flex items-start justify-between gap-4 pt-2 mb-5">

@@ -618,7 +618,7 @@ export default function FeeStructurePage() {
         <div
           style={{
             fontFamily: "'DM Sans', -apple-system, sans-serif",
-            background: "#EEEEF3",
+            background: "#EEF4FF",
             minHeight: "100vh",
             paddingBottom: 24,
           }}
@@ -1444,7 +1444,7 @@ export default function FeeStructurePage() {
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEEEF3",
+          background: "#EEF4FF",
           minHeight: "100vh",
           paddingBottom: 24,
         }}
@@ -1797,7 +1797,7 @@ export default function FeeStructurePage() {
               style={{
                 width: "100%",
                 padding: "10px 14px",
-                background: "#EEEEF3",
+                background: "#EEF4FF",
                 borderRadius: 12,
                 border: "0.5px solid rgba(0,85,255,.14)",
                 fontFamily: "inherit",
@@ -1819,7 +1819,7 @@ export default function FeeStructurePage() {
               style={{
                 width: "100%",
                 padding: "10px 14px",
-                background: "#EEEEF3",
+                background: "#EEF4FF",
                 borderRadius: 12,
                 border: "0.5px solid rgba(0,85,255,.14)",
                 fontFamily: "inherit",
@@ -1861,7 +1861,7 @@ export default function FeeStructurePage() {
               marginTop: 8,
               height: 36,
               borderRadius: 11,
-              background: "#EEEEF3",
+              background: "#EEF4FF",
               color: B1,
               display: "flex",
               alignItems: "center",
@@ -2655,7 +2655,7 @@ export default function FeeStructurePage() {
   const dStudentCount = latest?.mode === "student" ? (latest.studentRows?.length || 0) : 0;
 
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-300" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+    <div className="pb-10 w-full px-2 animate-in fade-in duration-300" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
 
       {/* ── Top toolbar ── */}
       <div className="flex items-start justify-between gap-4 pt-2 mb-5">

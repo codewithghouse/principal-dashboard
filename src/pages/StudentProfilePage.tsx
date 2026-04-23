@@ -6,69 +6,47 @@ import { doc, getDoc, collection, query, where, getDocs } from "firebase/firesto
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
 
-// ── Tokens ───────────────────────────────────────────────────────────────────
+// ── Tokens — aligned to principal-dashboard palette ─────────────────────────
 const T = {
-  bg: "#f8fafc", white: "#ffffff", ink: "#0f172a", ink2: "#475569", ink3: "#94a3b8",
-  bdr: "#e2e8f0", s1: "#f1f5f9", s2: "#e2e8f0",
-  blue: "#3B5BDB", blBg: "#EDF2FF", blBdr: "#BAC8FF",
-  grn: "#16a34a", glBg: "#f0fdf4", red: "#dc2626", rlBg: "#fef2f2",
-  amb: "#d97706", alBg: "#fffbeb", pur: "#7c3aed",
+  bg:    "#EEF4FF",                  // scaffold background matches dashboard
+  white: "#ffffff",
+  ink:   "#001040",                  // T1 primary text
+  ink2:  "#5070B0",                  // T3 secondary text
+  ink3:  "#99AACC",                  // T4 muted text
+  bdr:   "rgba(0,85,255,0.10)",      // blue-tinted border
+  s1:    "rgba(0,85,255,0.04)",      // subtle surface tint
+  s2:    "rgba(0,85,255,0.08)",      // separator
+  blue:  "#0055FF",                  // B1 primary blue
+  blBg:  "rgba(0,85,255,0.10)",
+  blBdr: "rgba(0,85,255,0.22)",
+  grn:   "#00C853", glBg: "rgba(0,200,83,0.10)",
+  red:   "#FF3355", rlBg: "rgba(255,51,85,0.10)",
+  amb:   "#FF8800", alBg: "rgba(255,136,0,0.10)",
+  pur:   "#7B3FF4",
 };
 
 const toDate = (v: any): Date | null => { if (!v) return null; if (v?.toDate) return v.toDate(); if (v?.seconds) return new Date(v.seconds * 1000); const d = new Date(v); return isNaN(d.getTime()) ? null : d; };
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const timeAgo = (v: any) => { const d = toDate(v); if (!d) return ""; const s = (Date.now() - d.getTime()) / 1000; if (s < 60) return "just now"; if (s < 3600) return `${Math.floor(s / 60)}m ago`; if (s < 86400) return `${Math.floor(s / 3600)}h ago`; return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase(); };
 
-// ── 3D Card wrapper with hover tilt ──────────────────────────────────────────
+// ── Card wrapper — matches dashboard pop hover (no cursor tilt, no blur) ────
 const Card = ({ children, title, action, style }: { children: React.ReactNode; title?: string; action?: React.ReactNode; style?: React.CSSProperties }) => {
-  const [tilt, setTilt] = useState({ x: 0, y: 0 });
-  const [hovered, setHovered] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const handleMove = (e: React.MouseEvent) => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    setTilt({ x: (y - 0.5) * -8, y: (x - 0.5) * 8 });
-  };
-  const handleLeave = () => { setTilt({ x: 0, y: 0 }); setHovered(false); };
-
   return (
     <div
-      ref={ref}
-      onMouseMove={handleMove}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={handleLeave}
+      className="bg-white rounded-[16px] overflow-hidden"
       style={{
-        background: T.white,
-        border: `1px solid ${hovered ? "rgba(59,91,219,0.25)" : T.bdr}`,
-        borderRadius: 16,
-        overflow: "hidden",
-        transform: `perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) ${hovered ? "translateY(-4px) scale(1.01)" : "translateY(0) scale(1)"}`,
-        transition: "transform 0.2s ease, border-color 0.3s ease, box-shadow 0.3s ease",
-        boxShadow: hovered
-          ? "0 20px 40px rgba(59,91,219,0.1), 0 8px 16px rgba(0,0,0,0.06), 0 0 0 1px rgba(59,91,219,0.08)"
-          : "0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.02)",
-        willChange: "transform",
+        border: `0.5px solid ${T.bdr}`,
+        boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.12), 0 18px 44px rgba(0,85,255,.15)",
         ...style,
       }}
     >
-      {/* Shine overlay on hover */}
-      {hovered && (
-        <div style={{
-          position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1,
-          background: `radial-gradient(circle at ${(tilt.y / 8 + 0.5) * 100}% ${(-tilt.x / 8 + 0.5) * 100}%, rgba(59,91,219,0.06) 0%, transparent 60%)`,
-          borderRadius: 16,
-        }} />
-      )}
       {title && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: `1px solid ${T.s2}`, position: "relative", zIndex: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: `1px solid ${T.s2}` }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: T.ink }}>{title}</span>
           {action || null}
         </div>
       )}
-      <div style={{ padding: "16px 20px", position: "relative", zIndex: 2 }}>{children}</div>
+      <div style={{ padding: "16px 20px" }}>{children}</div>
     </div>
   );
 };

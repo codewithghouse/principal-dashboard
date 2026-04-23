@@ -21,6 +21,7 @@ import NotifyAllTeachersModal from "@/components/NotifyAllTeachersModal";
 import StudentAIInsightsModal from "@/components/StudentAIInsightsModal";
 import { Sparkles } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { tilt3D, tilt3DStyle } from "@/lib/use3DTilt";
 
 // ── Minimal shapes for Firestore data we read ─────────────────────────────
 interface StudentDoc extends DocumentData {
@@ -311,14 +312,15 @@ export default function StudentIntelligence() {
      ═══════════════════════════════════════════════════════════════ */
   if (isMobile) {
     const B1 = "#0055FF", B3 = "#2277FF", B4 = "#4499FF";
-    const BG = "#EEEEF3", BG2 = "#E0ECFF";
+    const BG = "#EEF4FF", BG2 = "#E0ECFF";
     const T1 = "#001040", T3 = "#5070B0", T4 = "#99AACC";
     const SEP = "rgba(0,85,255,0.07)";
     const GREEN = "#00C853", GREEN_D = "#007830", GREEN_S = "rgba(0,200,83,0.10)", GREEN_B = "rgba(0,200,83,0.22)";
     const RED = "#FF3355", RED_S = "rgba(255,51,85,0.10)", RED_B = "rgba(255,51,85,0.22)";
     const ORANGE = "#FF8800", ORANGE_S = "rgba(255,136,0,0.10)", ORANGE_B = "rgba(255,136,0,0.22)";
-    const SH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 8px rgba(0,85,255,0.08), 0 10px 26px rgba(0,85,255,0.10)";
-    const SH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.11), 0 18px 44px rgba(0,85,255,0.13)";
+    // Unified blue halo — matches Students-page cards (reference visual).
+    const SH = "0 0 0 0.5px rgba(0,85,255,0.12), 0 3px 12px rgba(0,85,255,0.14), 0 12px 32px rgba(0,85,255,0.18)";
+    const SH_LG = "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.18), 0 22px 56px rgba(0,85,255,0.22)";
 
     const weakList = classified.filter(s => s.category === "weak" && (classFilter === "all" || s.classId === classFilter) && (!search || `${s.studentName} ${s.rollNo} ${s.className}`.toLowerCase().includes(search.toLowerCase()))).sort((a, b) => a.avgScore - b.avgScore);
     const devList = classified.filter(s => s.category === "developing" && (classFilter === "all" || s.classId === classFilter) && (!search || `${s.studentName} ${s.rollNo} ${s.className}`.toLowerCase().includes(search.toLowerCase()))).sort((a, b) => a.avgScore - b.avgScore);
@@ -633,7 +635,7 @@ export default function StudentIntelligence() {
   //  DESKTOP — Blue Apple Design
   // ═══════════════════════════════════════════════════════════════
   const dB1 = "#0055FF", dB2 = "#1166FF", dB4 = "#4499FF";
-  const dBG = "#EEEEF3", dBG2 = "#E0ECFF";
+  const dBG = "#EEF4FF", dBG2 = "#E0ECFF";
   const dT1 = "#001040", dT2 = "#002080", dT3 = "#5070B0", dT4 = "#99AACC";
   const dSEP = "rgba(0,85,255,0.08)";
   const dGREEN = "#00C853", dGREEN_D = "#007830", dGREEN_S = "rgba(0,200,83,0.10)", dGREEN_B = "rgba(0,200,83,0.22)";
@@ -641,9 +643,10 @@ export default function StudentIntelligence() {
   const dORANGE = "#FF8800", dORANGE_S = "rgba(255,136,0,0.10)", dORANGE_B = "rgba(255,136,0,0.22)";
   const dGOLD = "#FFAA00";
   const dVIOLET = "#7B3FF4";
-  const dSH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 10px rgba(0,85,255,0.07), 0 10px 28px rgba(0,85,255,0.09)";
-  const dSH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.12)";
-  const dSH_BTN = "0 6px 22px rgba(0,85,255,0.38), 0 2px 5px rgba(0,85,255,0.18)";
+  // Unified blue halo — matches Students-page cards (reference visual).
+  const dSH = "0 0 0 0.5px rgba(0,85,255,0.12), 0 3px 12px rgba(0,85,255,0.14), 0 12px 32px rgba(0,85,255,0.18)";
+  const dSH_LG = "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.18), 0 22px 56px rgba(0,85,255,0.22)";
+  const dSH_BTN = "0 6px 22px rgba(0,85,255,0.42), 0 2px 6px rgba(0,85,255,0.22)";
 
   const tierThemeD = {
     weak:       { color: dRED,    soft: dRED_S,    border: dRED_B,    grad: `linear-gradient(135deg, ${dRED}, #FF6688)`,    shadow: "0 4px 14px rgba(255,51,85,0.26)",  Icon: AlertTriangle, label: "Weak",       desc: "Needs immediate attention" },
@@ -652,7 +655,7 @@ export default function StudentIntelligence() {
   };
 
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
+    <div className="pb-10 w-full px-2 animate-in fade-in duration-500"
       style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
 
       {/* Toolbar */}
@@ -682,11 +685,16 @@ export default function StudentIntelligence() {
       </div>
 
       {/* Dark Hero */}
-      <div className="rounded-[22px] px-7 py-6 relative overflow-hidden text-white"
+      <div style={{ perspective: "1200px" }}>
+      <div
+        {...tilt3D}
+        className="rounded-[22px] px-7 py-6 relative overflow-hidden text-white"
         style={{
           background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
           boxShadow: "0 10px 36px rgba(0,51,204,0.30), 0 0 0 0.5px rgba(255,255,255,0.10)",
+          ...tilt3DStyle,
         }}>
+        <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
         <div className="absolute -right-12 -top-12 w-[220px] h-[220px] rounded-full pointer-events-none"
           style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
         <div className="flex items-center justify-between gap-6 flex-wrap relative z-10">
@@ -722,9 +730,10 @@ export default function StudentIntelligence() {
           </div>
         </div>
       </div>
+      </div>
 
       {/* Tier Cards (filter tabs) */}
-      <div className="grid grid-cols-3 gap-4 mt-5">
+      <div className="grid grid-cols-3 gap-4 mt-5" style={{ perspective: "1200px" }}>
         {TABS.map(t => {
           const td = tierThemeD[t.key];
           const active = activeTab === t.key;
@@ -732,12 +741,15 @@ export default function StudentIntelligence() {
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className="rounded-[20px] p-5 text-left relative overflow-hidden transition-transform hover:scale-[1.01]"
+              {...tilt3D}
+              className="rounded-[20px] p-5 text-left relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
               style={{
                 background: active ? `linear-gradient(145deg, ${td.soft} 0%, rgba(255,255,255,0.4) 100%)` : "#FFFFFF",
                 border: `0.5px solid ${active ? td.color + "66" : dSEP}`,
                 boxShadow: active ? `${dSH_LG}, 0 0 0 2px ${td.color}22` : dSH_LG,
+                ...tilt3DStyle,
               }}>
+              <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
               <div className="absolute -top-8 -right-8 w-[110px] h-[110px] rounded-full pointer-events-none"
                 style={{ background: `radial-gradient(circle, ${td.soft} 0%, transparent 70%)` }} />
               <div className="flex items-center justify-between mb-3 relative">
@@ -832,15 +844,19 @@ export default function StudentIntelligence() {
           <p className="text-[11px]" style={{ color: dT4 }}>Try switching tier or clearing class filter</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4" style={{ perspective: "1200px" }}>
           {visible.map(stu => {
             const t = tierThemeD[stu.category];
             const initials = (stu.studentName || "S").trim().split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
             const scoreColor = stu.avgScore >= 75 ? dGREEN_D : stu.avgScore >= 50 ? dORANGE : dRED;
             const attColor = stu.attendancePct >= 85 ? dGREEN_D : stu.attendancePct >= 70 ? dORANGE : dRED;
             return (
-              <div key={stu.studentId} className="bg-white rounded-[20px] overflow-hidden relative"
-                style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+              <div
+                key={stu.studentId}
+                {...tilt3D}
+                className="bg-white rounded-[20px] overflow-hidden relative"
+                style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+                <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
                 <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: t.grad }} />
 
                 <button

@@ -104,25 +104,57 @@
    Targets: rounded-lg/xl/2xl/3xl white / bg-card surfaces
    ═══════════════════════════════════════════════════════════════ */
 
+/* Every card across the dashboard — same Students-style blue layered shadow.
+   Covers outer cards (bg-white rounded-x), inner tile buttons/anchors,
+   AND colorful divs (hero banners, AI cards, category tiles) that carry
+   an inline background + padding. Icon chips (rounded-full or no padding)
+   are excluded — they use width/height utilities without padding classes. */
 .bg-white[class*="rounded-"],
 .bg-card[class*="rounded-"],
 [class*="bg-white"][class*="rounded-"],
 div[class*="shadow-sm"][class*="rounded-"],
-.stat-card {
-  transition: transform 200ms ease-in-out,
-              box-shadow 200ms ease-in-out !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10) !important;
+.stat-card,
+button[class*="rounded-"][style*="background"]:not([class*="rounded-full"]),
+a[class*="rounded-"][style*="background"]:not([class*="rounded-full"]),
+div[class*="rounded-"][class*="p-"][style*="background"]:not([class*="rounded-full"]),
+div[class*="rounded-"][class*="px-"][style*="background"]:not([class*="rounded-full"]),
+div[class*="rounded-"][class*="py-"][style*="background"]:not([class*="rounded-full"]),
+/* Fully-inlined colorful cards: borderRadius + padding + background all via style=,
+   works on any of div/button/a/section. */
+div[style*="border-radius"][style*="padding"][style*="background"]:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not([style*="border-radius: 999"]):not([style*="border-radius:999"]):not([style*="position: absolute"]):not([style*="position:absolute"]),
+button[style*="border-radius"][style*="padding"][style*="background"]:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not([style*="border-radius: 999"]):not([style*="border-radius:999"]):not([style*="position: absolute"]):not([style*="position:absolute"]),
+a[style*="border-radius"][style*="padding"][style*="background"]:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not([style*="border-radius: 999"]):not([style*="border-radius:999"]):not([style*="position: absolute"]):not([style*="position:absolute"]),
+section[style*="border-radius"][style*="padding"][style*="background"]:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not([style*="border-radius: 999"]):not([style*="border-radius:999"]):not([style*="position: absolute"]):not([style*="position:absolute"]) {
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              box-shadow 220ms ease-out !important;
+  box-shadow: 0 0 0 .5px rgba(0, 85, 255, .10),
+              0 4px 16px rgba(0, 85, 255, .12),
+              0 18px 44px rgba(0, 85, 255, .15) !important;
   cursor: pointer;
-  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .bg-white[class*="rounded-"]:hover,
 .bg-card[class*="rounded-"]:hover,
 [class*="bg-white"][class*="rounded-"]:hover,
 div[class*="shadow-sm"][class*="rounded-"]:hover,
-.stat-card:hover {
-  transform: scale(1.03) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18) !important;
+.stat-card:hover,
+button[class*="rounded-"][style*="background"]:not([class*="rounded-full"]):hover,
+a[class*="rounded-"][style*="background"]:not([class*="rounded-full"]):hover,
+div[class*="rounded-"][class*="p-"][style*="background"]:not([class*="rounded-full"]):hover,
+div[class*="rounded-"][class*="px-"][style*="background"]:not([class*="rounded-full"]):hover,
+div[class*="rounded-"][class*="py-"][style*="background"]:not([class*="rounded-full"]):hover,
+div[style*="border-radius"][style*="padding"][style*="background"]:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not([style*="border-radius: 999"]):not([style*="border-radius:999"]):not([style*="position: absolute"]):not([style*="position:absolute"]):hover,
+button[style*="border-radius"][style*="padding"][style*="background"]:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not([style*="border-radius: 999"]):not([style*="border-radius:999"]):not([style*="position: absolute"]):not([style*="position:absolute"]):hover,
+a[style*="border-radius"][style*="padding"][style*="background"]:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not([style*="border-radius: 999"]):not([style*="border-radius:999"]):not([style*="position: absolute"]):not([style*="position:absolute"]):hover,
+section[style*="border-radius"][style*="padding"][style*="background"]:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not([style*="border-radius: 999"]):not([style*="border-radius:999"]):not([style*="position: absolute"]):not([style*="position:absolute"]):hover {
+  transform: translate3d(0, -5px, 0) scale(1.02) !important;
+  box-shadow: 0 0 0 .5px rgba(0, 85, 255, .16),
+              0 10px 28px rgba(0, 85, 255, .22),
+              0 28px 60px rgba(0, 85, 255, .28) !important;
 }
 
 /* Opt-out hook for containers that visually wrap cards but are not cards */
@@ -131,6 +163,93 @@ div[class*="shadow-sm"][class*="rounded-"]:hover,
   transform: none !important;
   box-shadow: none !important;
   cursor: auto;
+}
+
+/* ── Search bars & form controls — never pop, no card shadow ──────────── */
+/* Form elements themselves with card-like classes */
+input[class*="bg-white"][class*="rounded-"],
+textarea[class*="bg-white"][class*="rounded-"],
+select[class*="bg-white"][class*="rounded-"],
+input[class*="bg-white"][class*="rounded-"]:hover,
+textarea[class*="bg-white"][class*="rounded-"]:hover,
+select[class*="bg-white"][class*="rounded-"]:hover,
+input[class*="bg-white"][class*="rounded-"]:focus,
+textarea[class*="bg-white"][class*="rounded-"]:focus,
+select[class*="bg-white"][class*="rounded-"]:focus {
+  transform: none !important;
+  box-shadow: 0 0 0 .5px rgba(0, 85, 255, .10),
+              0 2px 8px rgba(0, 85, 255, .10) !important;
+  cursor: text;
+}
+
+/* Rounded containers that directly wrap an input (search bar pattern) */
+.bg-white[class*="rounded-"]:has(> input),
+.bg-white[class*="rounded-"]:has(> svg + input),
+.bg-white[class*="rounded-"]:has(> .lucide + input),
+[class*="bg-white"][class*="rounded-"]:has(> input),
+[class*="bg-white"][class*="rounded-"]:has(> svg + input),
+div[class*="shadow-sm"][class*="rounded-"]:has(> input),
+.bg-white[class*="rounded-"]:has(> input):hover,
+.bg-white[class*="rounded-"]:has(> svg + input):hover,
+.bg-white[class*="rounded-"]:has(> .lucide + input):hover,
+[class*="bg-white"][class*="rounded-"]:has(> input):hover,
+[class*="bg-white"][class*="rounded-"]:has(> svg + input):hover,
+div[class*="shadow-sm"][class*="rounded-"]:has(> input):hover {
+  transform: none !important;
+  box-shadow: 0 0 0 .5px rgba(0, 85, 255, .10),
+              0 2px 8px rgba(0, 85, 255, .10) !important;
+  cursor: auto;
+}
+
+/* ── Chat pages (WhatsApp-like): disable 3D hover everywhere inside ───── */
+.chat-page .bg-white[class*="rounded-"],
+.chat-page [class*="bg-white"][class*="rounded-"],
+.chat-page .bg-card[class*="rounded-"],
+.chat-page div[class*="shadow-sm"][class*="rounded-"],
+.chat-page .stat-card,
+.chat-page button[class*="rounded-"][style*="background"],
+.chat-page a[class*="rounded-"][style*="background"],
+.chat-page div[class*="rounded-"][class*="p-"][style*="background"],
+.chat-page div[class*="rounded-"][class*="px-"][style*="background"],
+.chat-page div[class*="rounded-"][class*="py-"][style*="background"],
+.chat-page div[style*="border-radius"][style*="padding"][style*="background"],
+.chat-page button[style*="border-radius"][style*="padding"][style*="background"],
+.chat-page a[style*="border-radius"][style*="padding"][style*="background"] {
+  transform: none !important;
+  transition: background-color 120ms ease, border-color 120ms ease !important;
+  cursor: auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10) !important;
+}
+.chat-page .bg-white[class*="rounded-"]:hover,
+.chat-page [class*="bg-white"][class*="rounded-"]:hover,
+.chat-page .bg-card[class*="rounded-"]:hover,
+.chat-page div[class*="shadow-sm"][class*="rounded-"]:hover,
+.chat-page .stat-card:hover,
+.chat-page button[class*="rounded-"][style*="background"]:hover,
+.chat-page a[class*="rounded-"][style*="background"]:hover,
+.chat-page div[class*="rounded-"][class*="p-"][style*="background"]:hover,
+.chat-page div[class*="rounded-"][class*="px-"][style*="background"]:hover,
+.chat-page div[class*="rounded-"][class*="py-"][style*="background"]:hover,
+.chat-page div[style*="border-radius"][style*="padding"][style*="background"]:hover,
+.chat-page button[style*="border-radius"][style*="padding"][style*="background"]:hover,
+.chat-page a[style*="border-radius"][style*="padding"][style*="background"]:hover {
+  transform: none !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10) !important;
+}
+/* Buttons inside chat pages — neutralize button lift too */
+.chat-page button[class*="bg-primary"],
+.chat-page button[class*="bg-blue"],
+.chat-page button[class*="bg-[#1e3a8a]"],
+.chat-page button[class*="bg-primary"]:hover,
+.chat-page button[class*="bg-blue"]:hover,
+.chat-page button[class*="bg-[#1e3a8a]"]:hover,
+.chat-page button:active,
+.chat-page a:active {
+  transform: none !important;
+}
+/* Chat list rows: subtle hover only */
+.chat-page .chat-row:hover {
+  background-color: rgba(0, 85, 255, 0.05) !important;
 }
 
 /* ── Button hover lift (all buttons with bg-primary or blue backgrounds) ── */

@@ -141,7 +141,7 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEEEF3",
+          background: "#EEF4FF",
           minHeight: "100vh",
           paddingBottom: 24,
         }}
@@ -652,7 +652,7 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
   }
 
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-300" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+    <div className="pb-10 w-full px-2 animate-in fade-in duration-300" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
 
       {/* Breadcrumb */}
       <div className="pt-2 pb-3 flex items-center gap-[6px]">
@@ -965,7 +965,7 @@ export default function AssignmentMarks() {
     : { label: "Needs Work", c: "#FF99AA", bg: "rgba(255,51,85,0.22)", bdr: "rgba(255,51,85,0.4)" };
 
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+    <div className="pb-10 w-full px-2 animate-in fade-in duration-500" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
 
       {/* Top toolbar */}
       <div className="flex items-start justify-between gap-4 pt-2 mb-5">

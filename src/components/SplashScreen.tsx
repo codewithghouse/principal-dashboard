@@ -24,7 +24,7 @@ const SplashScreen = ({ onFinish }: Props) => {
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
       style={{
-        background: "#EEEEF3",
+        background: "#EEF4FF",
         opacity: fading ? 0 : 1,
         transform: fading ? "scale(1.04)" : "scale(1)",
         transition: `opacity ${FADE_MS}ms ease-in-out, transform ${FADE_MS}ms ease-in-out`,

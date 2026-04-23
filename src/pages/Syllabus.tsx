@@ -355,7 +355,7 @@ const Syllabus = () => {
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEEEF3",
+          background: "#EEF4FF",
           minHeight: "100vh",
           paddingBottom: 24,
         }}
@@ -855,7 +855,7 @@ const Syllabus = () => {
                           gap: 6,
                           padding: "4px 10px",
                           borderRadius: 100,
-                          background: "#EEEEF3",
+                          background: "#EEF4FF",
                           border: "0.5px solid rgba(0,85,255,.12)",
                         }}
                       >
@@ -1102,7 +1102,7 @@ const Syllabus = () => {
   //  DESKTOP — Blue Apple Design
   // ═══════════════════════════════════════════════════════════════
   const dB1 = "#0055FF", dB2 = "#1166FF", dB4 = "#4499FF";
-  const dBG = "#EEEEF3", dBG2 = "#E0ECFF";
+  const dBG = "#EEF4FF", dBG2 = "#E0ECFF";
   const dT1 = "#001040", dT2 = "#002080", dT3 = "#5070B0", dT4 = "#99AACC";
   const dSEP = "rgba(0,85,255,0.08)";
   const dGREEN = "#00C853", dGREEN_D = "#007830", dGREEN_S = "rgba(0,200,83,0.10)", dGREEN_B = "rgba(0,200,83,0.22)";
@@ -1113,7 +1113,7 @@ const Syllabus = () => {
   const dSH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.12)";
 
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
+    <div className="pb-10 w-full px-2 animate-in fade-in duration-500"
       style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
 
       {/* Toolbar */}

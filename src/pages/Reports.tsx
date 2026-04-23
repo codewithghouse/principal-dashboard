@@ -142,7 +142,7 @@ const Reports = () => {
 
   // Design tokens
   const B1 = "#0055FF", B2 = "#1166FF", B4 = "#4499FF";
-  const BG = "#EEEEF3";
+  const BG = "#EEF4FF";
   const T1 = "#001040", T2 = "#002080", T3 = "#5070B0", T4 = "#99AACC";
   const SEP = "rgba(0,85,255,0.08)";
   const GREEN = "#00C853", GREEN_D = "#007830", GREEN_S = "rgba(0,200,83,0.10)", GREEN_B = "rgba(0,200,83,0.22)";
@@ -385,7 +385,7 @@ const Reports = () => {
   //  DESKTOP
   // ═══════════════════════════════════════════════════════════════
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
+    <div className="pb-10 w-full px-2 animate-in fade-in duration-500"
       style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
 
       {/* Toolbar */}

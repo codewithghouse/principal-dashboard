@@ -284,7 +284,7 @@ export default function TeacherLeaderboard() {
         <div
           style={{
             fontFamily: "'DM Sans', -apple-system, sans-serif",
-            background: "#EEEEF3",
+            background: "#EEF4FF",
             minHeight: "100vh",
             paddingBottom: 24,
           }}
@@ -717,7 +717,7 @@ export default function TeacherLeaderboard() {
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEEEF3",
+          background: "#EEF4FF",
           minHeight: "100vh",
           paddingBottom: 24,
         }}
@@ -2821,7 +2821,7 @@ function DetailModal({ score, onClose }: { score: TeacherScore; onClose: () => v
               <div
                 key={i}
                 style={{
-                  background: "#EEEEF3",
+                  background: "#EEF4FF",
                   borderRadius: 14,
                   padding: 16,
                   textAlign: "center",
@@ -2853,7 +2853,7 @@ function DetailModal({ score, onClose }: { score: TeacherScore; onClose: () => v
           style={{
             padding: "14px 28px",
             borderTop: "0.5px solid rgba(0,85,255,.07)",
-            background: "#EEEEF3",
+            background: "#EEF4FF",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",

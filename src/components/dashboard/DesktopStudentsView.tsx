@@ -4,12 +4,13 @@ import {
   User as UserIcon, Download, MessageSquare, MoreHorizontal,
   CheckCircle,
 } from "lucide-react";
+import { tilt3D, tilt3DProfile, tilt3DStyle } from "@/lib/use3DTilt";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const B1 = "#0055FF";
 const B2 = "#1166FF";
 const B3 = "#2277FF";
-const BG = "#EEEEF3";
+const BG = "#EEF4FF";
 const BG2 = "#E0ECFF";
 const T1 = "#001040";
 const T2 = "#002080";
@@ -21,9 +22,11 @@ const RED = "#FF3355";
 const GRAD_PRIMARY = `linear-gradient(135deg, ${B1}, ${B2})`;
 const GRAD_FAC_ICO = `linear-gradient(135deg, ${B1}, ${B3})`;
 
-const SHADOW_SM = "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.09), 0 8px 24px rgba(0,85,255,.10)";
-const SHADOW_LG = "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)";
-const SHADOW_BTN = "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)";
+// Soft uniform blue halo — dimmed per user; applied to every card across
+// Dashboard, Students, and StudentIntelligence.
+const SHADOW_SM = "0 0 0 .5px rgba(0,85,255,.09), 0 2px 10px rgba(0,85,255,.10), 0 10px 26px rgba(0,85,255,.12)";
+const SHADOW_LG = "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.12), 0 18px 44px rgba(0,85,255,.15)";
+const SHADOW_BTN = "0 5px 18px rgba(0,85,255,.34), 0 2px 5px rgba(0,85,255,.18)";
 
 const AV_PALETTE = [
   "linear-gradient(135deg, #0044EE, #2277FF)",
@@ -314,7 +317,9 @@ const DesktopStudentsView = ({
       </div>
 
       {/* ── Stats Strip ── */}
+      <div style={{ perspective: "1200px", marginBottom: 18 }}>
       <div
+        {...tilt3D}
         style={{
           display: "flex",
           borderRadius: 20,
@@ -322,9 +327,11 @@ const DesktopStudentsView = ({
           background: "#fff",
           boxShadow: SHADOW_LG,
           border: "0.5px solid rgba(0,85,255,0.10)",
-          marginBottom: 18,
+          position: "relative",
+          ...tilt3DStyle,
         }}
       >
+        <div data-glow style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: 0, transition: "opacity 0.3s" }} />
         {[
           { val: loading ? "—" : studentsData.length, label: "Scholars", color: B1 },
           { val: loading ? "—" : activeCount, label: "Active", color: "#007830" },
@@ -355,6 +362,7 @@ const DesktopStudentsView = ({
             </div>
           </div>
         ))}
+      </div>
       </div>
 
       {/* ── Section label ── */}
@@ -406,7 +414,7 @@ const DesktopStudentsView = ({
           )}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, perspective: "1200px" }}>
           {paginated.map((s: any) => {
             const email = s.email || s.studentEmail || "";
             const isActive = (s.status || "Active") === "Active";
@@ -416,6 +424,7 @@ const DesktopStudentsView = ({
             return (
               <div
                 key={s.id}
+                {...tilt3DProfile}
                 style={{
                   borderRadius: 24,
                   background: "#fff",
@@ -423,9 +432,10 @@ const DesktopStudentsView = ({
                   position: "relative",
                   boxShadow: SHADOW_LG,
                   border: "0.5px solid rgba(0,85,255,0.10)",
-                  transition: "transform .15s",
+                  ...tilt3DStyle,
                 }}
               >
+                <div data-glow style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: 0, transition: "opacity 0.3s", zIndex: 0 }} />
                 {/* Top: avatar + name/email + status badge */}
                 <div
                   style={{
@@ -833,17 +843,20 @@ const DesktopStudentsView = ({
 
       {/* ── Enrollment Registry dark card ── */}
       {!loading && studentsData.length > 0 && (
+        <div style={{ marginTop: 14, perspective: "1200px" }}>
         <div
+          {...tilt3D}
           style={{
-            marginTop: 14,
             padding: "22px 26px",
             borderRadius: 24,
             position: "relative",
             overflow: "hidden",
             background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
             boxShadow: "0 8px 28px rgba(0,51,204,0.30), 0 0 0 0.5px rgba(255,255,255,0.14)",
+            ...tilt3DStyle,
           }}
         >
+          <div data-glow style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: 0, transition: "opacity 0.3s" }} />
           <div
             style={{
               position: "absolute",
@@ -912,6 +925,7 @@ const DesktopStudentsView = ({
               </div>
             ))}
           </div>
+        </div>
         </div>
       )}
     </div>

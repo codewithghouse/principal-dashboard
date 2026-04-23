@@ -288,7 +288,7 @@ const AccessRequests = () => {
   const B1 = "#0055FF";
   const B2 = "#1166FF";
   const B3 = "#2277FF";
-  const BG = "#EEEEF3";
+  const BG = "#EEF4FF";
   const T1 = "#001040";
   const T2 = "#002080";
   const T3 = "#5070B0";

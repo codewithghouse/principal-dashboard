@@ -9,6 +9,7 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { tilt3D, tilt3DStyle } from "@/lib/use3DTilt";
 import DashboardMobile from "@/components/dashboard/DashboardMobile";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -442,15 +443,21 @@ const Dashboard = () => {
   const dORANGE = "#FF8800", dORANGE_S = "rgba(255,136,0,0.10)", dORANGE_B = "rgba(255,136,0,0.22)";
   const dGOLD = "#FFAA00";
   const dVIOLET = "#7B3FF4";
-  const dSH = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 10px rgba(0,85,255,0.07), 0 10px 28px rgba(0,85,255,0.09)";
-  const dSH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.12)";
+  // Bright light-blue halo — user said previous values were too faint
+  // to register as a real drop shadow. Opacity bumped across all three
+  // layers + wider blur so the sky-blue tone (#4499FF) genuinely pops
+  // around each card at rest.
+  // Matches Students' SHADOW_LG — soft blue-tinted layered glow.
+  const dSH = "0 0 0 .5px rgba(0,85,255,.10), 0 2px 10px rgba(0,85,255,.10), 0 10px 28px rgba(0,85,255,.12)";
+  const dSH_LG = "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.12), 0 18px 44px rgba(0,85,255,.15)";
 
   const healthLabelText = healthLabel(healthIndex);
   const healthTier = healthIndex === null ? dT3 : healthIndex >= 80 ? dGREEN : healthIndex >= 65 ? dGOLD : dRED;
 
   return (
-    <div className="pb-10 max-w-[1400px] mx-auto px-2 animate-in fade-in duration-500"
-      style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+    <div className="min-h-screen animate-in fade-in duration-500"
+      style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif", background: "#EEF4FF" }}>
+    <div className="pb-10 w-full px-2">
 
       {/* ── Toolbar ───────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-4 pt-2 pb-5">
@@ -467,11 +474,14 @@ const Dashboard = () => {
       {/* ── Academic Health Hero ──────────────────────────────────────────────── */}
       <div onClick={() => navigate("/student-intelligence")}
         role="button" tabIndex={0}
-        className="rounded-[22px] px-7 py-6 flex flex-wrap items-center justify-between gap-5 text-white relative overflow-hidden cursor-pointer"
+        {...tilt3D}
+        className="rounded-[22px] px-7 py-6 flex flex-wrap items-center justify-between gap-5 text-white relative overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         style={{
           background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
           boxShadow: "0 10px 36px rgba(0,51,204,0.30), 0 0 0 0.5px rgba(255,255,255,0.10)",
+          ...tilt3DStyle,
         }}>
+        <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
         <div className="absolute -right-10 -top-10 w-56 h-56 rounded-full pointer-events-none"
           style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
         <div className="absolute inset-0 pointer-events-none" style={{
@@ -514,59 +524,65 @@ const Dashboard = () => {
       </div>
 
       {/* ── 4 Bright Stat Cards ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5" style={{ perspective: "1200px" }}>
 
         {/* Students — blue */}
         <div onClick={() => navigate("/students")}
           role="button" tabIndex={0}
-          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer"
-          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          {...tilt3D}
+          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+          <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
           <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
             style={{ background: "radial-gradient(circle, rgba(0,85,255,0.10) 0%, transparent 70%)" }} />
           <div className="flex items-center justify-between mb-4 relative">
             <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>Total Students</span>
             <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
-              style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.28)" }}>
+              style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.28)", transform: "translateZ(18px)" }}>
               <Users className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
             </div>
           </div>
-          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: dB1, letterSpacing: "-1.2px" }}>{displayStudents}</p>
+          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: dB1, letterSpacing: "-1.2px", transform: "translateZ(10px)" }}>{displayStudents}</p>
           <p className="text-[11px] font-semibold" style={{ color: dT3 }}>Enrolled this branch</p>
         </div>
 
         {/* Teachers — green */}
         <div onClick={() => navigate("/teachers")}
           role="button" tabIndex={0}
-          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer"
-          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          {...tilt3D}
+          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+          <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
           <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
             style={{ background: "radial-gradient(circle, rgba(0,200,83,0.10) 0%, transparent 70%)" }} />
           <div className="flex items-center justify-between mb-4 relative">
             <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>Teachers</span>
             <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
-              style={{ background: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, boxShadow: "0 4px 14px rgba(0,200,83,0.26)" }}>
+              style={{ background: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, boxShadow: "0 4px 14px rgba(0,200,83,0.26)", transform: "translateZ(18px)" }}>
               <GraduationCap className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
             </div>
           </div>
-          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: dGREEN_D, letterSpacing: "-1.2px" }}>{displayTeachers}</p>
+          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: dGREEN_D, letterSpacing: "-1.2px", transform: "translateZ(10px)" }}>{displayTeachers}</p>
           <p className="text-[11px] font-semibold" style={{ color: dGREEN_D }}>Active staff</p>
         </div>
 
         {/* Attendance — gold */}
         <div onClick={() => navigate("/attendance")}
           role="button" tabIndex={0}
-          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer"
-          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          {...tilt3D}
+          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+          <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
           <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
             style={{ background: "radial-gradient(circle, rgba(255,170,0,0.12) 0%, transparent 70%)" }} />
           <div className="flex items-center justify-between mb-4 relative">
             <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>Today's Attendance</span>
             <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
-              style={{ background: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, boxShadow: "0 4px 14px rgba(255,170,0,0.28)" }}>
+              style={{ background: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, boxShadow: "0 4px 14px rgba(255,170,0,0.28)", transform: "translateZ(18px)" }}>
               <CalendarCheck className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
             </div>
           </div>
-          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: dGOLD, letterSpacing: "-1.2px" }}>{displayAttendance}</p>
+          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: dGOLD, letterSpacing: "-1.2px", transform: "translateZ(10px)" }}>{displayAttendance}</p>
           {attendanceDelta !== null ? (
             <p className="text-[11px] font-semibold flex items-center gap-1" style={{ color: attendanceDelta >= 0 ? dGREEN_D : dRED }}>
               {attendanceDelta >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
@@ -580,8 +596,10 @@ const Dashboard = () => {
         {/* Incidents — red/violet */}
         <div onClick={() => navigate("/discipline")}
           role="button" tabIndex={0}
-          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer"
-          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          {...tilt3D}
+          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+          <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
           <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
             style={{ background: `radial-gradient(circle, ${(pendingIncidents ?? 0) > 0 ? "rgba(255,51,85,0.12)" : "rgba(123,63,244,0.10)"} 0%, transparent 70%)` }} />
           <div className="flex items-center justify-between mb-4 relative">
@@ -604,13 +622,15 @@ const Dashboard = () => {
       </div>
 
       {/* ── Risk Alerts + Attendance Trend ────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5" style={{ perspective: "1200px" }}>
 
         {/* Risk Alerts card */}
         <div onClick={() => navigate("/risk-students")}
           role="button" tabIndex={0}
-          className="bg-white rounded-[20px] overflow-hidden flex flex-col cursor-pointer"
-          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          {...tilt3D}
+          className="bg-white rounded-[20px] overflow-hidden flex flex-col cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40 relative"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+          <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
           <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
             <div className="flex items-center gap-[10px]">
               <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
@@ -619,7 +639,9 @@ const Dashboard = () => {
               </div>
               <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Today's Risk Alerts</h2>
             </div>
-            <button className="text-[12px] font-bold flex items-center gap-0.5 transition-colors" style={{ color: dB1 }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate("/risk-students"); }}
+              className="text-[12px] font-bold flex items-center gap-0.5 transition-colors" style={{ color: dB1 }}>
               View All <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -666,8 +688,10 @@ const Dashboard = () => {
         {/* Attendance Trend */}
         <div onClick={() => navigate("/attendance")}
           role="button" tabIndex={0}
-          className="bg-white rounded-[20px] overflow-hidden cursor-pointer"
-          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          {...tilt3D}
+          className="bg-white rounded-[20px] overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40 relative"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+          <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
           <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
             <div className="flex items-center gap-[10px]">
               <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
@@ -723,13 +747,15 @@ const Dashboard = () => {
       </div>
 
       {/* ── Class Heatmap + Teachers + Comms ──────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5 items-start" style={{ perspective: "1200px" }}>
 
         {/* Class Performance Heatmap */}
         <div onClick={() => navigate("/academics")}
           role="button" tabIndex={0}
-          className="bg-white rounded-[20px] overflow-hidden cursor-pointer"
-          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          {...tilt3D}
+          className="bg-white rounded-[20px] overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40 relative"
+          style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+          <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
           <div className="flex items-center gap-[10px] px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
             <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
               style={{ background: "rgba(123,63,244,0.10)", border: "0.5px solid rgba(123,63,244,0.22)" }}>
@@ -788,8 +814,10 @@ const Dashboard = () => {
           {/* Teacher Performance */}
           <div onClick={() => navigate("/teacher-performance")}
             role="button" tabIndex={0}
-            className="bg-white rounded-[20px] overflow-hidden cursor-pointer"
-            style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+            {...tilt3D}
+            className="bg-white rounded-[20px] overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40 relative"
+            style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+            <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
             <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
               <div className="flex items-center gap-[10px]">
                 <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
@@ -798,7 +826,9 @@ const Dashboard = () => {
                 </div>
                 <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Top Teachers</h2>
               </div>
-              <button className="text-[12px] font-bold flex items-center gap-0.5" style={{ color: dB1 }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); navigate("/teacher-performance"); }}
+                className="text-[12px] font-bold flex items-center gap-0.5" style={{ color: dB1 }}>
                 View All <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -832,8 +862,10 @@ const Dashboard = () => {
           {/* Urgent Communications */}
           <div onClick={() => navigate("/parent-communication")}
             role="button" tabIndex={0}
-            className="bg-white rounded-[20px] overflow-hidden cursor-pointer"
-            style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+            {...tilt3D}
+            className="bg-white rounded-[20px] overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40 relative"
+            style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+            <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
             <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
               <div className="flex items-center gap-[10px]">
                 <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
@@ -880,11 +912,14 @@ const Dashboard = () => {
       {(riskAlerts.length > 0 || healthIndex !== null) && (
         <div onClick={() => navigate("/reports")}
           role="button" tabIndex={0}
-          className="mt-5 rounded-[22px] px-7 py-6 relative overflow-hidden cursor-pointer"
+          {...tilt3D}
+          className="mt-5 rounded-[22px] px-7 py-6 relative overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
           style={{
             background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
             boxShadow: "0 10px 36px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
+            ...tilt3DStyle,
           }}>
+          <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
           <div className="absolute -top-10 -right-7 w-[200px] h-[200px] rounded-full pointer-events-none"
             style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
           <div className="flex items-center gap-2 mb-3 relative z-10">
@@ -908,6 +943,7 @@ const Dashboard = () => {
         </div>
       )}
 
+    </div>
     </div>
   );
 

@@ -22,7 +22,7 @@ export interface ExamsResultsMobileProps {
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const B1 = "#0055FF", B2 = "#1166FF";
-const BG = "#EEEEF3", BG2 = "#E0ECFF";
+const BG = "#EEF4FF", BG2 = "#E0ECFF";
 const T1 = "#001040", T2 = "#002080", T3 = "#5070B0", T4 = "#99AACC";
 const GREEN = "#00C853", RED = "#FF3355", ORANGE = "#FF8800", GOLD = "#FFAA00";
 const SEP = "rgba(0,85,255,0.07)";

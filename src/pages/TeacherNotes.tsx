@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Loader2, MessageSquare, Search, Send, User, ChevronLeft, CheckCheck, Users, Mail, Smile, GraduationCap, Plus, MoreVertical, Phone, Sparkles, Check, Clock, FileText } from "lucide-react";
+import { Loader2, MessageSquare, Search, Send, User, ChevronLeft, CheckCheck, Mail, Smile, GraduationCap, Plus, MoreVertical, Phone, Sparkles, Check, Clock, FileText } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
@@ -205,7 +205,7 @@ const TeacherNotes = () => {
         <div
           style={{
             fontFamily: "'DM Sans', -apple-system, sans-serif",
-            background: "#EEEEF3",
+            background: "#EEF4FF",
             height: "100vh",
             display: "flex",
             flexDirection: "column",
@@ -389,7 +389,7 @@ const TeacherNotes = () => {
               flexDirection: "column",
               gap: 12,
               minHeight: 0,
-              background: "#EEEEF3",
+              background: "#EEF4FF",
             }}
           >
             {loading ? (
@@ -631,7 +631,7 @@ const TeacherNotes = () => {
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEEEF3",
+          background: "#EEF4FF",
           minHeight: "100vh",
           paddingBottom: 24,
         }}
@@ -1195,194 +1195,380 @@ const TeacherNotes = () => {
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DESKTOP — mirrors the mobile aesthetic (blue palette + gradient hero)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const B1 = "#0055FF", B2 = "#1166FF", B3 = "#2277FF";
+  const GREEN = "#00C853", GREEN_D = "#007830";
+  const ORANGE = "#FF8800";
+  const GOLD = "#FFAA00";
+  const RED = "#FF3355";
+  const T1 = "#001040", T2 = "#002080", T3 = "#5070B0", T4 = "#99AACC";
+  const SEP = "rgba(0,85,255,.08)";
+  const SH_CARD = "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 18px 44px rgba(0,85,255,.13)";
+
+  const subjectStyleD = (subject: string) => {
+    const s = (subject || "").toLowerCase();
+    if (s.includes("math")) return { avBg: `linear-gradient(135deg, ${ORANGE}, #FFCC22)`, tagBg: "rgba(255,136,0,.10)", tagColor: "#884400", tagBorder: "rgba(255,136,0,.22)", shadow: "0 3px 10px rgba(255,136,0,.24)" };
+    if (s.includes("english") || s.includes("lang")) return { avBg: `linear-gradient(135deg, ${GREEN}, #22EE66)`, tagBg: "rgba(0,200,83,.10)", tagColor: GREEN_D, tagBorder: "rgba(0,200,83,.22)", shadow: "0 3px 10px rgba(0,200,83,.24)" };
+    if (s.includes("sci") || s.includes("chem") || s.includes("phy") || s.includes("bio")) return { avBg: "linear-gradient(135deg, #7B3FF4, #AA77FF)", tagBg: "rgba(123,63,244,.10)", tagColor: "#5B2FC4", tagBorder: "rgba(123,63,244,.22)", shadow: "0 3px 10px rgba(123,63,244,.24)" };
+    if (s.includes("social") || s.includes("hist") || s.includes("geo")) return { avBg: `linear-gradient(135deg, ${GOLD}, #FFCC55)`, tagBg: "rgba(255,170,0,.10)", tagColor: "#884400", tagBorder: "rgba(255,170,0,.22)", shadow: "0 3px 10px rgba(255,170,0,.24)" };
+    return { avBg: `linear-gradient(135deg, ${B1}, ${B3})`, tagBg: "rgba(0,85,255,.10)", tagColor: B1, tagBorder: "rgba(0,85,255,.16)", shadow: "0 3px 10px rgba(0,85,255,.24)" };
+  };
+
   return (
-    <div className="-m-4 sm:-m-6 md:-m-8 flex flex-col" style={{ fontFamily: "'Montserrat', sans-serif", height: "calc(100vh - 56px)" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
-        .wa-sidebar::-webkit-scrollbar { width: 4px; }
-        .wa-sidebar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-        .wa-chat::-webkit-scrollbar { width: 6px; }
-        .wa-chat::-webkit-scrollbar-thumb { background: #c8b89a; border-radius: 4px; }
-        .wa-input::-webkit-scrollbar { display: none; }
-        .bubble-sent { border-radius: 8px 0 8px 8px; position: relative; }
-        .bubble-sent::before { content:''; position:absolute; top:0; right:-8px; width:0; height:0; border:8px solid transparent; border-top-color:#d9fdd3; border-right:0; }
-        .bubble-recv { border-radius: 0 8px 8px 8px; position: relative; }
-        .bubble-recv::before { content:''; position:absolute; top:0; left:-8px; width:0; height:0; border:8px solid transparent; border-top-color:#ffffff; border-left:0; }
-        .wa-bg { background-color:#efeae2; }
-        .chat-item:hover { background: #f5f6f6; }
-      `}</style>
+    <div className="chat-page w-full h-full flex flex-col overflow-hidden animate-in fade-in duration-500"
+      style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
 
-      {/* Stat strip */}
-      <div className="flex gap-2 sm:gap-4 px-3 sm:px-4 py-3 bg-white border-b border-gray-200 shrink-0 overflow-x-auto">
-        {[
-          { label: "Total Messages",    val: stats.total,     icon: MessageSquare, color: "text-blue-600" },
-          { label: "Unread Replies",    val: stats.unread,    icon: Mail,          color: "text-amber-500" },
-          { label: "Teachers Contacted",val: stats.contacted, icon: Users,         color: "text-green-600" },
-        ].map(s => (
-          <div key={s.label} className="flex items-center gap-3 bg-gray-50 rounded-xl px-5 py-3 flex-1 border border-gray-100">
-            <s.icon className={`w-5 h-5 ${s.color} shrink-0`} />
-            <div>
-              <p className="text-xs font-semibold text-gray-400">{s.label}</p>
-              <p className="text-xl font-black text-gray-800">{s.val}</p>
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <div className="rounded-[18px] px-6 py-4 flex items-center gap-4 text-white relative overflow-hidden shrink-0"
+        style={{
+          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
+          boxShadow: "0 6px 22px rgba(0,51,204,0.24), 0 0 0 0.5px rgba(255,255,255,0.10)",
+        }}>
+        <div className="absolute -right-10 -top-10 w-56 h-56 rounded-full pointer-events-none"
+          style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+        <div className="w-11 h-11 rounded-[14px] flex items-center justify-center shrink-0 relative z-10"
+          style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+          <GraduationCap className="w-5 h-5 text-white" strokeWidth={2.2} />
+        </div>
+        <div className="relative z-10 flex-1 min-w-0">
+          <div className="text-[18px] font-bold tracking-tight leading-tight">Teacher Notes</div>
+          <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.60)" }}>
+            Direct notes with your teaching staff
+          </p>
+        </div>
+        <div className="relative z-10 flex items-center gap-4">
+          <div className="text-right">
+            <div className="text-[18px] font-bold tracking-tight leading-none"
+              style={{ color: stats.unread > 0 ? "#FF8899" : "#fff" }}>
+              {stats.unread}
             </div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.10em] mt-1" style={{ color: "rgba(255,255,255,0.45)" }}>Unread</div>
           </div>
-        ))}
-      </div>
-
-      {/* Main layout */}
-      <div className="flex flex-1 overflow-hidden border-t border-gray-200">
-
-        {/* Left sidebar */}
-        <div className={`w-[380px] shrink-0 flex flex-col border-r border-gray-200 bg-white ${selectedTeacher ? "hidden md:flex" : "flex"}`}>
-          <div className="flex items-center gap-3 px-4 py-3 bg-[#1e3a8a]">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <GraduationCap className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-white font-bold text-sm flex-1">Teacher Notes</span>
+          <div className="w-px h-8" style={{ background: "rgba(255,255,255,0.20)" }} />
+          <div className="text-right">
+            <div className="text-[18px] font-bold tracking-tight leading-none text-white">{stats.contacted}</div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.10em] mt-1" style={{ color: "rgba(255,255,255,0.45)" }}>Teachers</div>
           </div>
-
-          <div className="px-3 py-2 bg-white">
-            <div className="flex items-center bg-[#f0f2f5] rounded-full px-4 gap-2 h-9">
-              <Search className="w-4 h-4 text-gray-400 shrink-0" />
-              <input
-                type="text"
-                placeholder="Search teachers..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="flex-1 bg-transparent text-sm outline-none text-gray-700 placeholder:text-gray-400"
-              />
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto wa-sidebar">
-            {teachersLoading ? (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
-              </div>
-            ) : filteredTeachers.length === 0 ? (
-              <p className="text-center text-xs text-gray-400 font-medium py-10">No teachers found</p>
-            ) : filteredTeachers.map(t => {
-              const last   = lastMessages.get(t.id);
-              const unread = unreadPerTeacher.get(t.id) || 0;
-              const active = selectedTeacher?.id === t.id;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setSelectedTeacher(t)}
-                  className={`w-full flex items-center gap-3 px-3 py-3 border-b border-gray-100 transition-colors chat-item ${active ? "bg-[#f0f2f5]" : ""}`}
-                >
-                  <div className="w-12 h-12 rounded-full bg-[#1e3a8a] flex items-center justify-center text-white text-sm font-bold shrink-0">
-                    {(t.name || "TC").substring(0, 2).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-sm font-semibold text-gray-900 truncate">{t.name}</span>
-                      {last && <span className={`text-[11px] font-medium shrink-0 ml-1 ${unread > 0 ? "text-[#25d366]" : "text-gray-400"}`}>{fmtTime(last.timestamp)}</span>}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-gray-500 truncate">
-                        {last ? (last.from === "principal" ? `✓ ${last.message}` : last.message) : "No messages yet"}
-                      </p>
-                      {unread > 0 && (
-                        <span className="ml-1 bg-[#25d366] text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center shrink-0">{unread}</span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">{t.subject || "Teacher"}{t.assignedClass ? ` • ${t.assignedClass}` : ""}</p>
-                  </div>
-                </button>
-              );
-            })}
+          <div className="w-px h-8" style={{ background: "rgba(255,255,255,0.20)" }} />
+          <div className="text-right">
+            <div className="text-[18px] font-bold tracking-tight leading-none text-white">{stats.total}</div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.10em] mt-1" style={{ color: "rgba(255,255,255,0.45)" }}>Total</div>
           </div>
         </div>
+      </div>
 
-        {/* Right chat panel */}
-        <div className={`flex-1 flex flex-col ${!selectedTeacher ? "hidden md:flex" : "flex"}`}>
-          {selectedTeacher ? (
-            <>
-              <div className="flex items-center gap-3 px-4 py-2 bg-[#1e3a8a] shrink-0">
-                <button onClick={() => setSelectedTeacher(null)} className="md:hidden text-white p-1">
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white text-sm font-bold">
-                  {(selectedTeacher.name || "TC").substring(0, 2).toUpperCase()}
-                </div>
-                <div className="flex-1">
-                  <p className="text-white font-semibold text-sm leading-none">{selectedTeacher.name}</p>
-                  <p className="text-blue-200 text-xs mt-0.5">{selectedTeacher.subject || "Teacher"}{selectedTeacher.assignedClass ? ` • ${selectedTeacher.assignedClass}` : ""}</p>
-                </div>
-              </div>
+      {/* ── Two-column main — fills remaining height like WhatsApp ──────── */}
+      <div className="mt-3 grid grid-cols-12 gap-3 flex-1 min-h-0">
 
-              <div className="flex-1 overflow-y-auto wa-chat wa-bg px-4 py-4 flex flex-col gap-1">
-                {loading ? (
-                  <div className="flex-1 flex items-center justify-center">
-                    <Loader2 className="w-7 h-7 animate-spin text-gray-400" />
-                  </div>
-                ) : teacherMessages.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center">
-                    <div className="bg-white/80 rounded-lg px-6 py-3 shadow-sm">
-                      <p className="text-sm text-gray-500 font-medium">No messages yet</p>
-                      <p className="text-xs text-gray-400 mt-1">Send a message to start the conversation</p>
-                    </div>
-                  </div>
-                ) : groupedMessages.map(group => (
-                  <div key={group.date}>
-                    <div className="flex justify-center my-3">
-                      <span className="bg-white/90 text-gray-500 text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">{group.date}</span>
-                    </div>
-                    {group.messages.map(n => {
-                      const isSent = n.from === "principal";
-                      return (
-                        <div key={n.id} className={`flex mb-1 ${isSent ? "justify-end" : "justify-start"}`}>
-                          <div className={`max-w-[70%] px-3 py-2 shadow-sm ${isSent ? "bubble-sent bg-[#d9fdd3]" : "bubble-recv bg-white"}`}>
-                            <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{n.message}</p>
-                            <div className="flex items-center justify-end gap-1 mt-1">
-                              <span className="text-[11px] text-gray-400">{fmtTime(n.timestamp)}</span>
-                              {isSent && <CheckCheck className="w-4 h-4 text-[#53bdeb]" />}
-                            </div>
+        {/* LEFT — list */}
+        <div className="col-span-12 lg:col-span-5 xl:col-span-4 flex flex-col gap-2 min-h-0">
+
+          {/* Search */}
+          <div className="bg-white rounded-[16px] relative"
+            style={{ boxShadow: SH_CARD, border: `0.5px solid ${SEP}` }}>
+            <Search size={15} color="rgba(0,85,255,.42)" strokeWidth={2.2}
+              className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search teachers..."
+              className="w-full outline-none"
+              style={{
+                padding: "12px 14px 12px 42px", background: "transparent",
+                borderRadius: 16, fontSize: 13, color: T1, fontWeight: 400, fontFamily: "inherit",
+              }}
+            />
+          </div>
+
+          {/* New note button */}
+          <button
+            onClick={() => {
+              if (filteredTeachers.length === 0) { toast.info("No teachers found."); return; }
+              if (!selectedTeacher) setSelectedTeacher(filteredTeachers[0]);
+              toast.info("Type your note in the composer on the right.");
+            }}
+            className="h-[46px] rounded-[14px] flex items-center justify-center gap-2 text-white text-[14px] font-bold"
+            style={{
+              background: `linear-gradient(135deg, ${B1}, ${B2})`, border: "none",
+              boxShadow: "0 6px 22px rgba(0,85,255,.38), 0 2px 5px rgba(0,85,255,.18)",
+              cursor: "pointer",
+            }}>
+            <Plus size={14} strokeWidth={2.5} />
+            New Note to Teacher
+          </button>
+
+          {/* Section label */}
+          <div className="flex items-center gap-2 px-1 pt-1 text-[10px] font-bold uppercase" style={{ color: T4, letterSpacing: "0.10em" }}>
+            <span>Teacher Conversations</span>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold"
+              style={{ background: "rgba(0,85,255,.10)", border: "0.5px solid rgba(0,85,255,.16)", color: B1, letterSpacing: "0.04em", textTransform: "none" }}>
+              {filteredTeachers.length} teacher{filteredTeachers.length === 1 ? "" : "s"}
+            </span>
+            <span className="flex-1 h-px" style={{ background: "rgba(0,85,255,.12)" }} />
+          </div>
+
+          {/* List card */}
+          <div className="bg-white rounded-[18px] overflow-hidden flex-1 flex flex-col min-h-0"
+            style={{ boxShadow: SH_CARD, border: `0.5px solid ${SEP}` }}>
+            <div className="overflow-y-auto flex-1 min-h-0">
+              {teachersLoading ? (
+                <div className="flex justify-center py-16"><Loader2 size={24} color={B1} className="animate-spin" /></div>
+              ) : filteredTeachers.length === 0 ? (
+                <div className="py-12 flex flex-col items-center gap-2">
+                  <User size={36} color="rgba(0,85,255,.22)" strokeWidth={1.8} />
+                  <div className="text-[13px] font-bold" style={{ color: T2 }}>No teachers found</div>
+                  <div className="text-[11px]" style={{ color: T4 }}>Try a different search.</div>
+                </div>
+              ) : (
+                filteredTeachers.map((t, i) => {
+                  const last = lastMessages.get(t.id);
+                  const unread = unreadPerTeacher.get(t.id) || 0;
+                  const st = subjectStyleD(t.subject || "");
+                  const active = selectedTeacher?.id === t.id;
+                  const timeLabel = last ? fmtTime(last.timestamp) : "";
+                  const preview = last ? (last.from === "principal" ? `✓ ${last.message}` : last.message) : null;
+                  return (
+                    <button key={t.id}
+                      onClick={() => setSelectedTeacher(t)}
+                      className="w-full flex items-center gap-3 px-5 py-[14px] text-left transition-colors"
+                      style={{
+                        borderBottom: i === filteredTeachers.length - 1 ? "none" : `0.5px solid ${SEP}`,
+                        background: active ? "rgba(0,85,255,.06)" : unread > 0 ? "rgba(0,85,255,.03)" : "#fff",
+                        border: "none",
+                      }}>
+                      <div className="w-[44px] h-[44px] rounded-[14px] flex items-center justify-center text-white text-[14px] font-bold shrink-0 relative"
+                        style={{ background: st.avBg, boxShadow: st.shadow }}>
+                        {(t.name || "TC").substring(0, 2).toUpperCase()}
+                        {unread > 0 && (
+                          <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-[9px] text-[10px] font-bold text-white flex items-center justify-center"
+                            style={{ background: RED, border: "2px solid #fff", boxShadow: "0 2px 6px rgba(255,51,85,.28)" }}>
+                            {unread}
                           </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-[3px]">
+                          <span className="text-[13px] font-bold truncate" style={{ color: T1, letterSpacing: "-0.2px" }}>{t.name || "Teacher"}</span>
+                          {t.subject && (
+                            <span className="px-2 py-[2px] rounded-full text-[9px] font-bold shrink-0"
+                              style={{ background: st.tagBg, color: st.tagColor, border: `0.5px solid ${st.tagBorder}` }}>
+                              {t.subject}
+                            </span>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                ))}
-                <div ref={chatEndRef} />
-              </div>
-
-              <div className="flex items-center gap-2 px-3 py-2 bg-[#f0f2f5] shrink-0">
-                <button className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-full transition-colors">
-                  <Smile className="w-6 h-6" />
-                </button>
-                <div className="flex-1 bg-white rounded-full px-4 py-2 flex items-center min-h-[42px]">
-                  <textarea
-                    rows={1}
-                    value={messageContent}
-                    onChange={e => setMessageContent(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                    placeholder="Type a message"
-                    className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-gray-800 resize-none wa-input outline-none placeholder:text-gray-400 leading-relaxed"
-                    style={{ fontFamily: "'Montserrat', sans-serif" }}
-                  />
-                </div>
-                <button
-                  onClick={handleSend}
-                  disabled={!messageContent.trim()}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shrink-0 ${messageContent.trim() ? "bg-[#1e3a8a] text-white" : "bg-gray-300 text-gray-400"}`}
-                >
-                  <Send className="w-5 h-5" />
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center wa-bg text-center px-8">
-              <div className="bg-white/80 rounded-2xl p-10 shadow-sm max-w-xs">
-                <GraduationCap className="w-16 h-16 text-[#1e3a8a]/20 mx-auto mb-4" />
-                <h3 className="text-lg font-bold text-gray-700 mb-2">Teacher Notes</h3>
-                <p className="text-sm text-gray-400 font-medium">Select a teacher from the left to start a conversation</p>
-              </div>
+                        {preview ? (
+                          <div className="text-[12px] truncate"
+                            style={{ color: unread > 0 ? T2 : T3, fontWeight: unread > 0 ? 600 : 400 }}>
+                            {preview}
+                          </div>
+                        ) : (
+                          <div className="text-[12px] italic" style={{ color: T4 }}>No messages yet</div>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        {last ? (
+                          <>
+                            <span className="text-[10px] font-semibold" style={{ color: unread > 0 ? B1 : T4 }}>{timeLabel}</span>
+                            {unread > 0 ? (
+                              <span className="w-2 h-2 rounded-full" style={{ background: B1, boxShadow: "0 0 0 2px rgba(0,85,255,.18)" }} />
+                            ) : last.from === "principal" ? (
+                              <CheckCheck size={12} color={GREEN} strokeWidth={2.5} />
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-[10px] italic" style={{ color: T4 }}>Start chat →</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
             </div>
-          )}
+          </div>
+        </div>
+
+        {/* RIGHT — chat or empty */}
+        <div className="col-span-12 lg:col-span-7 xl:col-span-8 min-h-0">
+          <div className="bg-white rounded-[18px] overflow-hidden flex flex-col h-full"
+            style={{ boxShadow: SH_CARD, border: `0.5px solid ${SEP}` }}>
+            {!selectedTeacher ? (
+              <div className="flex-1 flex flex-col items-center justify-center px-8 py-16 text-center">
+                <div className="w-20 h-20 rounded-[22px] flex items-center justify-center mb-5"
+                  style={{ background: "rgba(0,85,255,.10)", border: "0.5px solid rgba(0,85,255,.20)" }}>
+                  <MessageSquare size={36} color="rgba(0,85,255,.45)" strokeWidth={1.8} />
+                </div>
+                <h3 className="text-[18px] font-bold mb-2" style={{ color: T1 }}>Teacher Notes</h3>
+                <p className="text-[13px] max-w-[360px] leading-[1.55]" style={{ color: T3 }}>
+                  Select a teacher from the left to start a conversation, share feedback or follow up on pending tasks.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Chat header */}
+                <div className="px-6 py-4 flex items-center gap-3 relative overflow-hidden"
+                  style={{ background: "linear-gradient(135deg,#0033CC 0%,#0055FF 50%,#2277FF 100%)", flexShrink: 0 }}>
+                  <div className="absolute -right-4 -top-6 w-[130px] h-[130px] rounded-full pointer-events-none"
+                    style={{ background: "radial-gradient(circle, rgba(255,255,255,.14) 0%, transparent 65%)" }} />
+                  <div className="w-[44px] h-[44px] rounded-[14px] flex items-center justify-center text-white text-[15px] font-bold shrink-0 relative z-10"
+                    style={{ background: subjectStyleD(selectedTeacher.subject || "").avBg, border: "2px solid rgba(255,255,255,.26)" }}>
+                    {(selectedTeacher.name || "TC").substring(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0 relative z-10">
+                    <div className="text-[16px] font-bold text-white truncate" style={{ letterSpacing: "-0.3px" }}>
+                      {selectedTeacher.name || "Teacher"}
+                    </div>
+                    <div className="text-[11px] font-medium flex items-center gap-1.5 mt-0.5" style={{ color: "rgba(255,255,255,.65)" }}>
+                      <span className="w-[6px] h-[6px] rounded-full" style={{ background: "#00EE88" }} />
+                      {selectedTeacher.subject || "Teacher"}{selectedTeacher.assignedClass ? ` · ${selectedTeacher.assignedClass}` : ""} · Active
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 relative z-10 shrink-0">
+                    <button
+                      onClick={() => {
+                        const phone = selectedTeacher.phone || selectedTeacher.mobile || "";
+                        if (phone) window.location.href = `tel:${phone}`;
+                        else toast.info(`${selectedTeacher.name || "Teacher"}'s phone number is not saved.`);
+                      }}
+                      className="w-9 h-9 rounded-[11px] flex items-center justify-center"
+                      style={{ background: "rgba(255,255,255,.18)", border: "0.5px solid rgba(255,255,255,.26)", cursor: "pointer" }}
+                      aria-label="Call">
+                      <Phone size={14} color="rgba(255,255,255,.92)" strokeWidth={2.2} />
+                    </button>
+                    <button
+                      onClick={() => toast.info(`${selectedTeacher.name || "Teacher"} · ${teacherMessages.length} message${teacherMessages.length === 1 ? "" : "s"}`)}
+                      className="w-9 h-9 rounded-[11px] flex items-center justify-center"
+                      style={{ background: "rgba(255,255,255,.18)", border: "0.5px solid rgba(255,255,255,.26)", cursor: "pointer" }}
+                      aria-label="More">
+                      <MoreVertical size={14} color="rgba(255,255,255,.92)" strokeWidth={2.2} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-3" style={{ background: "#EEF4FF", minHeight: 0 }}>
+                  {loading ? (
+                    <div className="flex-1 flex items-center justify-center">
+                      <Loader2 size={28} color={B1} className="animate-spin" />
+                    </div>
+                  ) : teacherMessages.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center gap-2 py-10">
+                      <div className="w-[60px] h-[60px] rounded-[18px] flex items-center justify-center mb-2"
+                        style={{ background: "#fff", boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11)" }}>
+                        <MessageSquare size={28} color="rgba(0,85,255,.35)" strokeWidth={1.8} />
+                      </div>
+                      <p className="text-[14px] font-bold" style={{ color: T1 }}>No messages yet</p>
+                      <p className="text-[12px]" style={{ color: T4 }}>Type below to start the conversation.</p>
+                    </div>
+                  ) : (
+                    groupedMessages.map(group => (
+                      <div key={group.date}>
+                        <div className="flex justify-center mb-3">
+                          <span className="px-3 py-1 rounded-full text-[10px] font-semibold"
+                            style={{ background: "rgba(0,85,255,.08)", border: "0.5px solid rgba(0,85,255,.14)", color: T3 }}>
+                            {group.date}
+                          </span>
+                        </div>
+                        {group.messages.map(n => {
+                          const isSent = n.from === "principal";
+                          if (isSent) {
+                            return (
+                              <div key={n.id} className="flex justify-end mb-2">
+                                <div className="max-w-[70%]">
+                                  <div className="px-4 py-3 text-white text-[13px] leading-[1.65] whitespace-pre-wrap relative overflow-hidden"
+                                    style={{
+                                      background: `linear-gradient(135deg, ${B1}, ${B2})`,
+                                      borderRadius: "18px 4px 18px 18px",
+                                      boxShadow: "0 3px 12px rgba(0,85,255,.24)",
+                                    }}>
+                                    {n.message}
+                                  </div>
+                                  <div className="text-[10px] font-semibold flex items-center gap-1 justify-end mt-1" style={{ color: T4 }}>
+                                    {fmtTime(n.timestamp)}
+                                    <CheckCheck size={12} color={GREEN} strokeWidth={2.5} />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div key={n.id} className="flex items-start gap-2 max-w-[70%] mb-2">
+                              <div className="w-8 h-8 rounded-[10px] flex items-center justify-center text-white text-[11px] font-bold shrink-0 self-end"
+                                style={{ background: subjectStyleD(selectedTeacher.subject || "").avBg }}>
+                                {(selectedTeacher.name || "T").substring(0, 1).toUpperCase()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="px-4 py-3 text-[13px] leading-[1.65] whitespace-pre-wrap"
+                                  style={{
+                                    background: "#fff", color: T1,
+                                    borderRadius: "4px 18px 18px 18px",
+                                    boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11)",
+                                    border: "0.5px solid rgba(0,85,255,.10)",
+                                  }}>
+                                  <div className="text-[11px] font-bold mb-1" style={{ color: B1 }}>
+                                    {selectedTeacher.name || "Teacher"}
+                                  </div>
+                                  {n.message}
+                                </div>
+                                <div className="text-[10px] font-semibold flex items-center gap-1 justify-end mt-1" style={{ color: T4 }}>
+                                  {fmtTime(n.timestamp)}
+                                  <Check size={12} color={GREEN} strokeWidth={2.5} />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Input */}
+                <div className="px-4 py-3 flex items-center gap-2 shrink-0"
+                  style={{ background: "rgba(238,244,255,.94)", backdropFilter: "saturate(220%) blur(24px)", WebkitBackdropFilter: "saturate(220%) blur(24px)", borderTop: "0.5px solid rgba(0,85,255,.10)" }}>
+                  <button
+                    onClick={() => setMessageContent((c) => c + "🙂")}
+                    className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
+                    style={{ background: "#fff", border: "0.5px solid rgba(0,85,255,.14)", boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)", cursor: "pointer" }}
+                    aria-label="Emoji">
+                    <Smile size={18} color={T3} strokeWidth={2} />
+                  </button>
+                  <input
+                    value={messageContent}
+                    onChange={(e) => setMessageContent(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                    placeholder="Write a note to this teacher..."
+                    className="flex-1 outline-none"
+                    style={{
+                      padding: "10px 14px", background: "#fff", borderRadius: 14,
+                      border: "0.5px solid rgba(0,85,255,.14)", fontFamily: "inherit",
+                      fontSize: 13, color: T1, fontWeight: 400,
+                      boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                    }}
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={!messageContent.trim()}
+                    className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
+                    style={{
+                      background: messageContent.trim() ? `linear-gradient(135deg, ${B1}, ${B2})` : "rgba(0,85,255,.20)",
+                      border: "none",
+                      boxShadow: messageContent.trim() ? "0 3px 12px rgba(0,85,255,.30)" : "none",
+                      cursor: messageContent.trim() ? "pointer" : "not-allowed",
+                      opacity: messageContent.trim() ? 1 : 0.65,
+                    }}
+                    aria-label="Send">
+                    <Send size={14} color="#fff" strokeWidth={2.5} />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
+
     </div>
   );
 };

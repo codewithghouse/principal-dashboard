@@ -6,12 +6,21 @@ import { collection, query, where, onSnapshot, addDoc, getDocs, serverTimestamp,
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 
-// ── Tokens (same as StudentProfilePage) ──────────────────────────────────────
+// ── Tokens — aligned to principal-dashboard palette ─────────────────────
 const T = {
-  bg:"#f8fafc",white:"#fff",ink:"#0f172a",ink2:"#475569",ink3:"#94a3b8",
-  bdr:"#e2e8f0",s1:"#f1f5f9",s2:"#e2e8f0",
-  blue:"#3B5BDB",blBg:"#EDF2FF",grn:"#16a34a",glBg:"#f0fdf4",
-  red:"#dc2626",rlBg:"#fef2f2",amb:"#d97706",alBg:"#fffbeb",
+  bg:   "#EEF4FF",
+  white:"#fff",
+  ink:  "#001040",
+  ink2: "#5070B0",
+  ink3: "#99AACC",
+  bdr:  "rgba(0,85,255,0.10)",
+  s1:   "rgba(0,85,255,0.04)",
+  s2:   "rgba(0,85,255,0.08)",
+  blue: "#0055FF",
+  blBg: "rgba(0,85,255,0.10)",
+  grn:  "#00C853", glBg: "rgba(0,200,83,0.10)",
+  red:  "#FF3355", rlBg: "rgba(255,51,85,0.10)",
+  amb:  "#FF8800", alBg: "rgba(255,136,0,0.10)",
 };
 const toDate=(v:any):Date|null=>{if(!v)return null;if(v?.toDate)return v.toDate();if(v?.seconds)return new Date(v.seconds*1000);const d=new Date(v);return isNaN(d.getTime())?null:d;};
 const MONTHS=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
@@ -19,21 +28,19 @@ const timeAgo=(v:any)=>{const d=toDate(v);if(!d)return"";const s=(Date.now()-d.g
 const pct=(n:number,t:number)=>t===0?0:Math.round((n/t)*100);
 const getScore=(r:any):number=>{if(typeof r.percentage==="number"&&r.percentage>0)return Math.round(r.percentage);const raw=r.marksObtained??r.marks??r.score??null;if(raw===null)return 0;const total=r.totalMarks??r.maxMarks??r.outOf??100;return total>0?Math.round((Number(raw)/Number(total))*100):Math.min(100,Math.round(Number(raw)));};
 
-// ── 3D Card (exact same as StudentProfilePage) ──────────────────────────────
-const Card=({children,title,action,style:st}:{children:React.ReactNode;title?:string;action?:React.ReactNode;style?:React.CSSProperties})=>{
-  const[tilt,setTilt]=useState({x:0,y:0});const[hov,setHov]=useState(false);const ref=useRef<HTMLDivElement>(null);
-  return(
-    <div ref={ref} onMouseMove={e=>{if(!ref.current)return;const r=ref.current.getBoundingClientRect();setTilt({x:(((e.clientY-r.top)/r.height)-0.5)*-8,y:(((e.clientX-r.left)/r.width)-0.5)*8});}} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>{setTilt({x:0,y:0});setHov(false);}}
-      style={{position:"relative",background:T.white,border:`1px solid ${hov?"rgba(59,91,219,0.25)":T.bdr}`,borderRadius:16,overflow:"hidden",
-        transform:`perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) ${hov?"translateY(-4px) scale(1.01)":""}`,
-        transition:"transform 0.2s,border-color 0.3s,box-shadow 0.3s",willChange:"transform",
-        boxShadow:hov?"0 20px 40px rgba(59,91,219,0.1),0 8px 16px rgba(0,0,0,0.06)":"0 1px 3px rgba(0,0,0,0.04)",...st}}>
-      {hov&&<div style={{position:"absolute",inset:0,pointerEvents:"none",zIndex:1,borderRadius:16,background:`radial-gradient(circle at ${(tilt.y/8+0.5)*100}% ${(-tilt.x/8+0.5)*100}%,rgba(59,91,219,0.06) 0%,transparent 60%)`}}/>}
-      {title&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",borderBottom:`1px solid ${T.s2}`,position:"relative",zIndex:2}}><span style={{fontSize:14,fontWeight:600,color:T.ink}}>{title}</span>{action||null}</div>}
-      <div style={{padding:"16px 20px",position:"relative",zIndex:2}}>{children}</div>
-    </div>
-  );
-};
+// ── Card wrapper — matches dashboard pop hover (via global CSS) ─────────
+const Card=({children,title,action,style:st}:{children:React.ReactNode;title?:string;action?:React.ReactNode;style?:React.CSSProperties})=>(
+  <div
+    className="bg-white rounded-[16px] overflow-hidden"
+    style={{
+      border:`0.5px solid ${T.bdr}`,
+      boxShadow:"0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.12), 0 18px 44px rgba(0,85,255,.15)",
+      ...st,
+    }}>
+    {title&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",borderBottom:`1px solid ${T.s2}`}}><span style={{fontSize:14,fontWeight:600,color:T.ink}}>{title}</span>{action||null}</div>}
+    <div style={{padding:"16px 20px"}}>{children}</div>
+  </div>
+);
 const DLink=()=><span style={{fontSize:11,color:T.blue,fontWeight:500,cursor:"pointer"}}>Details →</span>;
 const StarRow=({rating}:{rating:number})=><div style={{display:"flex",gap:2}}>{[1,2,3,4,5].map(i=><Star key={i} size={14} fill={i<=Math.round(rating)?"#f59e0b":"none"} color={i<=Math.round(rating)?"#f59e0b":"#e2e8f0"}/>)}</div>;
 
