@@ -311,7 +311,7 @@ export default function StudentIntelligence() {
      ═══════════════════════════════════════════════════════════════ */
   if (isMobile) {
     const B1 = "#0055FF", B3 = "#2277FF", B4 = "#4499FF";
-    const BG = "#EEF4FF", BG2 = "#E0ECFF";
+    const BG = "#EEEEF3", BG2 = "#E0ECFF";
     const T1 = "#001040", T3 = "#5070B0", T4 = "#99AACC";
     const SEP = "rgba(0,85,255,0.07)";
     const GREEN = "#00C853", GREEN_D = "#007830", GREEN_S = "rgba(0,200,83,0.10)", GREEN_B = "rgba(0,200,83,0.22)";
@@ -633,7 +633,7 @@ export default function StudentIntelligence() {
   //  DESKTOP — Blue Apple Design
   // ═══════════════════════════════════════════════════════════════
   const dB1 = "#0055FF", dB2 = "#1166FF", dB4 = "#4499FF";
-  const dBG = "#EEF4FF", dBG2 = "#E0ECFF";
+  const dBG = "#EEEEF3", dBG2 = "#E0ECFF";
   const dT1 = "#001040", dT2 = "#002080", dT3 = "#5070B0", dT4 = "#99AACC";
   const dSEP = "rgba(0,85,255,0.08)";
   const dGREEN = "#00C853", dGREEN_D = "#007830", dGREEN_S = "rgba(0,200,83,0.10)", dGREEN_B = "rgba(0,200,83,0.22)";

@@ -618,7 +618,7 @@ export default function FeeStructurePage() {
         <div
           style={{
             fontFamily: "'DM Sans', -apple-system, sans-serif",
-            background: "#EEF4FF",
+            background: "#EEEEF3",
             minHeight: "100vh",
             paddingBottom: 24,
           }}
@@ -1444,7 +1444,7 @@ export default function FeeStructurePage() {
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEF4FF",
+          background: "#EEEEF3",
           minHeight: "100vh",
           paddingBottom: 24,
         }}
@@ -1797,7 +1797,7 @@ export default function FeeStructurePage() {
               style={{
                 width: "100%",
                 padding: "10px 14px",
-                background: "#EEF4FF",
+                background: "#EEEEF3",
                 borderRadius: 12,
                 border: "0.5px solid rgba(0,85,255,.14)",
                 fontFamily: "inherit",
@@ -1819,7 +1819,7 @@ export default function FeeStructurePage() {
               style={{
                 width: "100%",
                 padding: "10px 14px",
-                background: "#EEF4FF",
+                background: "#EEEEF3",
                 borderRadius: 12,
                 border: "0.5px solid rgba(0,85,255,.14)",
                 fontFamily: "inherit",
@@ -1861,7 +1861,7 @@ export default function FeeStructurePage() {
               marginTop: 8,
               height: 36,
               borderRadius: 11,
-              background: "#EEF4FF",
+              background: "#EEEEF3",
               color: B1,
               display: "flex",
               alignItems: "center",

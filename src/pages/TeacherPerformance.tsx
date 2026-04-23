@@ -354,7 +354,7 @@ const TeacherPerformance = () => {
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEF4FF",
+          background: "#EEEEF3",
           minHeight: "100vh",
           paddingBottom: 24,
         }}
@@ -709,7 +709,7 @@ const TeacherPerformance = () => {
                 let trendIconEl = <Minus size={12} color={T4} strokeWidth={2.4} />;
                 let trendColor = T4;
                 let trendLabel = "—";
-                let trendBg = "#EEF4FF";
+                let trendBg = "#EEEEF3";
                 let trendBorder = "rgba(153,170,204,.22)";
                 if (tr) {
                   trendLabel = tr.label;
@@ -1041,7 +1041,7 @@ const TeacherPerformance = () => {
                           gap: 6,
                           fontSize: 12,
                           fontWeight: 700,
-                          background: "#EEF4FF",
+                          background: "#EEEEF3",
                           color: "#002080",
                           border: "0.5px solid rgba(0,85,255,.16)",
                           cursor: "pointer",

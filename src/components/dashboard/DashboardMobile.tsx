@@ -39,7 +39,7 @@ export interface DashboardMobileProps {
 
 // ── Bright-blue theme tokens ──
 const B1 = "#0055FF", B2 = "#1166FF", B3 = "#2277FF", B4 = "#4499FF";
-const BG = "#EEF4FF", BG2 = "#E0ECFF";
+const BG = "#EEEEF3", BG2 = "#E0ECFF";
 const T1 = "#001040", T2 = "#002080", T3 = "#5070B0", T4 = "#99AACC";
 const SEP = "rgba(0,85,255,0.07)";
 const GREEN = "#00C853", GREEN_D = "#007830", GREEN_S = "rgba(0,200,83,0.10)", GREEN_B = "rgba(0,200,83,0.22)";
@@ -201,8 +201,11 @@ const DashboardMobile = ({
     </div>
   );
 
-  const SectionCard = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
-    <div className={`mx-5 mt-3 bg-white rounded-[22px] overflow-hidden ${className}`}
+  const SectionCard = ({ children, className = "", onClick }: { children: React.ReactNode; className?: string; onClick?: () => void }) => (
+    <div onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      className={`mx-5 mt-3 bg-white rounded-[22px] overflow-hidden ${onClick ? "cursor-pointer" : ""} ${className}`}
       style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
       {children}
     </div>
@@ -211,7 +214,7 @@ const DashboardMobile = ({
   const RiskAlerts = (
     <>
       <SectionLabel text="Risk Alerts" />
-      <SectionCard>
+      <SectionCard onClick={() => navigate("/risk-students")}>
         <div className="px-[18px] pt-4 pb-3 flex items-center justify-between" style={{ borderBottom: `0.5px solid ${SEP}` }}>
           <div className="text-[15px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>Today's Risk Alerts</div>
           <button onClick={() => navigate("/risk-students")}
@@ -261,7 +264,7 @@ const DashboardMobile = ({
   );
 
   const TrendChart = (
-    <SectionCard>
+    <SectionCard onClick={() => navigate("/attendance")}>
       <button
         onClick={() => navigate("/attendance")}
         className="w-full px-[18px] pt-4 pb-3 flex items-center justify-between active:opacity-80"
@@ -310,7 +313,7 @@ const DashboardMobile = ({
   );
 
   const Heatmap = (
-    <SectionCard>
+    <SectionCard onClick={() => navigate("/academics")}>
       <div className="px-[18px] pt-4 pb-3 flex items-center justify-between" style={{ borderBottom: `0.5px solid ${SEP}` }}>
         <div className="text-[15px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>Class Performance</div>
         <button onClick={() => navigate("/academics")}
@@ -332,7 +335,7 @@ const DashboardMobile = ({
                 const grad = heatGradient(c.color);
                 return (
                   <button key={c.cls}
-                    onClick={() => navigate(`/academics?class=${encodeURIComponent(c.cls)}`)}
+                    onClick={(e) => { e.stopPropagation(); navigate(`/academics?class=${encodeURIComponent(c.cls)}`); }}
                     className="flex flex-col items-center gap-[6px] shrink-0 active:scale-[0.92] transition-transform"
                     style={{ transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
                     <div className="w-[52px] h-[52px] rounded-[14px] flex items-center justify-center"
@@ -366,7 +369,7 @@ const DashboardMobile = ({
   const TeachersCard = (
     <>
       <SectionLabel text="Faculty" />
-      <SectionCard>
+      <SectionCard onClick={() => navigate("/teacher-performance")}>
         <div className="px-[18px] pt-4 pb-3 flex items-center justify-between" style={{ borderBottom: `0.5px solid ${SEP}` }}>
           <div className="text-[15px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>Teacher Performance</div>
           <button onClick={() => navigate("/teacher-performance")}
@@ -388,7 +391,7 @@ const DashboardMobile = ({
             const av = avatarGradient(t.bg);
             return (
               <button key={`${t.name}-${i}`}
-                onClick={() => navigate("/teachers")}
+                onClick={(e) => { e.stopPropagation(); navigate("/teachers"); }}
                 className="w-full flex items-center gap-3 px-[18px] py-[13px] text-left active:bg-[#F5F9FF] transition-colors"
                 style={{ borderBottom: i < arr.length - 1 ? `0.5px solid ${SEP}` : "none" }}>
                 <div className="w-10 h-10 rounded-[13px] flex items-center justify-center text-[13px] font-bold text-white shrink-0"
@@ -414,7 +417,7 @@ const DashboardMobile = ({
   const UrgentComms = (
     <>
       <SectionLabel text="Communications" />
-      <SectionCard>
+      <SectionCard onClick={() => navigate("/parent-communication")}>
         <div className="px-[18px] pt-4 pb-3 flex items-center justify-between" style={{ borderBottom: `0.5px solid ${SEP}` }}>
           <div className="text-[15px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>Urgent Communications</div>
           {urgentComms.length === 0 ? (

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -8,6 +9,7 @@ import { Loader2, GraduationCap } from "lucide-react";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import SplashScreen from "@/components/SplashScreen";
 import LoginPage from "./pages/Login";
 import RequestAccess from "./pages/RequestAccess";
 
@@ -42,9 +44,9 @@ const DEO_ALLOWED = ["/students", "/attendance", "/assignments", "/exams", "/tea
 
 const queryClient = new QueryClient();
 
-// ─── Splash Screen ────────────────────────────────────────────────────────────
-const SplashScreen = () => (
-  <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-4">
+// ─── Auth Loader — shown while Firebase restores session ──────────────────────
+const AuthLoader = () => (
+  <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: "#EEEEF3" }}>
     <div className="w-16 h-16 rounded-3xl bg-[#1e3a8a] flex items-center justify-center text-white shadow-2xl animate-bounce">
       <GraduationCap className="w-8 h-8" />
     </div>
@@ -83,7 +85,7 @@ const AppRoutes = () => {
   }
 
   // 2. Block ALL rendering until Firebase finishes restoring session
-  if (loading) return <SplashScreen />;
+  if (loading) return <AuthLoader />;
 
   // 3. Not authenticated OR not in the whitelist → show Login
   if (!user || !userData) return <LoginPage />;
@@ -125,22 +127,27 @@ const AppRoutes = () => {
 };
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
-const App = () => (
-  <ErrorBoundary>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <ErrorBoundary>
-              <AppRoutes />
-            </ErrorBoundary>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
-    </QueryClientProvider>
-  </ErrorBoundary>
-);
+const App = () => {
+  const [splashDone, setSplashDone] = useState(false);
+
+  return (
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <ErrorBoundary>
+                {!splashDone && <SplashScreen onFinish={() => setSplashDone(true)} />}
+                <AppRoutes />
+              </ErrorBoundary>
+            </BrowserRouter>
+          </TooltipProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  );
+};
 
 export default App;

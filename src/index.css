@@ -95,55 +95,42 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   GLOBAL 3D HOVER EFFECT — applies to ALL cards across every page
-   Targets: rounded-lg, rounded-xl, rounded-2xl, rounded-3xl bordered cards
+   GLOBAL CARD HOVER — Principal Dashboard spec
+   • Scale 1.03 on hover, 1.0 at rest
+   • 200ms ease-in-out
+   • Default shadow  0 2px 8px rgba(0,0,0,0.10)
+   • Hover shadow    0 8px 24px rgba(0,0,0,0.18)
+   • cursor: pointer on every card
+   Targets: rounded-lg/xl/2xl/3xl white / bg-card surfaces
    ═══════════════════════════════════════════════════════════════ */
 
-/* Any element with bg-white/bg-card + border + rounded = card */
 .bg-white[class*="rounded-"],
 .bg-card[class*="rounded-"],
-[class*="bg-white"][class*="border"][class*="rounded-"],
+[class*="bg-white"][class*="rounded-"],
 div[class*="shadow-sm"][class*="rounded-"],
 .stat-card {
-  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1),
-              box-shadow 0.3s ease,
-              border-color 0.3s ease !important;
+  transition: transform 200ms ease-in-out,
+              box-shadow 200ms ease-in-out !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10) !important;
+  cursor: pointer;
   will-change: transform;
 }
 
 .bg-white[class*="rounded-"]:hover,
 .bg-card[class*="rounded-"]:hover,
-[class*="bg-white"][class*="border"][class*="rounded-"]:hover,
+[class*="bg-white"][class*="rounded-"]:hover,
 div[class*="shadow-sm"][class*="rounded-"]:hover,
 .stat-card:hover {
-  transform: translateY(-4px) scale(1.008) !important;
-  box-shadow: 0 20px 40px rgba(30,58,138,0.08),
-              0 8px 16px rgba(0,0,0,0.04),
-              0 0 0 1px rgba(59,91,219,0.1) !important;
-  border-color: rgba(59,91,219,0.2) !important;
+  transform: scale(1.03) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18) !important;
 }
 
-/* Glow shine effect on hover */
-.bg-white[class*="rounded-"]:hover::after,
-.bg-card[class*="rounded-"]:hover::after,
-div[class*="shadow-sm"][class*="rounded-"]:hover::after,
-.stat-card:hover::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: radial-gradient(circle at 30% 20%, rgba(59,91,219,0.05) 0%, transparent 60%);
-  z-index: 0;
-}
-
-/* Ensure relative positioning for the ::after pseudo-element */
-.bg-white[class*="rounded-"],
-.bg-card[class*="rounded-"],
-div[class*="shadow-sm"][class*="rounded-"],
-.stat-card {
-  position: relative;
-  overflow: hidden;
+/* Opt-out hook for containers that visually wrap cards but are not cards */
+.no-card-hover,
+.no-card-hover:hover {
+  transform: none !important;
+  box-shadow: none !important;
+  cursor: auto;
 }
 
 /* ── Button hover lift (all buttons with bg-primary or blue backgrounds) ── */

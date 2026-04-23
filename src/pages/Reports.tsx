@@ -142,7 +142,7 @@ const Reports = () => {
 
   // Design tokens
   const B1 = "#0055FF", B2 = "#1166FF", B4 = "#4499FF";
-  const BG = "#EEF4FF";
+  const BG = "#EEEEF3";
   const T1 = "#001040", T2 = "#002080", T3 = "#5070B0", T4 = "#99AACC";
   const SEP = "rgba(0,85,255,0.08)";
   const GREEN = "#00C853", GREEN_D = "#007830", GREEN_S = "rgba(0,200,83,0.10)", GREEN_B = "rgba(0,200,83,0.22)";

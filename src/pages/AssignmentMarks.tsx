@@ -141,7 +141,7 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEF4FF",
+          background: "#EEEEF3",
           minHeight: "100vh",
           paddingBottom: 24,
         }}

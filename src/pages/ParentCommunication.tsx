@@ -185,7 +185,7 @@ const ParentCommunication = () => {
         <div
           style={{
             fontFamily: "'DM Sans', -apple-system, sans-serif",
-            background: "#EEF4FF",
+            background: "#EEEEF3",
             height: "100vh",
             display: "flex",
             flexDirection: "column",
@@ -341,7 +341,7 @@ const ParentCommunication = () => {
               flexDirection: "column",
               gap: 12,
               minHeight: 0,
-              background: "#EEF4FF",
+              background: "#EEEEF3",
             }}
           >
             {loading ? (
@@ -555,7 +555,7 @@ const ParentCommunication = () => {
       <div
         style={{
           fontFamily: "'DM Sans', -apple-system, sans-serif",
-          background: "#EEF4FF",
+          background: "#EEEEF3",
           minHeight: "100vh",
           paddingBottom: 24,
         }}

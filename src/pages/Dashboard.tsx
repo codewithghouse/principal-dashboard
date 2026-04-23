@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   Heart, Users, GraduationCap, CalendarCheck, AlertCircle,
   ArrowUp, ArrowDown, Star, ChevronRight,
@@ -83,6 +83,7 @@ const healthLabel = (idx: number | null) =>
 const Dashboard = () => {
   const { userData } = useAuth();
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const mobileTab = ((searchParams.get("tab") as "home" | "analytics" | "teachers") || "home");
 
@@ -464,7 +465,9 @@ const Dashboard = () => {
       </div>
 
       {/* ── Academic Health Hero ──────────────────────────────────────────────── */}
-      <div className="rounded-[22px] px-7 py-6 flex flex-wrap items-center justify-between gap-5 text-white relative overflow-hidden"
+      <div onClick={() => navigate("/student-intelligence")}
+        role="button" tabIndex={0}
+        className="rounded-[22px] px-7 py-6 flex flex-wrap items-center justify-between gap-5 text-white relative overflow-hidden cursor-pointer"
         style={{
           background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
           boxShadow: "0 10px 36px rgba(0,51,204,0.30), 0 0 0 0.5px rgba(255,255,255,0.10)",
@@ -514,7 +517,9 @@ const Dashboard = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
 
         {/* Students — blue */}
-        <div className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+        <div onClick={() => navigate("/students")}
+          role="button" tabIndex={0}
+          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer"
           style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
           <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
             style={{ background: "radial-gradient(circle, rgba(0,85,255,0.10) 0%, transparent 70%)" }} />
@@ -530,7 +535,9 @@ const Dashboard = () => {
         </div>
 
         {/* Teachers — green */}
-        <div className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+        <div onClick={() => navigate("/teachers")}
+          role="button" tabIndex={0}
+          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer"
           style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
           <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
             style={{ background: "radial-gradient(circle, rgba(0,200,83,0.10) 0%, transparent 70%)" }} />
@@ -546,7 +553,9 @@ const Dashboard = () => {
         </div>
 
         {/* Attendance — gold */}
-        <div className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+        <div onClick={() => navigate("/attendance")}
+          role="button" tabIndex={0}
+          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer"
           style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
           <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
             style={{ background: "radial-gradient(circle, rgba(255,170,0,0.12) 0%, transparent 70%)" }} />
@@ -569,7 +578,9 @@ const Dashboard = () => {
         </div>
 
         {/* Incidents — red/violet */}
-        <div className="bg-white rounded-[20px] p-5 relative overflow-hidden"
+        <div onClick={() => navigate("/discipline")}
+          role="button" tabIndex={0}
+          className="bg-white rounded-[20px] p-5 relative overflow-hidden cursor-pointer"
           style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
           <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
             style={{ background: `radial-gradient(circle, ${(pendingIncidents ?? 0) > 0 ? "rgba(255,51,85,0.12)" : "rgba(123,63,244,0.10)"} 0%, transparent 70%)` }} />
@@ -596,7 +607,9 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
 
         {/* Risk Alerts card */}
-        <div className="bg-white rounded-[20px] overflow-hidden flex flex-col"
+        <div onClick={() => navigate("/risk-students")}
+          role="button" tabIndex={0}
+          className="bg-white rounded-[20px] overflow-hidden flex flex-col cursor-pointer"
           style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
           <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
             <div className="flex items-center gap-[10px]">
@@ -651,7 +664,9 @@ const Dashboard = () => {
         </div>
 
         {/* Attendance Trend */}
-        <div className="bg-white rounded-[20px] overflow-hidden"
+        <div onClick={() => navigate("/attendance")}
+          role="button" tabIndex={0}
+          className="bg-white rounded-[20px] overflow-hidden cursor-pointer"
           style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
           <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
             <div className="flex items-center gap-[10px]">
@@ -711,7 +726,9 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5 items-start">
 
         {/* Class Performance Heatmap */}
-        <div className="bg-white rounded-[20px] overflow-hidden"
+        <div onClick={() => navigate("/academics")}
+          role="button" tabIndex={0}
+          className="bg-white rounded-[20px] overflow-hidden cursor-pointer"
           style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
           <div className="flex items-center gap-[10px] px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
             <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
@@ -769,7 +786,9 @@ const Dashboard = () => {
         <div className="flex flex-col gap-5">
 
           {/* Teacher Performance */}
-          <div className="bg-white rounded-[20px] overflow-hidden"
+          <div onClick={() => navigate("/teacher-performance")}
+            role="button" tabIndex={0}
+            className="bg-white rounded-[20px] overflow-hidden cursor-pointer"
             style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
             <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
               <div className="flex items-center gap-[10px]">
@@ -811,7 +830,9 @@ const Dashboard = () => {
           </div>
 
           {/* Urgent Communications */}
-          <div className="bg-white rounded-[20px] overflow-hidden"
+          <div onClick={() => navigate("/parent-communication")}
+            role="button" tabIndex={0}
+            className="bg-white rounded-[20px] overflow-hidden cursor-pointer"
             style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
             <div className="flex items-center justify-between px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
               <div className="flex items-center gap-[10px]">
@@ -857,7 +878,9 @@ const Dashboard = () => {
 
       {/* ── AI Intelligence Card ──────────────────────────────────────────────── */}
       {(riskAlerts.length > 0 || healthIndex !== null) && (
-        <div className="mt-5 rounded-[22px] px-7 py-6 relative overflow-hidden"
+        <div onClick={() => navigate("/reports")}
+          role="button" tabIndex={0}
+          className="mt-5 rounded-[22px] px-7 py-6 relative overflow-hidden cursor-pointer"
           style={{
             background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
             boxShadow: "0 10px 36px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.12)",
