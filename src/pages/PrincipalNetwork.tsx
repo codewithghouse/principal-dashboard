@@ -32,7 +32,7 @@ import {
   ClassRow,
   TeacherRow,
   WeeklyPoint,
-  AIInsightsResult,
+  AIInsightsTagged,
   AIAction,
 } from "@/lib/principalNetwork";
 
@@ -240,17 +240,22 @@ const TrendPill: React.FC<{ trend: "up" | "down" | "flat"; label: string }> = ({
   );
 };
 
-const DiagnosisCard: React.FC<{ items: { type: "good" | "concern" | "note"; text: string }[] }> = ({ items }) => {
+const DiagnosisCard: React.FC<{ items: { type: "good" | "concern" | "note"; text: string }[]; source?: "ai" | "fallback" }> = ({ items, source = "ai" }) => {
   const renderText = (text: string) => text.split(/(\*\*.*?\*\*)/).map((p, i) =>
     p.startsWith("**") ? <strong key={i}>{p.slice(2, -2)}</strong> : <span key={i}>{p}</span>
   );
   const colorMap: Record<string, string> = { good: T.GREEN, concern: T.RED, note: T.T1 };
+  const isFallback = source === "fallback";
+  const pillBg = isFallback ? "rgba(0,85,255,0.10)" : "rgba(123,63,244,0.10)";
+  const pillBorder = isFallback ? "0.5px solid rgba(0,85,255,0.3)" : "0.5px solid rgba(123,63,244,0.3)";
+  const pillColor = isFallback ? T.B1 : T.VIOLET;
+  const pillLabel = isFallback ? "Real-data analysis" : "Edullent AI · Real-data backed";
   return (
     <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: 22, boxShadow: T.SH_LG, marginBottom: 32 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 999, background: "rgba(123,63,244,0.10)", border: "0.5px solid rgba(123,63,244,0.3)" }}>
-          <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: T.VIOLET }} />
-          <span style={{ fontSize: 9, fontWeight: 800, color: T.VIOLET, letterSpacing: "1.4px", textTransform: "uppercase", fontFamily: FONT }}>Edullent AI · Real-data backed</span>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 999, background: pillBg, border: pillBorder }}>
+          <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: pillColor }} />
+          <span style={{ fontSize: 9, fontWeight: 800, color: pillColor, letterSpacing: "1.4px", textTransform: "uppercase", fontFamily: FONT }}>{pillLabel}</span>
         </div>
       </div>
       {items.length === 0 && (
@@ -639,7 +644,7 @@ const ClassLeaderboardScreen: React.FC<{
 // ──────────────────────────────────────────────────────────────────────────
 const PrincipalInsightsScreen: React.FC<{
   branch: BranchComposite; principalName: string; classes: ClassRow[]; weekly: WeeklyPoint[];
-  insights: AIInsightsResult | null; insightsLoading: boolean; insightsError: string | null;
+  insights: AIInsightsTagged | null; insightsLoading: boolean; insightsError: string | null;
   onBack: () => void; onRetry: () => void;
 }> = ({ branch, principalName, classes, weekly, insights, insightsLoading, insightsError, onBack, onRetry }) => {
   const at = branch.studentClusters.reduce((a, c) => a + c.atRisk, 0);
@@ -707,19 +712,22 @@ const PrincipalInsightsScreen: React.FC<{
         </div>
       </div>
 
-      <SectionHead eyebrow="02 · Diagnosis" title="Why your school sits here" subtitle="AI analysis from your live branch data" />
-      {insightsError ? (
-        <div style={{ padding: 16, marginBottom: 32, background: "rgba(255,69,58,0.06)", border: "0.5px solid rgba(255,69,58,0.20)", borderRadius: 16, fontFamily: FONT }}>
-          <p style={{ fontSize: 13, color: T.RED, margin: "0 0 10px", fontWeight: 600 }}>AI diagnosis unavailable: {insightsError}</p>
-          <button onClick={onRetry} style={{ padding: "8px 14px", borderRadius: 10, background: T.B1, color: "#FFF", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FONT }}>Retry</button>
-        </div>
-      ) : insightsLoading ? (
+      <SectionHead eyebrow="02 · Diagnosis" title="Why your school sits here" subtitle={insights?.source === "fallback" ? "Rule-based analysis from your live data (AI unavailable)" : "AI analysis from your live branch data"} />
+      {insightsLoading ? (
         <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: 22, boxShadow: T.SH_LG, marginBottom: 32, display: "flex", alignItems: "center", gap: 12 }}>
           <Loader2 size={16} color={T.VIOLET} style={{ animation: "spin 1s linear infinite" }} />
-          <span style={{ fontSize: 13, color: T.T3, fontFamily: FONT }}>Generating AI diagnosis from {branch.totalTeachers} teachers + {branch.totalStudents} students…</span>
+          <span style={{ fontSize: 13, color: T.T3, fontFamily: FONT }}>Generating diagnosis from {branch.totalTeachers} teachers + {branch.totalStudents} students…</span>
         </div>
       ) : (
-        <DiagnosisCard items={insights?.diagnosis ?? []} />
+        <>
+          <DiagnosisCard items={insights?.diagnosis ?? []} source={insights?.source} />
+          {insights?.source === "fallback" && insights?.errorMessage && (
+            <div style={{ marginTop: -22, marginBottom: 32, padding: "10px 14px", background: "rgba(255,170,0,0.06)", border: "0.5px solid rgba(255,170,0,0.20)", borderRadius: 12, display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 11, color: T.AMBER, fontFamily: FONT, flex: 1 }}>AI service down: <code style={{ fontSize: 10 }}>{insights.errorMessage}</code> — showing real-data analysis. Check Firebase Functions logs.</span>
+              <button onClick={onRetry} style={{ padding: "5px 10px", borderRadius: 8, background: T.B1, color: "#FFF", border: "none", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: FONT }}>Retry AI</button>
+            </div>
+          )}
+        </>
       )}
 
       <SectionHead eyebrow="03 · Teacher analysis" title="Top performers and teachers needing coaching" subtitle="Real composite scores from teacherScorer" />
@@ -823,7 +831,7 @@ const PrincipalInsightsScreen: React.FC<{
 // ──────────────────────────────────────────────────────────────────────────
 const BranchInsightsScreen: React.FC<{
   branch: BranchComposite; classes: ClassRow[]; weekly: WeeklyPoint[];
-  insights: AIInsightsResult | null; insightsLoading: boolean; insightsError: string | null;
+  insights: AIInsightsTagged | null; insightsLoading: boolean; insightsError: string | null;
   onBack: () => void; onRetry: () => void;
 }> = ({ branch, classes, weekly, insights, insightsLoading, insightsError, onBack, onRetry }) => {
   const wow = trendOf(branch.weekOverWeekDelta);
@@ -861,19 +869,22 @@ const BranchInsightsScreen: React.FC<{
         <MetricCard label="At-risk %" value={branch.atRiskPct} suffix="%" severity={branch.atRiskPct > 8 ? "weak" : "okay"} vs="below 50%" />
       </div>
 
-      <SectionHead eyebrow="02 · AI diagnosis" title="Why your school sits here" subtitle={`Real data from ${branch.totalTeachers} teachers + ${branch.totalStudents} students`} />
-      {insightsError ? (
-        <div style={{ padding: 16, marginBottom: 32, background: "rgba(255,69,58,0.06)", border: "0.5px solid rgba(255,69,58,0.20)", borderRadius: 16, fontFamily: FONT }}>
-          <p style={{ fontSize: 13, color: T.RED, margin: "0 0 10px", fontWeight: 600 }}>AI diagnosis unavailable: {insightsError}</p>
-          <button onClick={onRetry} style={{ padding: "8px 14px", borderRadius: 10, background: T.B1, color: "#FFF", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FONT }}>Retry</button>
-        </div>
-      ) : insightsLoading ? (
+      <SectionHead eyebrow="02 · AI diagnosis" title="Why your school sits here" subtitle={insights?.source === "fallback" ? "Rule-based analysis (AI unavailable)" : `Real data from ${branch.totalTeachers} teachers + ${branch.totalStudents} students`} />
+      {insightsLoading ? (
         <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: 22, boxShadow: T.SH_LG, marginBottom: 32, display: "flex", alignItems: "center", gap: 12 }}>
           <Loader2 size={16} color={T.VIOLET} style={{ animation: "spin 1s linear infinite" }} />
           <span style={{ fontSize: 13, color: T.T3, fontFamily: FONT }}>Analysing teachers + class clusters…</span>
         </div>
       ) : (
-        <DiagnosisCard items={insights?.diagnosis ?? []} />
+        <>
+          <DiagnosisCard items={insights?.diagnosis ?? []} source={insights?.source} />
+          {insights?.source === "fallback" && insights?.errorMessage && (
+            <div style={{ marginTop: -22, marginBottom: 32, padding: "10px 14px", background: "rgba(255,170,0,0.06)", border: "0.5px solid rgba(255,170,0,0.20)", borderRadius: 12, display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 11, color: T.AMBER, fontFamily: FONT, flex: 1 }}>AI service down: <code style={{ fontSize: 10 }}>{insights.errorMessage}</code> — showing real-data analysis. Check Firebase Functions logs.</span>
+              <button onClick={onRetry} style={{ padding: "5px 10px", borderRadius: 8, background: T.B1, color: "#FFF", border: "none", fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: FONT }}>Retry AI</button>
+            </div>
+          )}
+        </>
       )}
 
       <SectionHead eyebrow="03 · Teacher tiers" title={`${branch.totalTeachers} teachers · full breakdown`} subtitle="Live composite scores per teacher" />
@@ -1061,12 +1072,12 @@ const PrincipalNetworkPage: React.FC = () => {
   const live = useLiveSchoolData();
   const [screen, setScreen] = useState<Screen>("teacher-leaderboard");
 
-  const [pInsights, setPInsights] = useState<AIInsightsResult | null>(null);
+  const [pInsights, setPInsights] = useState<AIInsightsTagged | null>(null);
   const [pLoading, setPLoading] = useState(false);
   const [pError, setPError] = useState<string | null>(null);
   const pTriedRef = useRef(false);
 
-  const [bInsights, setBInsights] = useState<AIInsightsResult | null>(null);
+  const [bInsights, setBInsights] = useState<AIInsightsTagged | null>(null);
   const [bLoading, setBLoading] = useState(false);
   const [bError, setBError] = useState<string | null>(null);
   const bTriedRef = useRef(false);

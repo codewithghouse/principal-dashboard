@@ -555,6 +555,12 @@ export interface AIInsightsResult {
 const FUNCTIONS_REGION = "us-central1";
 const SESSION_CACHE = new Map<string, AIInsightsResult>();
 
+// Tagged result: callers can know whether output came from AI or deterministic fallback
+export interface AIInsightsTagged extends AIInsightsResult {
+  source: "ai" | "fallback";
+  errorMessage?: string;
+}
+
 async function callInsights(instructions: string, data: unknown, cacheKey: string): Promise<AIInsightsResult> {
   if (SESSION_CACHE.has(cacheKey)) return SESSION_CACHE.get(cacheKey)!;
 
@@ -656,13 +662,129 @@ function compact<T extends Record<string, unknown>>(obj: T): Record<string, unkn
   return out;
 }
 
+// ── Deterministic real-data fallback (used when AI fails) ──────────────────
+// All numbers and named entities below come from the live Firestore data —
+// nothing is invented. This is rule-based analysis, not AI prose.
+
+function fallbackPrincipalInsights(
+  branch: BranchComposite,
+  topClass: ClassRow | null,
+  weakClass: ClassRow | null,
+): AIInsightsResult {
+  const diagnosis: AIDiagnosisItem[] = [];
+
+  if (branch.improvement >= 80) {
+    diagnosis.push({ type: "good", text: `Improvement signal **${branch.improvement}** — engagement aur week-on-week trend strong dikh raha hai.` });
+  } else if (branch.studentsAvg >= 75) {
+    diagnosis.push({ type: "good", text: `Students avg **${branch.studentsAvg.toFixed(1)}** healthy hai — solid academic baseline.` });
+  } else {
+    diagnosis.push({ type: "good", text: `Branch composite **${branch.composite.toFixed(1)}** baseline — improvement scope clear hai.` });
+  }
+
+  if (branch.weakTeachers.length > 0) {
+    const w = branch.weakTeachers[0];
+    diagnosis.push({ type: "concern", text: `**${branch.weakTeachers.length} teachers ka composite 70 se neeche hai**, sabse weak: ${w.teacher.name || "Unnamed"} (${w.composite.toFixed(1)}). Ye drag kar raha hai school average ko.` });
+  } else if (branch.atRiskPct > 5) {
+    diagnosis.push({ type: "concern", text: `**At-risk students ${branch.atRiskPct.toFixed(1)}%** — ${Math.round(branch.atRiskPct * branch.totalStudents / 100)} students ka avg 50 se neeche hai.` });
+  } else if (branch.studentsAvg < 70) {
+    diagnosis.push({ type: "concern", text: `Students avg **${branch.studentsAvg.toFixed(1)}** — 70 ka threshold se neeche, focused intervention chahiye.` });
+  } else {
+    diagnosis.push({ type: "concern", text: `Teachers avg **${branch.teachersAvg.toFixed(1)}** vs students avg ${branch.studentsAvg.toFixed(1)} — gap monitor karo.` });
+  }
+
+  if (weakClass && weakClass.atRisk > 0) {
+    diagnosis.push({ type: "note", text: `Sabse weak class **${weakClass.name}** (composite ${weakClass.composite.toFixed(1)}, ${weakClass.atRisk} at-risk). Class teacher: ${weakClass.classTeacher}.` });
+  } else if (topClass) {
+    diagnosis.push({ type: "note", text: `Top class **${topClass.name}** (composite ${topClass.composite.toFixed(1)}) — ${topClass.classTeacher} ki best practices baki classes mein replicate karo.` });
+  } else {
+    diagnosis.push({ type: "note", text: `Total ${branch.totalStudents} students across ${branch.totalSections} classes. Weekly review schedule baniye.` });
+  }
+
+  const actions: AIAction[] = [];
+  let n = 1;
+  branch.weakTeachers.slice(0, 2).forEach(t => {
+    actions.push({
+      id: `p${n}`, num: String(n).padStart(2, "0"),
+      title: `Coach ${t.teacher.name || "weak teacher"} (${t.composite.toFixed(1)})`,
+      reason: `${t.teacher.name || "Teacher"} ka composite ${t.composite.toFixed(1)} hai — weekly 1-on-1 schedule karo. ${t.reasons[0] ? `${t.reasons[0].label}: ${t.reasons[0].value}` : "Multiple weak signals"}.`,
+      tracking: "manual", status: "pending",
+    });
+    n++;
+  });
+  if (weakClass && weakClass.atRisk > 0) {
+    actions.push({
+      id: `p${n}`, num: String(n).padStart(2, "0"),
+      title: `Intervene class ${weakClass.name} — ${weakClass.atRisk} at-risk`,
+      reason: `${weakClass.name} mein ${weakClass.atRisk} of ${weakClass.totalStudents} students at-risk. ${weakClass.classTeacher} ke saath remedial plan banao.`,
+      tracking: "auto", status: "pending",
+      progress: { current: 0, target: weakClass.atRisk },
+    });
+    n++;
+  }
+  if (branch.atRiskPct > 5) {
+    actions.push({
+      id: `p${n}`, num: String(n).padStart(2, "0"),
+      title: `Parent outreach for ${Math.round(branch.atRiskPct * branch.totalStudents / 100)} at-risk students`,
+      reason: `${branch.atRiskPct.toFixed(1)}% students ka avg 50 se neeche. Class teachers ko parent calls assign karo — auto-tracked.`,
+      tracking: "auto", status: "pending",
+      progress: { current: 0, target: Math.round(branch.atRiskPct * branch.totalStudents / 100) },
+    });
+    n++;
+  }
+  if (branch.topTeachers.length > 0 && branch.weakTeachers.length > 0) {
+    const top = branch.topTeachers[0];
+    actions.push({
+      id: `p${n}`, num: String(n).padStart(2, "0"),
+      title: `Peer mentoring: ${top.teacher.name || "top teacher"} → weak teachers`,
+      reason: `${top.teacher.name || "Top teacher"} ka composite ${top.composite.toFixed(1)} hai. Weekly observation sessions schedule karo for the ${branch.weakTeachers.length} weak teachers.`,
+      tracking: "manual", status: "pending",
+    });
+  }
+
+  const projected = Math.min(100, branch.composite + 4);
+  const forecast: AIForecast = {
+    projectedLabel: `${branch.composite.toFixed(1)} → ${projected.toFixed(1)}`,
+    changeLabel: branch.weekOverWeekDelta && branch.weekOverWeekDelta > 0 ? "Up" : "Improving",
+    changeSubtitle: "If actions are completed",
+    scenarios: [
+      { label: "Coach weakest teacher", outcome: `+${(2).toFixed(1)}` },
+      { label: "Resolve at-risk class", outcome: `+${(1.5).toFixed(1)}` },
+      { label: "Complete full plan", outcome: `→ ${projected.toFixed(1)}`, highlight: true },
+    ],
+    confidence: 70,
+  };
+
+  return { diagnosis, actions, forecast };
+}
+
+function fallbackBranchInsights(
+  branch: BranchComposite,
+  classRanking: ClassRow[],
+): AIInsightsResult {
+  const base = fallbackPrincipalInsights(branch, classRanking[0] || null, classRanking[classRanking.length - 1] || null);
+  // Add one more action targeting class spread
+  if (classRanking.length >= 2) {
+    const top = classRanking[0];
+    const weak = classRanking[classRanking.length - 1];
+    const gap = (top.composite - weak.composite).toFixed(1);
+    const n = base.actions.length + 1;
+    base.actions.push({
+      id: `b${n}`, num: String(n).padStart(2, "0"),
+      title: `Close gap: ${weak.name} (${weak.composite.toFixed(1)}) vs ${top.name} (${top.composite.toFixed(1)})`,
+      reason: `Top aur weak class mein ${gap}-point gap hai. ${weak.classTeacher} ko ${top.classTeacher} ke saath collaboration session lao.`,
+      tracking: "manual", status: "pending",
+    });
+  }
+  return base;
+}
+
 export async function fetchPrincipalInsights(input: {
   principalName: string;
   branchName: string;
   branch: BranchComposite;
   topClass: ClassRow | null;
   weakClass: ClassRow | null;
-}): Promise<AIInsightsResult> {
+}): Promise<AIInsightsTagged> {
   const instructions = `You are a school performance coach. Return ONLY a valid JSON object (no markdown, no prose) with the shape:
 {"diagnosis":[{"type":"good|concern|note","text":"short Hinglish text with numbers"}],"actions":[{"id":"p1","title":"English title","reason":"Hinglish reason","tracking":"manual","status":"pending"}],"forecast":{"projectedLabel":"X → Y","changeLabel":"Up","changeSubtitle":"text","scenarios":[{"label":"text","outcome":"text","highlight":true}],"confidence":75}}
 Give 3 diagnosis items and 4 actions. Reference real teacher/class names from the data.`;
@@ -693,14 +815,21 @@ Give 3 diagnosis items and 4 actions. Reference real teacher/class names from th
     clusters: clusters.length ? clusters : undefined,
   });
 
-  return callInsights(instructions, payload, `principal:${input.branch.composite}:${input.branch.totalStudents}`);
+  try {
+    const ai = await callInsights(instructions, payload, `principal:${input.branch.composite}:${input.branch.totalStudents}`);
+    return { ...ai, source: "ai" };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "AI unavailable";
+    console.warn("[fetchPrincipalInsights] AI failed, using deterministic fallback:", msg);
+    return { ...fallbackPrincipalInsights(input.branch, input.topClass, input.weakClass), source: "fallback", errorMessage: msg };
+  }
 }
 
 export async function fetchBranchInsights(input: {
   branchName: string;
   branch: BranchComposite;
   classRanking: ClassRow[];
-}): Promise<AIInsightsResult> {
+}): Promise<AIInsightsTagged> {
   const instructions = `You are a school performance analyst. Return ONLY a valid JSON object (no markdown, no prose) with the shape:
 {"diagnosis":[{"type":"good|concern|note","text":"short Hinglish text with numbers"}],"actions":[{"id":"b1","title":"English title","reason":"Hinglish reason","tracking":"manual","status":"pending"}],"forecast":{"projectedLabel":"X → Y","changeLabel":"Up","changeSubtitle":"text","scenarios":[{"label":"text","outcome":"text","highlight":true}],"confidence":80}}
 Give 3 diagnosis items and 5 actions. At least one action names a weak teacher; at least one names an at-risk class.`;
@@ -732,5 +861,12 @@ Give 3 diagnosis items and 5 actions. At least one action names a weak teacher; 
     classes: cls.length ? cls : undefined,
   });
 
-  return callInsights(instructions, payload, `branch:${input.branch.composite}:${input.branch.totalStudents}`);
+  try {
+    const ai = await callInsights(instructions, payload, `branch:${input.branch.composite}:${input.branch.totalStudents}`);
+    return { ...ai, source: "ai" };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "AI unavailable";
+    console.warn("[fetchBranchInsights] AI failed, using deterministic fallback:", msg);
+    return { ...fallbackBranchInsights(input.branch, input.classRanking), source: "fallback", errorMessage: msg };
+  }
 }
