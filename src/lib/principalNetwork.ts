@@ -646,6 +646,16 @@ function normaliseInsights(raw: unknown): AIInsightsResult {
   return { diagnosis, actions, forecast };
 }
 
+// Drop null/undefined fields so the proxy's downstream JSON validators don't choke
+function compact<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === null || v === undefined) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
 export async function fetchPrincipalInsights(input: {
   principalName: string;
   branchName: string;
@@ -653,44 +663,37 @@ export async function fetchPrincipalInsights(input: {
   topClass: ClassRow | null;
   weakClass: ClassRow | null;
 }): Promise<AIInsightsResult> {
-  const instructions = `You are a senior K-12 school performance coach. Analyse the principal's school data and explain in Hinglish (Hindi-English mix) why the school sits at its current composite, then suggest specific actions.
+  const instructions = `You are a school performance coach. Return ONLY a valid JSON object (no markdown, no prose) with the shape:
+{"diagnosis":[{"type":"good|concern|note","text":"short Hinglish text with numbers"}],"actions":[{"id":"p1","title":"English title","reason":"Hinglish reason","tracking":"manual","status":"pending"}],"forecast":{"projectedLabel":"X → Y","changeLabel":"Up","changeSubtitle":"text","scenarios":[{"label":"text","outcome":"text","highlight":true}],"confidence":75}}
+Give 3 diagnosis items and 4 actions. Reference real teacher/class names from the data.`;
 
-Output ONLY valid JSON, no markdown. Reference real teacher and class names from the data. Schema:
-{
- "diagnosis":[{"type":"good"|"concern"|"note","text":"Hinglish text with numbers"}],
- "actions":[{"id":"p1","title":"English title","reason":"Hinglish reason","tracking":"auto"|"auto_pct"|"manual","status":"pending"}],
- "forecast":{"projectedLabel":"X → Y","changeLabel":"Up","changeSubtitle":"...","scenarios":[{"label":"...","outcome":"...","highlight":true}],"confidence":75}
-}
-3 diagnosis items, 4 actions.`;
+  const top = input.branch.topTeachers.slice(0, 2).map(t => ({
+    name: String(t.teacher.name || "Teacher").slice(0, 40), score: Math.round(t.composite),
+  }));
+  const weak = input.branch.weakTeachers.slice(0, 2).map(t => ({
+    name: String(t.teacher.name || "Teacher").slice(0, 40), score: Math.round(t.composite),
+  }));
+  const clusters = input.branch.studentClusters.slice(0, 2).map(c => ({
+    class: String(c.className).slice(0, 20), atRisk: c.atRisk, total: c.total,
+  }));
 
-  const payload = {
-    principal: input.principalName,
-    branch: input.branchName,
-    metrics: {
-      composite: input.branch.composite,
-      studentsAvg: input.branch.studentsAvg,
-      teachersAvg: input.branch.teachersAvg,
-      improvement: input.branch.improvement,
-      atRiskPct: input.branch.atRiskPct,
-      totalStudents: input.branch.totalStudents,
-      totalTeachers: input.branch.totalTeachers,
-      wowDelta: input.branch.weekOverWeekDelta,
-    },
-    topTeachers: input.branch.topTeachers.slice(0, 3).map(t => ({
-      name: t.teacher.name, score: Math.round(t.composite),
-    })),
-    weakTeachers: input.branch.weakTeachers.slice(0, 3).map(t => ({
-      name: t.teacher.name, score: Math.round(t.composite),
-      issue: t.reasons[0] ? `${t.reasons[0].label} ${t.reasons[0].value}` : "low",
-    })),
-    topClass: input.topClass ? { name: input.topClass.name, score: input.topClass.composite } : null,
-    weakClass: input.weakClass ? { name: input.weakClass.name, score: input.weakClass.composite, atRisk: input.weakClass.atRisk } : null,
-    criticalClusters: input.branch.studentClusters.slice(0, 3).map(c => ({
-      class: c.className, atRisk: c.atRisk, total: c.total,
-    })),
-  };
+  const payload = compact({
+    principal: String(input.principalName).slice(0, 60),
+    branch: String(input.branchName).slice(0, 60),
+    composite: input.branch.composite,
+    studentsAvg: input.branch.studentsAvg,
+    teachersAvg: input.branch.teachersAvg,
+    atRiskPct: input.branch.atRiskPct,
+    totalStudents: input.branch.totalStudents,
+    totalTeachers: input.branch.totalTeachers,
+    topTeachers: top.length ? top : undefined,
+    weakTeachers: weak.length ? weak : undefined,
+    topClass: input.topClass ? { name: String(input.topClass.name).slice(0, 20), score: input.topClass.composite } : undefined,
+    weakClass: input.weakClass ? { name: String(input.weakClass.name).slice(0, 20), score: input.weakClass.composite, atRisk: input.weakClass.atRisk } : undefined,
+    clusters: clusters.length ? clusters : undefined,
+  });
 
-  return callInsights(instructions, payload, `principal:${input.principalName}:${input.branch.composite}:${input.branch.totalStudents}`);
+  return callInsights(instructions, payload, `principal:${input.branch.composite}:${input.branch.totalStudents}`);
 }
 
 export async function fetchBranchInsights(input: {
@@ -698,43 +701,36 @@ export async function fetchBranchInsights(input: {
   branch: BranchComposite;
   classRanking: ClassRow[];
 }): Promise<AIInsightsResult> {
-  const instructions = `You are a school performance analyst. Diagnose why this school sits at its current composite and suggest specific actions naming real teachers and classes from the data.
+  const instructions = `You are a school performance analyst. Return ONLY a valid JSON object (no markdown, no prose) with the shape:
+{"diagnosis":[{"type":"good|concern|note","text":"short Hinglish text with numbers"}],"actions":[{"id":"b1","title":"English title","reason":"Hinglish reason","tracking":"manual","status":"pending"}],"forecast":{"projectedLabel":"X → Y","changeLabel":"Up","changeSubtitle":"text","scenarios":[{"label":"text","outcome":"text","highlight":true}],"confidence":80}}
+Give 3 diagnosis items and 5 actions. At least one action names a weak teacher; at least one names an at-risk class.`;
 
-Output ONLY valid JSON, no markdown. Schema:
-{
- "diagnosis":[{"type":"good"|"concern"|"note","text":"Hinglish text with numbers"}],
- "actions":[{"id":"b1","title":"English title","reason":"Hinglish reason","tracking":"auto"|"auto_pct"|"manual","status":"pending"}],
- "forecast":{"projectedLabel":"X → Y","changeLabel":"Up","changeSubtitle":"...","scenarios":[{"label":"...","outcome":"...","highlight":true}],"confidence":80}
-}
-3 diagnosis items, 5 actions. At least one action names a weak teacher; at least one names an at-risk class.`;
+  const top = input.branch.topTeachers.slice(0, 2).map(t => ({
+    name: String(t.teacher.name || "Teacher").slice(0, 40), score: Math.round(t.composite),
+  }));
+  const weak = input.branch.weakTeachers.slice(0, 3).map(t => ({
+    name: String(t.teacher.name || "Teacher").slice(0, 40), score: Math.round(t.composite),
+  }));
+  const clusters = input.branch.studentClusters.slice(0, 3).map(c => ({
+    class: String(c.className).slice(0, 20), atRisk: c.atRisk, total: c.total,
+  }));
+  const cls = input.classRanking.slice(0, 4).map(c => ({
+    name: String(c.name).slice(0, 20), score: c.composite,
+  }));
 
-  const payload = {
-    branch: input.branchName,
-    metrics: {
-      composite: input.branch.composite,
-      studentsAvg: input.branch.studentsAvg,
-      teachersAvg: input.branch.teachersAvg,
-      improvement: input.branch.improvement,
-      atRiskPct: input.branch.atRiskPct,
-      totalStudents: input.branch.totalStudents,
-      totalTeachers: input.branch.totalTeachers,
-      totalClasses: input.branch.totalSections,
-      wowDelta: input.branch.weekOverWeekDelta,
-    },
-    topTeachers: input.branch.topTeachers.slice(0, 3).map(t => ({
-      name: t.teacher.name, score: Math.round(t.composite),
-    })),
-    weakTeachers: input.branch.weakTeachers.slice(0, 4).map(t => ({
-      name: t.teacher.name, score: Math.round(t.composite),
-      issue: t.reasons[0] ? `${t.reasons[0].label} ${t.reasons[0].value}` : "low",
-    })),
-    criticalClusters: input.branch.studentClusters.slice(0, 4).map(c => ({
-      class: c.className, atRisk: c.atRisk, total: c.total, avg: c.avg,
-    })),
-    classRanking: input.classRanking.slice(0, 6).map(c => ({
-      name: c.name, score: c.composite, atRisk: c.atRisk,
-    })),
-  };
+  const payload = compact({
+    branch: String(input.branchName).slice(0, 60),
+    composite: input.branch.composite,
+    studentsAvg: input.branch.studentsAvg,
+    teachersAvg: input.branch.teachersAvg,
+    atRiskPct: input.branch.atRiskPct,
+    totalStudents: input.branch.totalStudents,
+    totalTeachers: input.branch.totalTeachers,
+    topTeachers: top.length ? top : undefined,
+    weakTeachers: weak.length ? weak : undefined,
+    clusters: clusters.length ? clusters : undefined,
+    classes: cls.length ? cls : undefined,
+  });
 
-  return callInsights(instructions, payload, `branch:${input.branchName}:${input.branch.composite}:${input.branch.totalStudents}`);
+  return callInsights(instructions, payload, `branch:${input.branch.composite}:${input.branch.totalStudents}`);
 }
