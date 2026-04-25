@@ -16,6 +16,7 @@
  *   - fetchBranchInsights()       OpenAI proxy call (real)
  */
 
+import { auth } from "./firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import {
   scoreTeachers,
@@ -561,38 +562,71 @@ export interface AIInsightsTagged extends AIInsightsResult {
   errorMessage?: string;
 }
 
-async function callInsights(instructions: string, data: unknown, cacheKey: string): Promise<AIInsightsResult> {
-  if (SESSION_CACHE.has(cacheKey)) return SESSION_CACHE.get(cacheKey)!;
+function parseJsonContent(raw: string | Record<string, unknown>): unknown {
+  if (typeof raw !== "string") return raw;
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  return JSON.parse(cleaned);
+}
 
+// Path A: Firebase Cloud Function `parentAIProxy` (us-central1) — same shape
+// as `getStudentInsight` in aiInsights.ts.
+async function callViaCloudFunction(instructions: string, data: unknown): Promise<unknown> {
   const fns = getFunctions(undefined, FUNCTIONS_REGION);
   const call = httpsCallable<
     { prompt: string; systemPrompt: string; jsonMode: boolean },
     { content: string | Record<string, unknown> }
   >(fns, "parentAIProxy");
+  const res = await call({
+    prompt: JSON.stringify(data),
+    systemPrompt: instructions,
+    jsonMode: true,
+  });
+  const raw = res.data?.content;
+  if (!raw) throw new Error("Empty content from Cloud Function");
+  return parseJsonContent(raw);
+}
 
+// Path B: Vercel `/api/ai-insights` — used as fallback when Cloud Function fails.
+// Endpoint code lives in this repo at api/ai-insights.js.
+async function callViaVercelProxy(instructions: string, data: unknown): Promise<unknown> {
+  const token = await auth.currentUser?.getIdToken();
+  const res = await fetch("/api/ai-insights", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ instructions, data }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || `Vercel proxy failed (${res.status})`);
+  }
+  return res.json();
+}
+
+async function callInsights(instructions: string, data: unknown, cacheKey: string): Promise<AIInsightsResult> {
+  if (SESSION_CACHE.has(cacheKey)) return SESSION_CACHE.get(cacheKey)!;
+
+  // Try Cloud Function first (matches existing app convention)
   let parsed: unknown;
+  let cfError: string | null = null;
   try {
-    const res = await call({
-      prompt: JSON.stringify(data),
-      systemPrompt: instructions,
-      jsonMode: true,
-    });
-    const raw = res.data?.content;
-    if (!raw) throw new Error("AI returned empty content");
-    if (typeof raw === "string") {
-      // Strip ``` fences if present, then parse
-      const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-      try { parsed = JSON.parse(cleaned); }
-      catch { throw new Error(`AI returned non-JSON: ${cleaned.slice(0, 120)}`); }
-    } else {
-      parsed = raw;
-    }
+    parsed = await callViaCloudFunction(instructions, data);
   } catch (err: unknown) {
     const e = err as { code?: string; message?: string; details?: { message?: string } };
-    const msg = e?.details?.message || e?.message || "AI call failed";
-    const code = e?.code;
-    console.warn("[principalNetwork.callInsights]", { code, msg, err });
-    throw new Error(code ? `[${code}] ${msg}` : msg);
+    cfError = `[${e?.code ?? "cf"}] ${e?.details?.message || e?.message || "Cloud Function failed"}`;
+    console.warn("[callInsights] Cloud Function failed:", cfError);
+
+    // Fallback to Vercel proxy
+    try {
+      parsed = await callViaVercelProxy(instructions, data);
+    } catch (err2: unknown) {
+      const e2 = err2 as { message?: string };
+      const vercelMsg = e2?.message || "Vercel proxy failed";
+      console.warn("[callInsights] Vercel proxy also failed:", vercelMsg);
+      throw new Error(`${cfError}; vercel: ${vercelMsg}`);
+    }
   }
 
   const normalised = normaliseInsights(parsed);
