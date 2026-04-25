@@ -46,6 +46,7 @@ const PRINCIPAL_MENU = [
   { title: "Assignments & Marks",    icon: ClipboardList,   path: "/assignments" },
   { title: "Teacher Performance",    icon: TrendingUp,      path: "/teacher-performance" },
   { title: "Teacher Leaderboard",    icon: Trophy,          path: "/teacher-leaderboard" },
+  { title: "Principal Network",      icon: Award,           path: "/principal-network" },
   { title: "Fee Structure",          icon: DollarSign,      path: "/fee-structure" },
   { title: "Exam Structure",         icon: Award,           path: "/exam-structure" },
   { title: "Timetable Setup",        icon: Clock,           path: "/timetable" },

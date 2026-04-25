@@ -30,6 +30,7 @@ import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 import TeacherPerformance from "./pages/TeacherPerformance";
 import TeacherLeaderboard from "./pages/TeacherLeaderboard";
+import PrincipalNetwork from "./pages/PrincipalNetwork";
 import ExamStructure from "./pages/ExamStructure";
 import TimetableSetup from "./pages/TimetableSetup";
 import AccessRequests from "./pages/AccessRequests";
@@ -114,6 +115,7 @@ const AppRoutes = () => {
           <Route path="/settings"             element={<SettingsPage />} />
           <Route path="/teacher-performance"  element={<TeacherPerformance />} />
           <Route path="/teacher-leaderboard"  element={<TeacherLeaderboard />} />
+          <Route path="/principal-network"    element={<PrincipalNetwork />} />
           <Route path="/exam-structure"       element={<ExamStructure />} />
           <Route path="/timetable"            element={<TimetableSetup />} />
           <Route path="/access-requests"      element={<AccessRequests />} />
