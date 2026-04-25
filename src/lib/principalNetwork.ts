@@ -573,10 +573,19 @@ async function callInsights(instructions: string, data: unknown, cacheKey: strin
     });
     const raw = res.data?.content;
     if (!raw) throw new Error("AI returned empty content");
-    parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (typeof raw === "string") {
+      // Strip ``` fences if present, then parse
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      try { parsed = JSON.parse(cleaned); }
+      catch { throw new Error(`AI returned non-JSON: ${cleaned.slice(0, 120)}`); }
+    } else {
+      parsed = raw;
+    }
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "AI call failed";
-    const code = (err as { code?: string })?.code;
+    const e = err as { code?: string; message?: string; details?: { message?: string } };
+    const msg = e?.details?.message || e?.message || "AI call failed";
+    const code = e?.code;
+    console.warn("[principalNetwork.callInsights]", { code, msg, err });
     throw new Error(code ? `[${code}] ${msg}` : msg);
   }
 
@@ -644,38 +653,20 @@ export async function fetchPrincipalInsights(input: {
   topClass: ClassRow | null;
   weakClass: ClassRow | null;
 }): Promise<AIInsightsResult> {
-  const instructions = `You are a senior K-12 school performance coach. Analyze the principal's school data and explain in Hinglish (natural Hindi-English mix) WHY the school is at its current composite, then provide SPECIFIC actions the principal can take.
+  const instructions = `You are a senior K-12 school performance coach. Analyse the principal's school data and explain in Hinglish (Hindi-English mix) why the school sits at its current composite, then suggest specific actions.
 
-Respond ONLY in valid JSON with the schema below. Mix Hindi and English naturally in diagnosis and action reason fields. Keep action titles in English. Reference SPECIFIC numbers and named entities (real teacher names, real class names) in every diagnosis bullet. Never give generic advice.
-
+Output ONLY valid JSON, no markdown. Reference real teacher and class names from the data. Schema:
 {
-  "diagnosis": [
-    { "type": "good" | "concern" | "note", "text": "Hinglish diagnosis with specific numbers" }
-  ],
-  "actions": [
-    {
-      "id": "p1",
-      "title": "English action title",
-      "reason": "Hinglish reason citing specific data and a named teacher or class",
-      "tracking": "auto" | "auto_pct" | "manual",
-      "status": "pending" | "in_progress",
-      "progress": { "current": 0, "target": 6 }
-    }
-  ],
-  "forecast": {
-    "projectedLabel": "82.4 → 87.5",
-    "changeLabel": "Up",
-    "changeSubtitle": "If the action plan is implemented",
-    "scenarios": [{ "label": "Coach 3 weak teachers", "outcome": "+2.4", "highlight": false }],
-    "confidence": 75
-  }
+ "diagnosis":[{"type":"good"|"concern"|"note","text":"Hinglish text with numbers"}],
+ "actions":[{"id":"p1","title":"English title","reason":"Hinglish reason","tracking":"auto"|"auto_pct"|"manual","status":"pending"}],
+ "forecast":{"projectedLabel":"X → Y","changeLabel":"Up","changeSubtitle":"...","scenarios":[{"label":"...","outcome":"...","highlight":true}],"confidence":75}
 }
-
-Generate 3 diagnosis bullets (one good, one concern, one note) and 4-5 actions.`;
+3 diagnosis items, 4 actions.`;
 
   const payload = {
-    principal: { name: input.principalName, branch: input.branchName },
-    branchMetrics: {
+    principal: input.principalName,
+    branch: input.branchName,
+    metrics: {
       composite: input.branch.composite,
       studentsAvg: input.branch.studentsAvg,
       teachersAvg: input.branch.teachersAvg,
@@ -683,18 +674,20 @@ Generate 3 diagnosis bullets (one good, one concern, one note) and 4-5 actions.`
       atRiskPct: input.branch.atRiskPct,
       totalStudents: input.branch.totalStudents,
       totalTeachers: input.branch.totalTeachers,
-      weekOverWeekDelta: input.branch.weekOverWeekDelta,
+      wowDelta: input.branch.weekOverWeekDelta,
     },
-    topTeachers: input.branch.topTeachers.map(t => ({
-      name: t.teacher.name, subjects: t.teacher.subjects, composite: t.composite,
+    topTeachers: input.branch.topTeachers.slice(0, 3).map(t => ({
+      name: t.teacher.name, score: Math.round(t.composite),
     })),
-    weakTeachers: input.branch.weakTeachers.map(t => ({
-      name: t.teacher.name, subjects: t.teacher.subjects, composite: t.composite,
-      issues: t.reasons.map(r => `${r.label} ${r.value}`).join(" · "),
+    weakTeachers: input.branch.weakTeachers.slice(0, 3).map(t => ({
+      name: t.teacher.name, score: Math.round(t.composite),
+      issue: t.reasons[0] ? `${t.reasons[0].label} ${t.reasons[0].value}` : "low",
     })),
-    topClass: input.topClass ? { name: input.topClass.name, composite: input.topClass.composite, classTeacher: input.topClass.classTeacher } : null,
-    weakClass: input.weakClass ? { name: input.weakClass.name, composite: input.weakClass.composite, classTeacher: input.weakClass.classTeacher, atRisk: input.weakClass.atRisk } : null,
-    studentClusters: input.branch.studentClusters,
+    topClass: input.topClass ? { name: input.topClass.name, score: input.topClass.composite } : null,
+    weakClass: input.weakClass ? { name: input.weakClass.name, score: input.weakClass.composite, atRisk: input.weakClass.atRisk } : null,
+    criticalClusters: input.branch.studentClusters.slice(0, 3).map(c => ({
+      class: c.className, atRisk: c.atRisk, total: c.total,
+    })),
   };
 
   return callInsights(instructions, payload, `principal:${input.principalName}:${input.branch.composite}:${input.branch.totalStudents}`);
@@ -705,38 +698,19 @@ export async function fetchBranchInsights(input: {
   branch: BranchComposite;
   classRanking: ClassRow[];
 }): Promise<AIInsightsResult> {
-  const instructions = `You are a school branch performance analyst. Generate a brutally honest diagnosis of WHY this school is at its current composite, and provide SPECIFIC interventions naming the actual teachers and classes from the data.
+  const instructions = `You are a school performance analyst. Diagnose why this school sits at its current composite and suggest specific actions naming real teachers and classes from the data.
 
-Respond ONLY in valid JSON. Use Hinglish in diagnosis text and action reason fields. Keep action titles in English. Every diagnosis bullet and action reason MUST cite specific numbers and named entities from the data. At least one action must name a specific weak teacher; at least one must address a specific at-risk class.
-
+Output ONLY valid JSON, no markdown. Schema:
 {
-  "diagnosis": [
-    { "type": "good" | "concern" | "note", "text": "Hinglish diagnosis citing teacher names + numbers" }
-  ],
-  "actions": [
-    {
-      "id": "b1",
-      "title": "English action naming a specific teacher or class",
-      "reason": "Hinglish reason citing exact data",
-      "tracking": "auto" | "auto_pct" | "manual",
-      "status": "pending" | "in_progress",
-      "progress": { "current": 0, "target": 6 }
-    }
-  ],
-  "forecast": {
-    "projectedLabel": "+5.4",
-    "changeLabel": "Composite uplift",
-    "changeSubtitle": "Branch score: 79.8 → 85.2",
-    "scenarios": [{ "label": "Coach weak teachers", "outcome": "+3.2", "highlight": false }],
-    "confidence": 80
-  }
+ "diagnosis":[{"type":"good"|"concern"|"note","text":"Hinglish text with numbers"}],
+ "actions":[{"id":"b1","title":"English title","reason":"Hinglish reason","tracking":"auto"|"auto_pct"|"manual","status":"pending"}],
+ "forecast":{"projectedLabel":"X → Y","changeLabel":"Up","changeSubtitle":"...","scenarios":[{"label":"...","outcome":"...","highlight":true}],"confidence":80}
 }
-
-Generate 3 diagnosis bullets and 5-6 actions.`;
+3 diagnosis items, 5 actions. At least one action names a weak teacher; at least one names an at-risk class.`;
 
   const payload = {
-    branch: {
-      name: input.branchName,
+    branch: input.branchName,
+    metrics: {
       composite: input.branch.composite,
       studentsAvg: input.branch.studentsAvg,
       teachersAvg: input.branch.teachersAvg,
@@ -744,22 +718,21 @@ Generate 3 diagnosis bullets and 5-6 actions.`;
       atRiskPct: input.branch.atRiskPct,
       totalStudents: input.branch.totalStudents,
       totalTeachers: input.branch.totalTeachers,
-      totalSections: input.branch.totalSections,
-      weekOverWeekDelta: input.branch.weekOverWeekDelta,
+      totalClasses: input.branch.totalSections,
+      wowDelta: input.branch.weekOverWeekDelta,
     },
-    topTeachers: input.branch.topTeachers.map(t => ({
-      name: t.teacher.name, subjects: t.teacher.subjects, composite: t.composite,
+    topTeachers: input.branch.topTeachers.slice(0, 3).map(t => ({
+      name: t.teacher.name, score: Math.round(t.composite),
     })),
-    weakTeachers: input.branch.weakTeachers.map(t => ({
-      name: t.teacher.name, subjects: t.teacher.subjects, composite: t.composite,
-      classAvg: t.classAvg, passRate: t.passRate, attendance: t.attendance,
-      assignments: t.assignments, punctuality: t.punctuality,
-      issues: t.reasons.map(r => `${r.label} ${r.value}`).join(" · "),
+    weakTeachers: input.branch.weakTeachers.slice(0, 4).map(t => ({
+      name: t.teacher.name, score: Math.round(t.composite),
+      issue: t.reasons[0] ? `${t.reasons[0].label} ${t.reasons[0].value}` : "low",
     })),
-    studentClusters: input.branch.studentClusters,
-    classRanking: input.classRanking.slice(0, 12).map(c => ({
-      name: c.name, composite: c.composite, totalStudents: c.totalStudents,
-      atRisk: c.atRisk, classTeacher: c.classTeacher,
+    criticalClusters: input.branch.studentClusters.slice(0, 4).map(c => ({
+      class: c.className, atRisk: c.atRisk, total: c.total, avg: c.avg,
+    })),
+    classRanking: input.classRanking.slice(0, 6).map(c => ({
+      name: c.name, score: c.composite, atRisk: c.atRisk,
     })),
   };
 
