@@ -1,12 +1,16 @@
 /**
- * PrincipalNetwork.tsx — Locked Edullent design (4 screens, single page).
+ * PrincipalNetwork.tsx — REAL DATA ONLY.
  *
- * The visual primitives, design tokens, layout and copy come from the
- * locked spec at EdullentPrincipalDashboard.jsx. Mock data has been
- * replaced with live Firestore reads (current school's teachers +
- * students, scored via teacherScorer) and synthetic peer rows for the
- * network leaderboard. Diagnosis + action plan are streamed from
- * /api/ai-insights (existing OpenAI proxy).
+ * Locked Edullent design (4 screens, single page) wired entirely to live
+ * Firestore data for the principal's school:
+ *   - School composite (real, computed from teachers + students)
+ *   - Teacher leaderboard (real, via scoreTeachers)
+ *   - Class leaderboard (real, per-class composite from students+attendance)
+ *   - Trajectory (real, ISO-week bucketed test history)
+ *   - Week-over-week trend (real)
+ *   - AI diagnosis + action plan (real OpenAI via /api/ai-insights)
+ *
+ * No synthetic peers, no fake names, no rng-noise trajectories.
  */
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -19,20 +23,20 @@ import {
 } from "@/lib/teacherScorer";
 import {
   computeBranchComposite,
-  buildNetworkLeaderboard,
-  buildTrajectory,
-  buildRankTrajectory,
+  computeClassRanking,
+  computeTeacherRanking,
+  computeWeeklyHistory,
   fetchPrincipalInsights,
   fetchBranchInsights,
   BranchComposite,
-  NetworkLeaderboard,
+  ClassRow,
+  TeacherRow,
+  WeeklyPoint,
   AIInsightsResult,
   AIAction,
 } from "@/lib/principalNetwork";
 
-// ──────────────────────────────────────────────────────────────────────────
 // LOCKED DESIGN TOKENS
-// ──────────────────────────────────────────────────────────────────────────
 const FONT = "'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif";
 const T = {
   pageBg: "#EEF4FF", cardBg: "#FFFFFF",
@@ -43,7 +47,6 @@ const T = {
   ORANGE: "#FF8800", ORANGE_DEEP: "#C26A00",
   AMBER: "#B47A00", VIOLET: "#7B3FF4", VIOLET_LIGHT: "#B79FFF",
   GOLD: "#FFD700", GOLD_DEEP: "#FFAA00",
-  SILVER: "#A8A8B5", BRONZE: "#8B5A2B",
   SH: "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 8px rgba(0,85,255,0.10)",
   SH_LG: "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.12), 0 20px 48px rgba(0,85,255,0.14)",
   SH_HERO: "0 0 0 0.5px rgba(0,85,255,0.10), 0 8px 24px rgba(0,85,255,0.18), 0 24px 60px rgba(0,85,255,0.22)",
@@ -55,32 +58,42 @@ const T = {
   HERO_FORECAST: "linear-gradient(135deg, #001040 0%, #001A66 50%, #0055FF 100%)",
 } as const;
 
-// ──────────────────────────────────────────────────────────────────────────
-// LIVE DATA HOOK — pulls the principal's school-wide data from Firestore
-// ──────────────────────────────────────────────────────────────────────────
-function useBranchLiveData() {
+// ── Live data hook ────────────────────────────────────────────────────────
+interface LiveSchoolData {
+  loading: boolean;
+  schoolId: string | null;
+  branchName: string;
+  principalName: string;
+  branch: BranchComposite | null;
+  classes: ClassRow[];
+  teachers: TeacherRow[];
+  weekly: WeeklyPoint[];
+  rawScores: ScoreDoc[];
+}
+
+function useLiveSchoolData(): LiveSchoolData {
   const { userData } = useAuth();
-  const schoolId = userData?.schoolId as string | undefined;
+  const schoolId = (userData?.schoolId as string | undefined) || null;
   const branchId = userData?.branchId as string | undefined;
 
   const [loading, setLoading] = useState(true);
   const [teachers, setTeachers] = useState<TeacherDoc[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
+  const [students, setStudents] = useState<Record<string, unknown>[]>([]);
+  const [classDocs, setClassDocs] = useState<Record<string, unknown>[]>([]);
   const [testScores, setTestScores] = useState<ScoreDoc[]>([]);
   const [results, setResults] = useState<ScoreDoc[]>([]);
   const [gradebook, setGradebook] = useState<ScoreDoc[]>([]);
   const [attendance, setAttendance] = useState<AttendanceDoc[]>([]);
   const [assignments, setAssignments] = useState<AssignmentDoc[]>([]);
   const [tAttendance, setTAttendance] = useState<TeacherAttendanceDoc[]>([]);
-  const [teachingAssignments, setTeachingAssignments] = useState<any[]>([]);
+  const [teachingAssignments, setTeachingAssignments] = useState<{ classId?: string; teacherId?: string; status?: string }[]>([]);
 
   useEffect(() => {
     if (!schoolId) { setLoading(false); return; }
 
-    let loaded = 0;
+    let loadedCount = 0;
     const total = 10;
-    const mark = () => { loaded++; if (loaded >= total) setLoading(false); };
+    const mark = () => { loadedCount++; if (loadedCount >= total) setLoading(false); };
 
     const scoped = (col: string) => {
       const base = [where("schoolId", "==", schoolId)];
@@ -89,45 +102,76 @@ function useBranchLiveData() {
     };
 
     const unsubs = [
-      onSnapshot(scoped("teachers"),            (s) => { setTeachers(s.docs.map(d => ({ id: d.id, ...(d.data() as any) }))); mark(); }, () => mark()),
-      onSnapshot(scoped("students"),            (s) => { setStudents(s.docs.map(d => ({ id: d.id, ...(d.data() as any) }))); mark(); }, () => mark()),
-      onSnapshot(scoped("classes"),             (s) => { setClasses(s.docs.map(d => ({ id: d.id, ...(d.data() as any) }))); mark(); }, () => mark()),
+      onSnapshot(scoped("teachers"),            (s) => { setTeachers(s.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as TeacherDoc)); mark(); }, () => mark()),
+      onSnapshot(scoped("students"),            (s) => { setStudents(s.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }))); mark(); }, () => mark()),
+      onSnapshot(scoped("classes"),             (s) => { setClassDocs(s.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }))); mark(); }, () => mark()),
       onSnapshot(scoped("test_scores"),         (s) => { setTestScores(s.docs.map(d => d.data() as ScoreDoc)); mark(); }, () => mark()),
       onSnapshot(scoped("results"),             (s) => { setResults(s.docs.map(d => d.data() as ScoreDoc)); mark(); }, () => mark()),
       onSnapshot(scoped("gradebook_scores"),    (s) => { setGradebook(s.docs.map(d => d.data() as ScoreDoc)); mark(); }, () => mark()),
       onSnapshot(scoped("attendance"),          (s) => { setAttendance(s.docs.map(d => d.data() as AttendanceDoc)); mark(); }, () => mark()),
       onSnapshot(scoped("assignments"),         (s) => { setAssignments(s.docs.map(d => d.data() as AssignmentDoc)); mark(); }, () => mark()),
       onSnapshot(scoped("teacher_attendance"),  (s) => { setTAttendance(s.docs.map(d => d.data() as TeacherAttendanceDoc)); mark(); }, () => mark()),
-      onSnapshot(scoped("teaching_assignments"),(s) => { setTeachingAssignments(s.docs.map(d => d.data() as any)); mark(); }, () => mark()),
+      onSnapshot(scoped("teaching_assignments"),(s) => { setTeachingAssignments(s.docs.map(d => d.data() as { classId?: string; teacherId?: string; status?: string })); mark(); }, () => mark()),
     ];
-
     return () => unsubs.forEach(u => u());
   }, [schoolId, branchId]);
 
-  const branch: BranchComposite | null = useMemo(() => {
+  const allScores = useMemo(() => [...testScores, ...results, ...gradebook], [testScores, results, gradebook]);
+
+  const branchName = (userData?.branchName as string)
+    || (userData?.schoolName as string)
+    || "Your School";
+  const principalName = (userData?.name as string)
+    || (userData?.fullName as string)
+    || (userData?.email as string)
+    || "Principal";
+
+  const branch = useMemo<BranchComposite | null>(() => {
     if (loading || !schoolId) return null;
-    const branchName = (userData?.branchName as string)
-      || (userData?.schoolName as string)
-      || "Your Branch";
     return computeBranchComposite({
-      branchName,
-      schoolId,
-      teachers, students, classes,
-      scores: [...testScores, ...results, ...gradebook],
-      attendance, assignments,
+      branchName, schoolId,
+      teachers, students, classes: classDocs,
+      scores: allScores, attendance, assignments,
       teacherAttendance: tAttendance,
       teachingAssignments,
     });
-  }, [loading, schoolId, userData, teachers, students, classes,
-      testScores, results, gradebook, attendance, assignments,
-      tAttendance, teachingAssignments]);
+  }, [loading, schoolId, branchName, teachers, students, classDocs, allScores, attendance, assignments, tAttendance, teachingAssignments]);
 
-  return { loading, branch, schoolId, userData };
+  const classes = useMemo<ClassRow[]>(() => {
+    if (loading || !schoolId) return [];
+    return computeClassRanking({
+      classes: classDocs, students, scores: allScores, attendance,
+      teachers, teachingAssignments,
+    });
+  }, [loading, schoolId, classDocs, students, allScores, attendance, teachers, teachingAssignments]);
+
+  const teacherRows = useMemo<TeacherRow[]>(() => {
+    if (loading || !schoolId) return [];
+    return computeTeacherRanking({
+      teachers, scores: allScores, attendance, assignments,
+      teacherAttendance: tAttendance, teachingAssignments,
+    });
+  }, [loading, schoolId, teachers, allScores, attendance, assignments, tAttendance, teachingAssignments]);
+
+  const weekly = useMemo<WeeklyPoint[]>(() => {
+    if (loading || !schoolId) return [];
+    return computeWeeklyHistory(allScores, 8);
+  }, [loading, schoolId, allScores]);
+
+  return {
+    loading,
+    schoolId,
+    branchName,
+    principalName,
+    branch,
+    classes,
+    teachers: teacherRows,
+    weekly,
+    rawScores: allScores,
+  };
 }
 
-// ──────────────────────────────────────────────────────────────────────────
-// PRIMITIVES (locked design, identical to spec)
-// ──────────────────────────────────────────────────────────────────────────
+// ── Locked primitives ─────────────────────────────────────────────────────
 const Eyebrow: React.FC<{ children: React.ReactNode; color?: string }> = ({ children, color = T.T4 }) => (
   <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: "1.6px", color, margin: 0, textTransform: "uppercase", fontFamily: FONT }}>{children}</p>
 );
@@ -159,15 +203,13 @@ const Avatar: React.FC<{ initials: string; bg: string; color: string; size?: num
   }}>{initials}</div>
 );
 
-type RankVariant = 1 | 2 | 3 | "user" | "amber" | "red" | "default";
+type RankVariant = 1 | 2 | 3 | "user" | "default";
 const RankBadge: React.FC<{ rank: number; variant?: RankVariant; size?: number }> = ({ rank, variant = "default", size = 38 }) => {
   const styles: Record<string, { bg: string; color: string; shadow: string }> = {
     "1": { bg: `linear-gradient(135deg, ${T.GOLD} 0%, ${T.GOLD_DEEP} 100%)`, color: "#FFF", shadow: "0 6px 16px rgba(255,170,0,0.35)" },
     "2": { bg: "linear-gradient(135deg, #E8E8F0 0%, #A8A8B5 100%)", color: "#FFF", shadow: "0 6px 16px rgba(168,168,181,0.35)" },
     "3": { bg: "linear-gradient(135deg, #D89060 0%, #8B5A2B 100%)", color: "#FFF", shadow: "0 6px 16px rgba(139,90,43,0.35)" },
     user: { bg: `linear-gradient(135deg, ${T.B1} 0%, ${T.B2} 100%)`, color: "#FFF", shadow: "0 4px 12px rgba(0,85,255,0.35)" },
-    amber: { bg: `linear-gradient(135deg, ${T.ORANGE} 0%, ${T.GOLD_DEEP} 100%)`, color: "#FFF", shadow: "0 4px 12px rgba(255,136,0,0.35)" },
-    red: { bg: "linear-gradient(135deg, #FF453A 0%, #E5304A 100%)", color: "#FFF", shadow: "0 4px 12px rgba(255,69,58,0.35)" },
     default: { bg: "rgba(0,85,255,0.06)", color: T.T3, shadow: "none" },
   };
   const s = styles[String(variant)] || styles.default;
@@ -180,17 +222,18 @@ const RankBadge: React.FC<{ rank: number; variant?: RankVariant; size?: number }
   );
 };
 
-const TrendPill: React.FC<{ trend: "up" | "down"; label: string }> = ({ trend, label }) => {
+const TrendPill: React.FC<{ trend: "up" | "down" | "flat"; label: string }> = ({ trend, label }) => {
   const isUp = trend === "up";
-  const color = isUp ? T.GREEN : T.RED;
+  const isDown = trend === "down";
+  const color = isUp ? T.GREEN : isDown ? T.RED : T.T3;
+  const bg = isUp ? "rgba(52,199,89,0.18)" : isDown ? "rgba(255,69,58,0.25)" : "rgba(0,85,255,0.08)";
+  const border = isUp ? "0.5px solid rgba(52,199,89,0.3)" : isDown ? "0.5px solid rgba(255,69,58,0.5)" : "0.5px solid rgba(0,85,255,0.18)";
   return (
-    <div style={{
-      display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px",
-      borderRadius: 999, background: isUp ? "rgba(52,199,89,0.18)" : "rgba(255,69,58,0.25)",
-      border: `0.5px solid ${isUp ? "rgba(52,199,89,0.3)" : "rgba(255,69,58,0.5)"}`,
-    }}>
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 999, background: bg, border }}>
       <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-        {isUp ? <path d="M4.5 1.5L7.5 6.5H1.5L4.5 1.5Z" fill={color}/> : <path d="M4.5 7.5L1.5 2.5H7.5L4.5 7.5Z" fill={color}/>}
+        {isUp && <path d="M4.5 1.5L7.5 6.5H1.5L4.5 1.5Z" fill={color} />}
+        {isDown && <path d="M4.5 7.5L1.5 2.5H7.5L4.5 7.5Z" fill={color} />}
+        {!isUp && !isDown && <circle cx="4.5" cy="4.5" r="2" fill={color} />}
       </svg>
       <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "1px", color, textTransform: "uppercase" }}>{label}</span>
     </div>
@@ -207,7 +250,7 @@ const DiagnosisCard: React.FC<{ items: { type: "good" | "concern" | "note"; text
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 999, background: "rgba(123,63,244,0.10)", border: "0.5px solid rgba(123,63,244,0.3)" }}>
           <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: T.VIOLET }} />
-          <span style={{ fontSize: 9, fontWeight: 800, color: T.VIOLET, letterSpacing: "1.4px", textTransform: "uppercase", fontFamily: FONT }}>Edullent AI · Data backed</span>
+          <span style={{ fontSize: 9, fontWeight: 800, color: T.VIOLET, letterSpacing: "1.4px", textTransform: "uppercase", fontFamily: FONT }}>Edullent AI · Real-data backed</span>
         </div>
       </div>
       {items.length === 0 && (
@@ -231,6 +274,7 @@ const MetricCard: React.FC<{ label: string; value: number | string; suffix?: str
     critical: { bar: `linear-gradient(90deg, ${T.ORANGE} 0%, ${T.RED} 100%)`, text: T.RED, val: T.RED, border: "rgba(255,69,58,0.18)" },
   } as const;
   const s = sMap[severity];
+  const pctVal = typeof value === "number" ? value : parseFloat(String(value)) || 0;
 
   return (
     <div style={{ background: T.cardBg, border: `0.5px solid ${s.border}`, borderRadius: 18, padding: 16, boxShadow: T.SH }}>
@@ -241,7 +285,7 @@ const MetricCard: React.FC<{ label: string; value: number | string; suffix?: str
       {vs && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
           <div style={{ flex: 1, height: 4, background: "rgba(0,85,255,0.06)", borderRadius: 999, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${Math.min(typeof value === "number" ? value : parseFloat(String(value)) || 0, 100)}%`, background: s.bar, borderRadius: 999 }} />
+            <div style={{ height: "100%", width: `${Math.min(pctVal, 100)}%`, background: s.bar, borderRadius: 999 }} />
           </div>
           <span style={{ fontSize: 10, fontWeight: 700, color: s.text, fontFamily: FONT }}>{vs}</span>
         </div>
@@ -250,16 +294,26 @@ const MetricCard: React.FC<{ label: string; value: number | string; suffix?: str
   );
 };
 
-const TrajectoryChart: React.FC<{ data: any[]; valueKey?: string; isRank?: boolean; color?: string }> = ({ data, valueKey = "value", isRank = false, color = T.B1 }) => {
-  const vals = data.map(d => d[valueKey] as number);
+interface ChartPoint { week: string; value: number }
+const TrajectoryChart: React.FC<{ data: ChartPoint[]; color?: string }> = ({ data, color = T.B1 }) => {
+  if (data.length < 2) {
+    return (
+      <div style={{ padding: "32px 0", textAlign: "center" }}>
+        <p style={{ fontSize: 12, color: T.T3, margin: 0, fontFamily: FONT }}>
+          Need at least 2 weeks of test data to draw trajectory ({data.length} found)
+        </p>
+      </div>
+    );
+  }
+  const vals = data.map(d => d.value);
   const minV = Math.min(...vals), maxV = Math.max(...vals);
   const pad = (maxV - minV) * 0.2 || 1;
-  const yMin = isRank ? 1 : minV - pad, yMax = isRank ? maxV + 2 : maxV + pad;
-  const xStep = 330 / (data.length - 1 || 1);
-  const pts = data.map((d: any, i: number) => ({
+  const yMin = minV - pad, yMax = maxV + pad;
+  const xStep = 330 / (data.length - 1);
+  const pts = data.map((d, i) => ({
     x: 50 + i * xStep,
-    y: 40 + ((isRank ? d[valueKey] - yMin : yMax - d[valueKey]) / (yMax - yMin || 1)) * 120,
-    label: d.week as string, value: d[valueKey] as number,
+    y: 40 + ((yMax - d.value) / (yMax - yMin || 1)) * 120,
+    label: d.week, value: d.value,
   }));
   const pathD = pts.map((p, i) => (i === 0 ? `M ${p.x},${p.y}` : ` L ${p.x},${p.y}`)).join("");
   const fillD = `${pathD} L ${pts[pts.length - 1].x},200 L ${pts[0].x},200 Z`;
@@ -272,14 +326,12 @@ const TrajectoryChart: React.FC<{ data: any[]; valueKey?: string; isRank?: boole
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      {[0, 1, 2].map(i => <line key={i} x1="30" y1={40 + i * 60} x2="380" y2={40 + i * 60} stroke="rgba(0,85,255,0.06)" strokeWidth="0.5" strokeDasharray="2 4"/>)}
+      {[0, 1, 2].map(i => <line key={i} x1="30" y1={40 + i * 60} x2="380" y2={40 + i * 60} stroke="rgba(0,85,255,0.06)" strokeWidth="0.5" strokeDasharray="2 4" />)}
       <path d={fillD} fill="url(#pfill)" />
       <path d={pathD} stroke={color} strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
       {pts.slice(0, -1).map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#FFF" stroke={color} strokeWidth="2" />)}
       <circle cx={last.x} cy={last.y} r="6" fill={color} />
-      <text x={last.x} y={last.y - 14} textAnchor="middle" fill={color} fontSize="11" fontWeight="800" fontFamily="Montserrat, sans-serif">
-        {isRank ? `#${last.value}` : last.value}
-      </text>
+      <text x={last.x} y={last.y - 14} textAnchor="middle" fill={color} fontSize="11" fontWeight="800" fontFamily="Montserrat, sans-serif">{last.value}</text>
       {pts.map((p, i) => (
         <text key={i} x={p.x} y="195" textAnchor="middle" fill={i === pts.length - 1 ? color : T.T4} fontSize="9" fontWeight="700" fontFamily="Montserrat, sans-serif">{p.label}</text>
       ))}
@@ -305,7 +357,7 @@ const ActionCard: React.FC<{ action: AIAction }> = ({ action }) => {
           <span style={{ flexShrink: 0, fontSize: 30, fontWeight: 800, letterSpacing: "-1.2px", color: T.B1, lineHeight: 1, minWidth: 36, fontFamily: FONT }}>{action.num}</span>
           <div style={{ flex: 1, paddingRight: 28 }}>
             <p style={{ fontSize: 15, fontWeight: 800, color: T.T1, margin: "0 0 4px", letterSpacing: "-0.2px", lineHeight: 1.3, fontFamily: FONT }}>{action.title}</p>
-            <p style={{ fontSize: 12, fontWeight: 700, color: T.GREEN, margin: 0, lineHeight: 1.5, fontFamily: FONT }}>{action.reward} — achieved</p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: T.GREEN, margin: 0, lineHeight: 1.5, fontFamily: FONT }}>{action.reward || "Completed"} — achieved</p>
           </div>
         </div>
         <div style={{ padding: 12, borderRadius: 12, background: "rgba(0,85,255,0.04)", border: "0.5px solid rgba(0,85,255,0.08)" }}>
@@ -343,21 +395,13 @@ const ActionCard: React.FC<{ action: AIAction }> = ({ action }) => {
               ))}
             </div>
           </>
-        ) : action.tracking === "auto_pct" ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: T.B1 }} />
-              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "1.2px", color: T.B1, textTransform: "uppercase", fontFamily: FONT }}>Auto-tracked</span>
-            </span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: T.T3, marginLeft: "auto", fontFamily: FONT }}>Now {action.current}{action.unit} → Goal {action.target}{action.unit}</span>
-          </div>
         ) : (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
               <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: isManual ? T.VIOLET : T.B1 }} />
               <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "1.2px", color: isManual ? T.VIOLET : T.B1, textTransform: "uppercase", fontFamily: FONT }}>{isManual ? "Self-tracked" : "Auto-tracked"}</span>
             </span>
-            <span style={{ fontSize: 11, fontWeight: 800, color: isManual ? T.VIOLET : T.B1, fontFamily: FONT }}>{isManual ? "Manual log" : (action.subStatus || "")}</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: isManual ? T.VIOLET : T.B1, fontFamily: FONT }}>{isManual ? "Manual log" : (action.subStatus || "Pending")}</span>
           </div>
         )}
       </div>
@@ -368,8 +412,8 @@ const ActionCard: React.FC<{ action: AIAction }> = ({ action }) => {
 const ForecastCard: React.FC<{
   projectedLabel: string; changeLabel: string; changeSubtitle: string;
   scenarios: { label: string; outcome: string; highlight?: boolean }[];
-  confidence: number; note?: string;
-}> = ({ projectedLabel, changeLabel, changeSubtitle, scenarios, confidence, note }) => (
+  confidence: number;
+}> = ({ projectedLabel, changeLabel, changeSubtitle, scenarios, confidence }) => (
   <div style={{ background: T.HERO_FORECAST, borderRadius: 24, padding: 24, boxShadow: T.SH_HERO, position: "relative", overflow: "hidden" }}>
     <div style={{ position: "absolute", bottom: "-50%", left: "-20%", width: "80%", height: "140%", background: "radial-gradient(circle, rgba(123,63,244,0.18) 0%, transparent 60%)", pointerEvents: "none" }} />
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, position: "relative" }}>
@@ -379,9 +423,9 @@ const ForecastCard: React.FC<{
       </div>
     </div>
     <div style={{ marginBottom: 18, position: "relative" }}>
-      <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "2px", color: "rgba(255,255,255,0.55)", margin: "0 0 8px", textTransform: "uppercase", fontFamily: FONT }}>Predicted next week</p>
+      <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "2px", color: "rgba(255,255,255,0.55)", margin: "0 0 8px", textTransform: "uppercase", fontFamily: FONT }}>Predicted next term</p>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-        <div style={{ fontSize: 64, fontWeight: 800, letterSpacing: "-3.5px", lineHeight: 0.9, background: "linear-gradient(180deg, #FFF 0%, rgba(255,255,255,0.7) 100%)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>{projectedLabel}</div>
+        <div style={{ fontSize: 56, fontWeight: 800, letterSpacing: "-2.5px", lineHeight: 0.9, background: "linear-gradient(180deg, #FFF 0%, rgba(255,255,255,0.7) 100%)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>{projectedLabel}</div>
         <div style={{ paddingTop: 6 }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.7)", margin: "0 0 2px", fontFamily: FONT }}>{changeLabel}</p>
           {changeSubtitle && <p style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.55)", margin: 0, fontFamily: FONT }}>{changeSubtitle}</p>}
@@ -406,14 +450,15 @@ const ForecastCard: React.FC<{
       </div>
       <span style={{ fontSize: 11, fontWeight: 800, color: T.VIOLET_LIGHT, fontFamily: FONT }}>{confidence}%</span>
     </div>
-    {note && <p style={{ fontSize: 10, fontWeight: 500, color: "rgba(255,255,255,0.4)", margin: "8px 0 0", position: "relative", fontFamily: FONT }}>{note}</p>}
   </div>
 );
 
-const HeroRankCard: React.FC<{
-  rank: number; label: string; composite: number | string; networkAvg: number | string; percentile: number | string;
-  trend: "up" | "down"; trendLabel: string; subtitle: string; ctaText: string; onCta: () => void;
-}> = ({ rank, label, composite, networkAvg, percentile, trend, trendLabel, subtitle, ctaText, onCta }) => (
+const HeroCompositeCard: React.FC<{
+  composite: number; subtitle: string;
+  studentsAvg: number; teachersAvg: number; atRiskPct: number;
+  trend: "up" | "down" | "flat"; trendLabel: string;
+  ctaText: string; onCta: () => void;
+}> = ({ composite, subtitle, studentsAvg, teachersAvg, atRiskPct, trend, trendLabel, ctaText, onCta }) => (
   <div style={{ background: T.HERO_GRADIENT, borderRadius: 26, padding: "24px 22px", boxShadow: T.SH_HERO, marginBottom: 22, position: "relative", overflow: "hidden" }}>
     <div style={{ position: "absolute", top: "-40%", right: "-20%", width: "80%", height: "140%", background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 60%)", pointerEvents: "none" }} />
     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18, position: "relative" }}>
@@ -424,12 +469,16 @@ const HeroRankCard: React.FC<{
       <TrendPill trend={trend} label={trendLabel} />
     </div>
     <div style={{ textAlign: "center", marginBottom: 22, position: "relative" }}>
-      <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "2px", color: "rgba(255,255,255,0.55)", margin: "0 0 2px", textTransform: "uppercase", fontFamily: FONT }}>{label}</p>
-      <div style={{ fontSize: 88, fontWeight: 800, letterSpacing: "-5px", lineHeight: 0.9, background: "linear-gradient(180deg, #FFF 0%, rgba(255,255,255,0.7) 100%)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>#{rank}</div>
+      <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "2px", color: "rgba(255,255,255,0.55)", margin: "0 0 2px", textTransform: "uppercase", fontFamily: FONT }}>School composite</p>
+      <div style={{ fontSize: 88, fontWeight: 800, letterSpacing: "-5px", lineHeight: 0.9, background: "linear-gradient(180deg, #FFF 0%, rgba(255,255,255,0.7) 100%)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent" }}>{composite.toFixed(1)}</div>
       <p style={{ fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.6)", margin: "4px 0 0", fontFamily: FONT }}>{subtitle}</p>
     </div>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "16px 0", borderTop: "0.5px solid rgba(255,255,255,0.12)", borderBottom: "0.5px solid rgba(255,255,255,0.12)", marginBottom: 18, position: "relative" }}>
-      {[{ label: "Score", value: composite }, { label: "Network avg", value: networkAvg }, { label: "Percentile", value: `${percentile}%` }].map((s, i) => (
+      {[
+        { label: "Students avg", value: studentsAvg.toFixed(1) },
+        { label: "Teachers avg", value: teachersAvg.toFixed(1) },
+        { label: "At-risk", value: `${atRiskPct.toFixed(1)}%` },
+      ].map((s, i) => (
         <React.Fragment key={i}>
           {i > 0 && <div style={{ width: 0.5, background: "rgba(255,255,255,0.12)" }} />}
           <div style={{ flex: 1, textAlign: "center" }}>
@@ -445,199 +494,158 @@ const HeroRankCard: React.FC<{
   </div>
 );
 
+// ── Helpers for trend display ─────────────────────────────────────────────
+function trendOf(delta: number | null): { trend: "up" | "down" | "flat"; label: string } {
+  if (delta === null) return { trend: "flat", label: "Baseline" };
+  if (delta > 0.5) return { trend: "up", label: `+${delta.toFixed(1)} WoW` };
+  if (delta < -0.5) return { trend: "down", label: `${delta.toFixed(1)} WoW` };
+  return { trend: "flat", label: "Steady" };
+}
+
 // ──────────────────────────────────────────────────────────────────────────
-// SCREEN 1 — PRINCIPAL LEADERBOARD
+// SCREEN 1 — TEACHER LEADERBOARD (real)
 // ──────────────────────────────────────────────────────────────────────────
-const PrincipalLeaderboardScreen: React.FC<{
-  net: NetworkLeaderboard; principalName: string; trendLabel: string;
-  onInsightsClick: () => void; onBranchLeaderboardClick: () => void;
-}> = ({ net, principalName, trendLabel, onInsightsClick, onBranchLeaderboardClick }) => {
-  const my = net.myPrincipalRow;
-  const percentile = Math.round(((net.totalPrincipals - my.rank) / Math.max(1, net.totalPrincipals - 1)) * 100);
+const TeacherLeaderboardScreen: React.FC<{
+  branch: BranchComposite; teachers: TeacherRow[]; principalName: string;
+  onInsightsClick: () => void; onClassesClick: () => void;
+}> = ({ branch, teachers, principalName, onInsightsClick, onClassesClick }) => {
+  const wow = trendOf(branch.weekOverWeekDelta);
   return (
     <div style={{ background: T.pageBg, padding: "28px 18px 32px", borderRadius: 28, fontFamily: FONT }}>
       <div style={{ textAlign: "center", marginBottom: 22 }}>
-        <Eyebrow>This Week · {net.ownerNetwork}</Eyebrow>
-        <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-1.4px", color: T.T1, margin: "8px 0", lineHeight: 1, fontFamily: FONT }}>Principal Leaderboard</h1>
+        <Eyebrow>This Week · {branch.branchName}</Eyebrow>
+        <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-1.4px", color: T.T1, margin: "8px 0", lineHeight: 1, fontFamily: FONT }}>Teacher Leaderboard</h1>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "5px 12px", borderRadius: 999, background: "rgba(0,85,255,0.08)", border: "0.5px solid rgba(0,85,255,0.12)" }}>
           <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: T.B1 }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: T.B1, fontFamily: FONT }}>{net.totalPrincipals} principals · {net.totalBranches} branches · Live</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.B1, fontFamily: FONT }}>{branch.totalTeachers} teachers · {branch.totalStudents} students · Live</span>
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 22, padding: 4, borderRadius: 12, background: "rgba(0,85,255,0.06)", border: T.BORDER }}>
         <div style={{ flex: 1, padding: 10, textAlign: "center", borderRadius: 8, background: T.cardBg, boxShadow: "0 1px 3px rgba(0,85,255,0.10)" }}>
-          <p style={{ fontSize: 11, fontWeight: 800, color: T.B1, margin: 0, fontFamily: FONT }}>Principals</p>
+          <p style={{ fontSize: 11, fontWeight: 800, color: T.B1, margin: 0, fontFamily: FONT }}>Teachers</p>
         </div>
-        <button onClick={onBranchLeaderboardClick} style={{ flex: 1, padding: 10, textAlign: "center", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", fontFamily: FONT }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: T.T3, margin: 0 }}>Branches</p>
+        <button onClick={onClassesClick} style={{ flex: 1, padding: 10, textAlign: "center", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", fontFamily: FONT }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.T3, margin: 0 }}>Classes</p>
         </button>
       </div>
 
-      <HeroRankCard
-        rank={my.rank} label="Your rank" composite={my.composite}
-        networkAvg={net.networkAvg} percentile={percentile}
-        trend="up" trendLabel={trendLabel}
-        subtitle={`${principalName} · ${my.branchName}`}
-        ctaText={`View detailed insights — why #${my.rank} & how to climb`}
+      <HeroCompositeCard
+        composite={branch.composite}
+        subtitle={`${principalName} · ${branch.branchName}`}
+        studentsAvg={branch.studentsAvg} teachersAvg={branch.teachersAvg} atRiskPct={branch.atRiskPct}
+        trend={wow.trend} trendLabel={wow.label}
+        ctaText="View school deep-dive insights"
         onCta={onInsightsClick}
       />
 
       <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 24, padding: "14px 12px 8px", boxShadow: T.SH_LG, marginBottom: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px 14px", borderBottom: T.BORDER_SOFT }}>
-          <Eyebrow>Network rankings</Eyebrow>
-          <p style={{ fontSize: 11, fontWeight: 500, color: T.T3, margin: 0, fontFamily: FONT }}>{net.totalPrincipals} principals</p>
+          <Eyebrow>Teacher rankings</Eyebrow>
+          <p style={{ fontSize: 11, fontWeight: 500, color: T.T3, margin: 0, fontFamily: FONT }}>{teachers.length} ranked</p>
         </div>
-
-        {net.principals.map((p, i) => {
-          const variant: RankVariant = p.rank <= 3 ? (p.rank as 1 | 2 | 3) : (p.isCurrent ? "user" : "default");
-          const size = p.rank <= 3 || p.isCurrent ? 38 : 34;
-          if (p.isCurrent) {
-            return (
-              <div key={p.rank} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 12px", borderRadius: 16, background: "linear-gradient(90deg, rgba(0,85,255,0.08) 0%, rgba(0,85,255,0.04) 100%)", border: T.BORDER_USER, margin: "6px 0", boxShadow: "0 4px 16px rgba(0,85,255,0.18)" }}>
-                <RankBadge rank={p.rank} variant="user" size={36} />
-                <Avatar initials={p.initials} bg={p.avatarBg} color={p.avatarText} size={36} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <p style={{ fontSize: 15, fontWeight: 800, margin: 0, color: T.T1, letterSpacing: "-0.3px", fontFamily: FONT }}>{p.name}</p>
-                    <span style={{ fontSize: 9, fontWeight: 800, padding: "3px 8px", borderRadius: 999, background: T.B1, color: "#FFF", textTransform: "uppercase", fontFamily: FONT }}>You</span>
-                  </div>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: T.ORANGE, margin: "1px 0 0", fontFamily: FONT }}>{p.branchName} · {p.context}</p>
-                </div>
-                <span style={{ fontSize: 19, fontWeight: 800, color: T.B1, letterSpacing: "-0.6px", fontFamily: FONT }}>{p.composite.toFixed(1)}</span>
-              </div>
-            );
-          }
-          const contextColor = p.rank <= 2 ? T.GREEN : (p.rank === 4 ? T.ORANGE : T.RED);
+        {teachers.length === 0 && (
+          <p style={{ fontSize: 12, color: T.T3, padding: 16, fontFamily: FONT }}>No teachers with sufficient data yet. Upload test scores or assignments first.</p>
+        )}
+        {teachers.map((t, i) => {
+          const variant: RankVariant = t.rank <= 3 ? (t.rank as 1 | 2 | 3) : "default";
+          const size = t.rank <= 3 ? 38 : 34;
+          const contextColor = t.rank <= 2 ? T.GREEN : (t.rank <= teachers.length - 2 ? T.T3 : T.RED);
           return (
-            <div key={p.rank} style={{ display: "flex", alignItems: "center", gap: 14, padding: p.rank <= 3 ? "14px 10px" : "12px 10px", borderRadius: p.rank <= 3 ? 16 : 14, borderTop: i > 0 ? T.BORDER_SOFT : "none" }}>
-              <RankBadge rank={p.rank} variant={variant} size={size} />
-              <Avatar initials={p.initials} bg={p.avatarBg} color={p.avatarText} size={size} />
+            <div key={t.teacherId} style={{ display: "flex", alignItems: "center", gap: 14, padding: t.rank <= 3 ? "14px 10px" : "12px 10px", borderRadius: t.rank <= 3 ? 16 : 14, borderTop: i > 0 ? T.BORDER_SOFT : "none" }}>
+              <RankBadge rank={t.rank} variant={variant} size={size} />
+              <Avatar initials={t.initials} bg={t.avatarBg} color={t.avatarText} size={size} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: p.rank <= 3 ? 15 : 14, fontWeight: 700, margin: 0, color: T.T1, letterSpacing: p.rank <= 3 ? "-0.3px" : "-0.2px", fontFamily: FONT }}>{p.name}</p>
-                <p style={{ fontSize: 11, fontWeight: 600, color: contextColor, margin: "1px 0 0", fontFamily: FONT }}>{p.branchName} · {p.context}</p>
+                <p style={{ fontSize: t.rank <= 3 ? 15 : 14, fontWeight: 700, margin: 0, color: T.T1, letterSpacing: "-0.2px", fontFamily: FONT }}>{t.name}</p>
+                <p style={{ fontSize: 11, fontWeight: 600, color: contextColor, margin: "1px 0 0", fontFamily: FONT }}>{t.subject} · {t.context}</p>
               </div>
-              <span style={{ fontSize: p.rank <= 3 ? 19 : 17, fontWeight: 800, color: T.T1, letterSpacing: "-0.5px", fontFamily: FONT }}>{p.composite.toFixed(1)}</span>
+              <span style={{ fontSize: t.rank <= 3 ? 19 : 17, fontWeight: 800, color: T.T1, letterSpacing: "-0.5px", fontFamily: FONT }}>{t.composite.toFixed(1)}</span>
             </div>
           );
         })}
-      </div>
-
-      <div style={{ textAlign: "center", marginTop: 18 }}>
-        <p style={{ fontSize: 10, fontWeight: 500, color: T.T4, margin: 0, fontFamily: FONT }}>Live · powered by Edullent AI</p>
       </div>
     </div>
   );
 };
 
 // ──────────────────────────────────────────────────────────────────────────
-// SCREEN 2 — BRANCH LEADERBOARD
+// SCREEN 2 — CLASS LEADERBOARD (real)
 // ──────────────────────────────────────────────────────────────────────────
-const BranchLeaderboardScreen: React.FC<{
-  net: NetworkLeaderboard; trendLabel: string;
-  onBranchInsightsClick: () => void; onPrincipalLeaderboardClick: () => void;
-}> = ({ net, trendLabel, onBranchInsightsClick, onPrincipalLeaderboardClick }) => {
-  const my = net.myBranchRow;
-  const percentile = Math.round(((net.totalBranches - my.rank) / Math.max(1, net.totalBranches - 1)) * 100);
+const ClassLeaderboardScreen: React.FC<{
+  branch: BranchComposite; classes: ClassRow[]; principalName: string;
+  onBranchInsightsClick: () => void; onTeachersClick: () => void;
+}> = ({ branch, classes, principalName, onBranchInsightsClick, onTeachersClick }) => {
+  const wow = trendOf(branch.weekOverWeekDelta);
   return (
     <div style={{ background: T.pageBg, padding: "28px 18px 32px", borderRadius: 28, fontFamily: FONT }}>
       <div style={{ textAlign: "center", marginBottom: 22 }}>
-        <Eyebrow>This Week · {net.ownerNetwork}</Eyebrow>
-        <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-1.4px", color: T.T1, margin: "8px 0", lineHeight: 1, fontFamily: FONT }}>Branch Leaderboard</h1>
+        <Eyebrow>This Week · {branch.branchName}</Eyebrow>
+        <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-1.4px", color: T.T1, margin: "8px 0", lineHeight: 1, fontFamily: FONT }}>Class Leaderboard</h1>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "5px 12px", borderRadius: 999, background: "rgba(0,85,255,0.08)", border: "0.5px solid rgba(0,85,255,0.12)" }}>
           <span style={{ display: "inline-block", width: 5, height: 5, borderRadius: "50%", background: T.B1 }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: T.B1, fontFamily: FONT }}>{net.totalBranches} branches · {net.totalStudents.toLocaleString()} students · {net.totalTeachers} teachers</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.B1, fontFamily: FONT }}>{branch.totalSections} classes · {branch.totalStudents} students · Live</span>
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 22, padding: 4, borderRadius: 12, background: "rgba(0,85,255,0.06)", border: T.BORDER }}>
-        <button onClick={onPrincipalLeaderboardClick} style={{ flex: 1, padding: 10, textAlign: "center", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", fontFamily: FONT }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: T.T3, margin: 0 }}>Principals</p>
+        <button onClick={onTeachersClick} style={{ flex: 1, padding: 10, textAlign: "center", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", fontFamily: FONT }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: T.T3, margin: 0 }}>Teachers</p>
         </button>
         <div style={{ flex: 1, padding: 10, textAlign: "center", borderRadius: 8, background: T.cardBg, boxShadow: "0 1px 3px rgba(0,85,255,0.10)" }}>
-          <p style={{ fontSize: 11, fontWeight: 800, color: T.B1, margin: 0, fontFamily: FONT }}>Branches</p>
+          <p style={{ fontSize: 11, fontWeight: 800, color: T.B1, margin: 0, fontFamily: FONT }}>Classes</p>
         </div>
       </div>
 
-      <HeroRankCard
-        rank={my.rank} label="Branch rank" composite={my.composite}
-        networkAvg={net.networkAvg} percentile={percentile}
-        trend="up" trendLabel={trendLabel}
-        subtitle={`${my.name} · ${my.students} students`}
-        ctaText="View branch deep dive — teacher & student insights"
+      <HeroCompositeCard
+        composite={branch.composite}
+        subtitle={`${principalName} · ${branch.branchName}`}
+        studentsAvg={branch.studentsAvg} teachersAvg={branch.teachersAvg} atRiskPct={branch.atRiskPct}
+        trend={wow.trend} trendLabel={wow.label}
+        ctaText="View school deep-dive insights"
         onCta={onBranchInsightsClick}
       />
 
       <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 24, padding: "14px 12px 8px", boxShadow: T.SH_LG, marginBottom: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px 14px", borderBottom: T.BORDER_SOFT }}>
-          <Eyebrow>All branches</Eyebrow>
-          <p style={{ fontSize: 11, fontWeight: 500, color: T.T3, margin: 0, fontFamily: FONT }}>Tap your branch for deep dive</p>
+          <Eyebrow>Class rankings</Eyebrow>
+          <p style={{ fontSize: 11, fontWeight: 500, color: T.T3, margin: 0, fontFamily: FONT }}>{classes.length} ranked</p>
         </div>
-
-        {net.branches.map((b, i) => {
-          const variant: RankVariant = b.rank <= 3 ? (b.rank as 1 | 2 | 3) : (b.isCurrent ? "user" : "default");
-          const size = b.rank <= 3 || b.isCurrent ? 38 : 34;
-          const contextColor = b.rank <= 2 ? T.GREEN : (b.isCurrent ? T.ORANGE : (b.rank === 4 ? T.ORANGE : T.RED));
-          if (b.isCurrent) {
-            return (
-              <div key={b.rank} onClick={onBranchInsightsClick} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 12px", borderRadius: 16, background: "linear-gradient(90deg, rgba(0,85,255,0.08) 0%, rgba(0,85,255,0.04) 100%)", border: T.BORDER_USER, margin: "6px 0", boxShadow: "0 4px 16px rgba(0,85,255,0.18)", cursor: "pointer" }}>
-                <RankBadge rank={b.rank} variant="user" size={36} />
-                <div style={{ width: 36, height: 36, borderRadius: "50%", background: b.avatarBg, color: b.avatarText, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, flexShrink: 0, fontFamily: FONT }}>{b.initial}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <p style={{ fontSize: 15, fontWeight: 800, margin: 0, color: T.T1, fontFamily: FONT }}>{b.name}</p>
-                    <span style={{ fontSize: 9, fontWeight: 800, padding: "3px 8px", borderRadius: 999, background: T.B1, color: "#FFF", textTransform: "uppercase", fontFamily: FONT }}>Your branch</span>
-                  </div>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: T.ORANGE, margin: "1px 0 0", fontFamily: FONT }}>{b.students} students · {b.context}</p>
-                </div>
-                <span style={{ fontSize: 19, fontWeight: 800, color: T.B1, fontFamily: FONT }}>{b.composite.toFixed(1)}</span>
-              </div>
-            );
-          }
+        {classes.length === 0 && (
+          <p style={{ fontSize: 12, color: T.T3, padding: 16, fontFamily: FONT }}>No classes with student data yet. Add students to classes and upload scores to populate this leaderboard.</p>
+        )}
+        {classes.map((c, i) => {
+          const variant: RankVariant = c.rank <= 3 ? (c.rank as 1 | 2 | 3) : "default";
+          const size = c.rank <= 3 ? 38 : 34;
+          const contextColor = c.rank <= 2 ? T.GREEN : (c.atRiskPct > 25 ? T.RED : T.T3);
           return (
-            <div key={b.rank} style={{ display: "flex", alignItems: "center", gap: 14, padding: b.rank <= 3 ? "14px 10px" : "12px 10px", borderRadius: b.rank <= 3 ? 16 : 14, borderTop: i > 0 ? T.BORDER_SOFT : "none" }}>
-              <RankBadge rank={b.rank} variant={variant} size={size} />
-              <div style={{ width: size, height: size, borderRadius: "50%", background: b.avatarBg, color: b.avatarText, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: size > 36 ? 14 : 12, flexShrink: 0, fontFamily: FONT }}>{b.initial}</div>
+            <div key={c.classId} style={{ display: "flex", alignItems: "center", gap: 14, padding: c.rank <= 3 ? "14px 10px" : "12px 10px", borderRadius: c.rank <= 3 ? 16 : 14, borderTop: i > 0 ? T.BORDER_SOFT : "none" }}>
+              <RankBadge rank={c.rank} variant={variant} size={size} />
+              <div style={{ width: size, height: size, borderRadius: "50%", background: c.avatarBg, color: c.avatarText, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: size > 36 ? 14 : 12, flexShrink: 0, fontFamily: FONT }}>{c.initial}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: b.rank <= 3 ? 15 : 14, fontWeight: 700, margin: 0, color: T.T1, fontFamily: FONT }}>{b.name}</p>
-                <p style={{ fontSize: 11, fontWeight: 500, color: contextColor, margin: "1px 0 0", fontFamily: FONT }}>{b.students} students · {b.context}</p>
+                <p style={{ fontSize: c.rank <= 3 ? 15 : 14, fontWeight: 700, margin: 0, color: T.T1, fontFamily: FONT }}>Class {c.name}</p>
+                <p style={{ fontSize: 11, fontWeight: 500, color: contextColor, margin: "1px 0 0", fontFamily: FONT }}>{c.totalStudents} students · {c.context} · Teacher: {c.classTeacher}</p>
               </div>
-              <span style={{ fontSize: b.rank <= 3 ? 19 : 17, fontWeight: 800, color: b.rank === net.totalBranches ? T.RED : T.T1, fontFamily: FONT }}>{b.composite.toFixed(1)}</span>
+              <span style={{ fontSize: c.rank <= 3 ? 19 : 17, fontWeight: 800, color: T.T1, fontFamily: FONT }}>{c.composite.toFixed(1)}</span>
             </div>
           );
         })}
-      </div>
-
-      <div style={{ textAlign: "center", marginTop: 18 }}>
-        <p style={{ fontSize: 10, fontWeight: 500, color: T.T4, margin: 0, fontFamily: FONT }}>Live · powered by Edullent AI</p>
       </div>
     </div>
   );
 };
 
 // ──────────────────────────────────────────────────────────────────────────
-// SCREEN 3 — PRINCIPAL INSIGHTS
+// SCREEN 3 — PRINCIPAL INSIGHTS (real, AI-generated)
 // ──────────────────────────────────────────────────────────────────────────
 const PrincipalInsightsScreen: React.FC<{
-  net: NetworkLeaderboard; branch: BranchComposite; principalName: string;
+  branch: BranchComposite; principalName: string; classes: ClassRow[]; weekly: WeeklyPoint[];
   insights: AIInsightsResult | null; insightsLoading: boolean; insightsError: string | null;
-  schoolId: string; onBack: () => void;
-}> = ({ net, branch, principalName, insights, insightsLoading, insightsError, schoolId, onBack }) => {
-  const my = net.myPrincipalRow;
-  const top = net.principals[0];
-  const trajectory = useMemo(() => buildRankTrajectory(my.rank, schoolId, net.totalPrincipals), [my.rank, schoolId, net.totalPrincipals]);
-  const compContrib = {
-    studentAvg: { value: branch.studentsAvg, weight: 0.40, contribution: branch.studentsAvg * 0.40 },
-    improvement: { value: branch.improvement, weight: 0.25, contribution: branch.improvement * 0.25 },
-    teacherAvg: { value: branch.teachersAvg, weight: 0.20, contribution: branch.teachersAvg * 0.20 },
-    activity: { value: branch.improvement, weight: 0.15, contribution: branch.improvement * 0.15 },
-  };
-  const totalCompositeApprox = Math.round(
-    (compContrib.studentAvg.contribution + compContrib.improvement.contribution +
-     compContrib.teacherAvg.contribution + compContrib.activity.contribution) * 10) / 10;
-
+  onBack: () => void;
+}> = ({ branch, principalName, classes, weekly, insights, insightsLoading, insightsError, onBack }) => {
   const at = branch.studentClusters.reduce((a, c) => a + c.atRisk, 0);
   const critical = branch.studentClusters[0];
+  const wow = trendOf(branch.weekOverWeekDelta);
+  const chartData: ChartPoint[] = weekly.map(w => ({ week: w.weekLabel, value: w.composite }));
 
   return (
     <div style={{ background: T.pageBg, padding: "20px 16px 32px", borderRadius: 28, fontFamily: FONT }}>
@@ -647,31 +655,31 @@ const PrincipalInsightsScreen: React.FC<{
       </div>
       <div style={{ textAlign: "center", marginBottom: 22 }}>
         <h1 style={{ fontSize: 34, fontWeight: 800, letterSpacing: "-1.4px", color: T.T1, margin: "0 0 6px", lineHeight: 1, fontFamily: FONT }}>Your deep dive</h1>
-        <p style={{ fontSize: 13, fontWeight: 500, color: T.T3, margin: 0, fontFamily: FONT }}>{principalName} · {my.branchName} · {branch.totalStudents} students</p>
+        <p style={{ fontSize: 13, fontWeight: 500, color: T.T3, margin: 0, fontFamily: FONT }}>{principalName} · {branch.branchName} · {branch.totalStudents} students</p>
       </div>
 
       <div style={{ background: T.HERO_GRADIENT, borderRadius: 22, padding: "18px 20px", boxShadow: T.SH_HERO, marginBottom: 32, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: "-40%", right: "-20%", width: "80%", height: "140%", background: "radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 60%)", pointerEvents: "none" }} />
         <div style={{ display: "flex", gap: 14, alignItems: "center", position: "relative" }}>
-          <div><p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "1.6px", color: "rgba(255,255,255,0.55)", margin: "0 0 2px", textTransform: "uppercase", fontFamily: FONT }}>Network rank</p><p style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-1.6px", color: "#FFF", margin: 0, lineHeight: 1, fontFamily: FONT }}>#{my.rank}</p></div>
+          <div><p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "1.6px", color: "rgba(255,255,255,0.55)", margin: "0 0 2px", textTransform: "uppercase", fontFamily: FONT }}>Composite</p><p style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-1.6px", color: "#FFF", margin: 0, lineHeight: 1, fontFamily: FONT }}>{branch.composite.toFixed(1)}</p></div>
           <div style={{ width: 0.5, alignSelf: "stretch", background: "rgba(255,255,255,0.15)" }} />
-          <div><p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "1.6px", color: "rgba(255,255,255,0.55)", margin: "0 0 2px", textTransform: "uppercase", fontFamily: FONT }}>Composite</p><p style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-1px", color: "#FFF", margin: 0, lineHeight: 1, fontFamily: FONT }}>{my.composite.toFixed(1)}</p></div>
+          <div><p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "1.6px", color: "rgba(255,255,255,0.55)", margin: "0 0 2px", textTransform: "uppercase", fontFamily: FONT }}>Students</p><p style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-1px", color: "#FFF", margin: 0, lineHeight: 1, fontFamily: FONT }}>{branch.totalStudents}</p></div>
           <div style={{ flex: 1 }} />
-          <TrendPill trend="up" label="Live" />
+          <TrendPill trend={wow.trend} label={wow.label} />
         </div>
       </div>
 
-      <SectionHead eyebrow="01 · Composite breakdown" title={`How ${my.composite.toFixed(1)} builds up`} subtitle="4 weighted components — principal level" />
+      <SectionHead eyebrow="01 · Composite breakdown" title={`How ${branch.composite.toFixed(1)} builds up`} subtitle="Live computation from your real Firestore data" />
       <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: 22, boxShadow: T.SH_LG, marginBottom: 32 }}>
         {([
-          { key: "studentAvg",  label: "Branch student avg",  sub: "40% weight · avg of all students in branch", weak: branch.studentsAvg < net.networkAvg - 4 },
-          { key: "improvement", label: "Branch improvement",  sub: "25% weight · platform engagement & momentum",  weak: branch.improvement < 75 },
-          { key: "teacherAvg",  label: "Branch teacher avg",  sub: "20% weight · avg of all teacher composites",   weak: branch.teachersAvg < 78 },
-          { key: "activity",    label: "Principal activity",  sub: "15% weight · reviews, observations, meetings", weak: false },
+          { key: "studentsAvg",  label: "Students avg",       sub: "45% weight · avg of all students' scores", value: branch.studentsAvg, weight: 0.45, weak: branch.studentsAvg < 70 },
+          { key: "improvement",  label: "Improvement",        sub: "25% weight · WoW delta + engagement",        value: branch.improvement,  weight: 0.25, weak: branch.improvement < 70 },
+          { key: "teachersAvg",  label: "Teachers avg",       sub: "20% weight · avg of teacher composites",     value: branch.teachersAvg,  weight: 0.20, weak: branch.teachersAvg < 75 },
+          { key: "inverseRisk",  label: "Risk-free students", sub: "10% weight · 100 minus at-risk %",           value: 100 - branch.atRiskPct, weight: 0.10, weak: branch.atRiskPct > 10 },
         ] as const).map(row => {
-          const data = compContrib[row.key];
+          const contribution = row.value * row.weight;
           const isWeak = row.weak;
-          const isStrong = !isWeak && data.value >= 85;
+          const isStrong = !isWeak && row.value >= 85;
           const barColor = isStrong ? `linear-gradient(90deg, ${T.GREEN} 0%, ${T.GREEN_DEEP} 100%)` : isWeak ? `linear-gradient(90deg, ${T.ORANGE} 0%, ${T.RED} 100%)` : T.B1;
           const valColor = isStrong ? T.GREEN : isWeak ? T.RED : T.T1;
           return (
@@ -682,24 +690,24 @@ const PrincipalInsightsScreen: React.FC<{
                   <p style={{ fontSize: 11, fontWeight: 500, color: T.T3, margin: "1px 0 0", fontFamily: FONT }}>{row.sub}</p>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <p style={{ fontSize: 22, fontWeight: 800, color: valColor, margin: 0, letterSpacing: "-0.5px", lineHeight: 1, fontFamily: FONT }}>{data.value.toFixed(1)}</p>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: valColor, margin: "1px 0 0", fontFamily: FONT }}>→ contributes {data.contribution.toFixed(1)}</p>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: valColor, margin: 0, letterSpacing: "-0.5px", lineHeight: 1, fontFamily: FONT }}>{row.value.toFixed(1)}</p>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: valColor, margin: "1px 0 0", fontFamily: FONT }}>→ contributes {contribution.toFixed(1)}</p>
                 </div>
               </div>
               <div style={{ height: 6, background: "rgba(0,85,255,0.06)", borderRadius: 999, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${Math.min(100, data.value)}%`, background: barColor, borderRadius: 999 }} />
+                <div style={{ height: "100%", width: `${Math.min(100, row.value)}%`, background: barColor, borderRadius: 999 }} />
               </div>
-              {isWeak && <p style={{ fontSize: 11, fontWeight: 700, color: T.RED, margin: "6px 0 0", fontFamily: FONT }}>Biggest leverage area — fixing this = biggest rank jump</p>}
+              {isWeak && <p style={{ fontSize: 11, fontWeight: 700, color: T.RED, margin: "6px 0 0", fontFamily: FONT }}>Biggest leverage area — fixing this = biggest composite jump</p>}
             </div>
           );
         })}
         <div style={{ padding: "14px 0 0", borderTop: T.BORDER_SOFT, display: "flex", justifyContent: "space-between" }}>
           <p style={{ fontSize: 12, fontWeight: 700, color: T.T3, margin: 0, fontFamily: FONT }}>Total composite</p>
-          <p style={{ fontSize: 26, fontWeight: 800, color: T.T1, margin: 0, letterSpacing: "-0.7px", fontFamily: FONT }}>{totalCompositeApprox.toFixed(1)}</p>
+          <p style={{ fontSize: 26, fontWeight: 800, color: T.T1, margin: 0, letterSpacing: "-0.7px", fontFamily: FONT }}>{branch.composite.toFixed(1)}</p>
         </div>
       </div>
 
-      <SectionHead eyebrow="02 · Diagnosis" title={`Why you're at #${my.rank}`} subtitle="AI analysis from your live branch data" />
+      <SectionHead eyebrow="02 · Diagnosis" title="Why your school sits here" subtitle="AI analysis from your live branch data" />
       {insightsError ? (
         <div style={{ padding: 16, marginBottom: 32, background: "rgba(255,69,58,0.06)", border: "0.5px solid rgba(255,69,58,0.20)", borderRadius: 16, color: T.RED, fontSize: 13, fontFamily: FONT }}>
           AI diagnosis unavailable: {insightsError}
@@ -713,13 +721,12 @@ const PrincipalInsightsScreen: React.FC<{
         <DiagnosisCard items={insights?.diagnosis ?? []} />
       )}
 
-      <SectionHead eyebrow="03 · Teacher analysis" title="Your top 3 and bottom 3" subtitle="Biggest lever to climb — teacher quality" />
+      <SectionHead eyebrow="03 · Teacher analysis" title="Top performers and teachers needing coaching" subtitle="Real composite scores from teacherScorer" />
       <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: 22, boxShadow: T.SH_LG, marginBottom: 32 }}>
         <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: "1.4px", color: T.GREEN, margin: "0 0 12px", textTransform: "uppercase", fontFamily: FONT }}>Top performers</p>
-        {branch.topTeachers.length === 0 && <p style={{ fontSize: 12, color: T.T3, fontFamily: FONT }}>No scored teachers yet.</p>}
-        {branch.topTeachers.map(t => {
-          const initials = (t.teacher.name || "?")
-            .split(/\s+/).map(n => n[0]).join("").slice(0, 2).toUpperCase();
+        {branch.topTeachers.length === 0 && <p style={{ fontSize: 12, color: T.T3, fontFamily: FONT }}>No teachers above 85 yet.</p>}
+        {branch.topTeachers.slice(0, 3).map(t => {
+          const initials = (t.teacher.name || "?").split(/\s+/).map(n => n[0]).join("").slice(0, 2).toUpperCase();
           return (
             <div key={t.teacher.id} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
               <Avatar initials={initials} bg="rgba(0,200,83,0.12)" color="#00C853" size={34} />
@@ -735,8 +742,7 @@ const PrincipalInsightsScreen: React.FC<{
         <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: "1.4px", color: T.RED, margin: "0 0 12px", textTransform: "uppercase", fontFamily: FONT }}>Need coaching urgently</p>
         {branch.weakTeachers.length === 0 && <p style={{ fontSize: 12, color: T.T3, fontFamily: FONT }}>No teachers below 70 — strong tier.</p>}
         {branch.weakTeachers.slice(0, 3).map(t => {
-          const initials = (t.teacher.name || "?")
-            .split(/\s+/).map(n => n[0]).join("").slice(0, 2).toUpperCase();
+          const initials = (t.teacher.name || "?").split(/\s+/).map(n => n[0]).join("").slice(0, 2).toUpperCase();
           const issue = t.reasons[0] ? `${t.reasons[0].label} ${t.reasons[0].value}` : "Below threshold";
           return (
             <div key={t.teacher.id} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, padding: "10px 12px", borderRadius: 12, background: "rgba(255,69,58,0.05)", border: "0.5px solid rgba(255,69,58,0.15)" }}>
@@ -763,8 +769,8 @@ const PrincipalInsightsScreen: React.FC<{
             <p style={{ fontSize: 28, fontWeight: 800, color: T.B1, margin: 0, letterSpacing: "-0.8px", fontFamily: FONT }}>{Math.max(0, branch.totalStudents - at)}</p>
           </div>
           <div style={{ textAlign: "center", padding: 14, borderRadius: 14, background: "rgba(52,199,89,0.06)", border: "0.5px solid rgba(52,199,89,0.15)" }}>
-            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "1.4px", color: T.T4, margin: "0 0 4px", textTransform: "uppercase", fontFamily: FONT }}>Top tier</p>
-            <p style={{ fontSize: 28, fontWeight: 800, color: T.GREEN, margin: 0, letterSpacing: "-0.8px", fontFamily: FONT }}>{Math.round(branch.totalStudents * Math.max(0.1, branch.studentsAvg / 200))}</p>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "1.4px", color: T.T4, margin: "0 0 4px", textTransform: "uppercase", fontFamily: FONT }}>Classes</p>
+            <p style={{ fontSize: 28, fontWeight: 800, color: T.GREEN, margin: 0, letterSpacing: "-0.8px", fontFamily: FONT }}>{classes.length}</p>
           </div>
         </div>
         {critical && critical.severity === "critical" && (
@@ -778,33 +784,17 @@ const PrincipalInsightsScreen: React.FC<{
         )}
       </div>
 
-      <SectionHead eyebrow="05 · Trajectory" title="Your 8-week rank journey" subtitle={`Currently #${my.rank}`} />
+      <SectionHead eyebrow="05 · Trajectory" title={`${weekly.length}-week composite history`} subtitle="ISO-week bucketed from your real test scores" />
       <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: "20px 16px", boxShadow: T.SH_LG, marginBottom: 32 }}>
-        <TrajectoryChart data={trajectory} valueKey="rank" isRank />
+        <TrajectoryChart data={chartData} />
       </div>
 
-      <SectionHead eyebrow="06 · The gap" title={`You vs ${top.name} (#1)`} subtitle={`Where the ${(top.composite - my.composite).toFixed(1)}-point gap lives`} />
-      <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: 22, boxShadow: T.SH_LG, marginBottom: 32 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
-          <div style={{ textAlign: "center", padding: 14, borderRadius: 14, background: "linear-gradient(135deg, rgba(255,170,0,0.08) 0%, rgba(255,136,0,0.04) 100%)", border: "0.5px solid rgba(255,170,0,0.18)" }}>
-            <RankBadge rank={1} variant={1} size={28} />
-            <p style={{ fontSize: 12, fontWeight: 700, color: T.T1, margin: "6px 0 4px", fontFamily: FONT }}>{top.name}</p>
-            <p style={{ fontSize: 22, fontWeight: 800, color: T.T1, margin: 0, fontFamily: FONT }}>{top.composite.toFixed(1)}</p>
-          </div>
-          <div style={{ textAlign: "center", padding: 14, borderRadius: 14, background: "linear-gradient(135deg, rgba(0,85,255,0.10) 0%, rgba(17,102,255,0.05) 100%)", border: `1.5px solid ${T.B1}` }}>
-            <RankBadge rank={my.rank} variant="user" size={28} />
-            <p style={{ fontSize: 12, fontWeight: 700, color: T.T1, margin: "6px 0 4px", fontFamily: FONT }}>You</p>
-            <p style={{ fontSize: 22, fontWeight: 800, color: T.B1, margin: 0, fontFamily: FONT }}>{my.composite.toFixed(1)}</p>
-          </div>
-        </div>
-      </div>
-
-      <SectionHead eyebrow="07 · Your action plan" title="AI-generated principal moves" subtitle="Focus on teachers → fixes students automatically" />
+      <SectionHead eyebrow="06 · Action plan" title="AI-generated principal moves" subtitle="Each action references a real teacher or class from your data" />
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 22 }}>
         {(insights?.actions ?? []).map(a => <ActionCard key={a.id} action={a} />)}
-        {!insights?.actions?.length && !insightsLoading && (
+        {!insights?.actions?.length && !insightsLoading && !insightsError && (
           <div style={{ padding: 18, background: T.cardBg, borderRadius: 18, border: T.BORDER, textAlign: "center", color: T.T3, fontFamily: FONT, fontSize: 13 }}>
-            No action plan yet. Re-open this screen once AI has finished generating.
+            No action plan yet.
           </div>
         )}
         {insightsLoading && (
@@ -815,10 +805,8 @@ const PrincipalInsightsScreen: React.FC<{
         )}
       </div>
 
-      <SectionHead eyebrow="08 · Forecast" title="If you complete this plan" subtitle="Your projected network rank" />
-      {insights?.forecast && (
-        <ForecastCard {...insights.forecast} />
-      )}
+      <SectionHead eyebrow="07 · Forecast" title="If you complete this plan" subtitle="Projection from current data + planned actions" />
+      {insights?.forecast && <ForecastCard {...insights.forecast} />}
       {insightsLoading && !insights?.forecast && (
         <div style={{ padding: 18, background: T.cardBg, borderRadius: 18, border: T.BORDER, display: "flex", alignItems: "center", gap: 10 }}>
           <Loader2 size={14} color={T.B1} style={{ animation: "spin 1s linear infinite" }} />
@@ -830,48 +818,49 @@ const PrincipalInsightsScreen: React.FC<{
 };
 
 // ──────────────────────────────────────────────────────────────────────────
-// SCREEN 4 — BRANCH INSIGHTS
+// SCREEN 4 — BRANCH (SCHOOL) DEEP DIVE (real, AI-generated)
 // ──────────────────────────────────────────────────────────────────────────
 const BranchInsightsScreen: React.FC<{
-  net: NetworkLeaderboard; branch: BranchComposite;
+  branch: BranchComposite; classes: ClassRow[]; weekly: WeeklyPoint[];
   insights: AIInsightsResult | null; insightsLoading: boolean; insightsError: string | null;
-  schoolId: string; onBack: () => void;
-}> = ({ net, branch, insights, insightsLoading, insightsError, schoolId, onBack }) => {
-  const my = net.myBranchRow;
-  const top = net.branches[0];
-  const trajectory = useMemo(() => buildTrajectory(branch.composite, schoolId), [branch.composite, schoolId]);
+  onBack: () => void;
+}> = ({ branch, classes, weekly, insights, insightsLoading, insightsError, onBack }) => {
+  const wow = trendOf(branch.weekOverWeekDelta);
+  const chartData: ChartPoint[] = weekly.map(w => ({ week: w.weekLabel, value: w.composite }));
+  const topClass = classes[0];
+  const weakClass = classes[classes.length - 1];
 
   return (
     <div style={{ background: T.pageBg, padding: "20px 16px 32px", borderRadius: 28, fontFamily: FONT }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, padding: "0 4px" }}>
-        <BackButton label="Branch rankings" onClick={onBack} />
-        <Eyebrow>Branch deep dive</Eyebrow>
+        <BackButton label="Class rankings" onClick={onBack} />
+        <Eyebrow>School deep dive</Eyebrow>
       </div>
       <div style={{ textAlign: "center", marginBottom: 22 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-1.4px", color: T.T1, margin: "0 0 6px", lineHeight: 1, fontFamily: FONT }}>{my.name}</h1>
-        <p style={{ fontSize: 13, fontWeight: 500, color: T.T3, margin: 0, fontFamily: FONT }}>Branch rank #{my.rank} · {branch.totalStudents} students · {branch.totalTeachers} teachers · {branch.totalSections} sections</p>
+        <h1 style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-1.4px", color: T.T1, margin: "0 0 6px", lineHeight: 1, fontFamily: FONT }}>{branch.branchName}</h1>
+        <p style={{ fontSize: 13, fontWeight: 500, color: T.T3, margin: 0, fontFamily: FONT }}>{branch.totalStudents} students · {branch.totalTeachers} teachers · {branch.totalSections} classes</p>
       </div>
 
       <div style={{ background: T.HERO_GRADIENT, borderRadius: 22, padding: "18px 20px", boxShadow: T.SH_HERO, marginBottom: 32, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: "-40%", right: "-20%", width: "80%", height: "140%", background: "radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 60%)", pointerEvents: "none" }} />
         <div style={{ display: "flex", gap: 14, alignItems: "center", position: "relative" }}>
-          <div><p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "1.6px", color: "rgba(255,255,255,0.55)", margin: "0 0 2px", textTransform: "uppercase", fontFamily: FONT }}>Branch score</p><p style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-1.6px", color: "#FFF", margin: 0, lineHeight: 1, fontFamily: FONT }}>{my.composite.toFixed(1)}</p></div>
+          <div><p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "1.6px", color: "rgba(255,255,255,0.55)", margin: "0 0 2px", textTransform: "uppercase", fontFamily: FONT }}>Composite</p><p style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-1.6px", color: "#FFF", margin: 0, lineHeight: 1, fontFamily: FONT }}>{branch.composite.toFixed(1)}</p></div>
           <div style={{ width: 0.5, alignSelf: "stretch", background: "rgba(255,255,255,0.15)" }} />
-          <div><p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "1.6px", color: "rgba(255,255,255,0.55)", margin: "0 0 2px", textTransform: "uppercase", fontFamily: FONT }}>Network rank</p><p style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-1.4px", color: "#FFF", margin: 0, lineHeight: 1, fontFamily: FONT }}>#{my.rank}<span style={{ fontSize: 18, color: "rgba(255,255,255,0.6)" }}>/{net.totalBranches}</span></p></div>
+          <div><p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "1.6px", color: "rgba(255,255,255,0.55)", margin: "0 0 2px", textTransform: "uppercase", fontFamily: FONT }}>Top class</p><p style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.6px", color: "#FFF", margin: 0, lineHeight: 1, fontFamily: FONT }}>{topClass ? topClass.name : "—"}</p></div>
           <div style={{ flex: 1 }} />
-          <TrendPill trend="up" label="Live" />
+          <TrendPill trend={wow.trend} label={wow.label} />
         </div>
       </div>
 
-      <SectionHead eyebrow="01 · Branch breakdown" title={`Where ${my.name} stands`} subtitle="Branch metrics vs network average" />
+      <SectionHead eyebrow="01 · Branch breakdown" title={`${branch.branchName} key metrics`} subtitle="Live values from your Firestore" />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 32 }}>
-        <MetricCard label="Students avg" value={branch.studentsAvg} vs={`vs net ${net.networkAvg}`} severity={branch.studentsAvg < net.networkAvg ? "weak" : "strong"} />
-        <MetricCard label="Teachers avg" value={branch.teachersAvg} vs={`vs top ${top.composite.toFixed(0)}`} severity={branch.teachersAvg < 78 ? "critical" : "okay"} />
-        <MetricCard label="Improvement" value={branch.improvement} vs="Engagement proxy" severity={branch.improvement >= 80 ? "strong" : "okay"} />
-        <MetricCard label="At-risk %" value={branch.atRiskPct} suffix="%" vs="of students" severity={branch.atRiskPct > 6 ? "weak" : "okay"} />
+        <MetricCard label="Students avg" value={branch.studentsAvg} severity={branch.studentsAvg < 70 ? "weak" : branch.studentsAvg >= 85 ? "strong" : "okay"} vs="of all scored" />
+        <MetricCard label="Teachers avg" value={branch.teachersAvg} severity={branch.teachersAvg < 75 ? "critical" : branch.teachersAvg >= 85 ? "strong" : "okay"} vs="composite" />
+        <MetricCard label="Improvement" value={branch.improvement} severity={branch.improvement >= 80 ? "strong" : branch.improvement < 60 ? "weak" : "okay"} vs="WoW + engagement" />
+        <MetricCard label="At-risk %" value={branch.atRiskPct} suffix="%" severity={branch.atRiskPct > 8 ? "weak" : "okay"} vs="below 50%" />
       </div>
 
-      <SectionHead eyebrow="02 · AI diagnosis" title={`Why ${my.name} is at #${my.rank}`} subtitle={`Real data from ${branch.totalTeachers} teachers + ${branch.totalStudents} students`} />
+      <SectionHead eyebrow="02 · AI diagnosis" title="Why your school sits here" subtitle={`Real data from ${branch.totalTeachers} teachers + ${branch.totalStudents} students`} />
       {insightsError ? (
         <div style={{ padding: 16, marginBottom: 32, background: "rgba(255,69,58,0.06)", border: "0.5px solid rgba(255,69,58,0.20)", borderRadius: 16, color: T.RED, fontSize: 13, fontFamily: FONT }}>
           AI diagnosis unavailable: {insightsError}
@@ -879,13 +868,13 @@ const BranchInsightsScreen: React.FC<{
       ) : insightsLoading ? (
         <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: 22, boxShadow: T.SH_LG, marginBottom: 32, display: "flex", alignItems: "center", gap: 12 }}>
           <Loader2 size={16} color={T.VIOLET} style={{ animation: "spin 1s linear infinite" }} />
-          <span style={{ fontSize: 13, color: T.T3, fontFamily: FONT }}>Analysing teachers + student clusters…</span>
+          <span style={{ fontSize: 13, color: T.T3, fontFamily: FONT }}>Analysing teachers + class clusters…</span>
         </div>
       ) : (
         <DiagnosisCard items={insights?.diagnosis ?? []} />
       )}
 
-      <SectionHead eyebrow="03 · Teacher analysis" title={`${branch.totalTeachers} teachers · full breakdown`} subtitle="Performance tiers with real composite + specific issues" />
+      <SectionHead eyebrow="03 · Teacher tiers" title={`${branch.totalTeachers} teachers · full breakdown`} subtitle="Live composite scores per teacher" />
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 32 }}>
         <div style={{ background: "linear-gradient(135deg, rgba(52,199,89,0.06) 0%, rgba(0,200,83,0.03) 100%)", border: "0.5px solid rgba(52,199,89,0.20)", borderRadius: 18, padding: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -941,7 +930,7 @@ const BranchInsightsScreen: React.FC<{
             <div style={{ width: 28, height: 28, borderRadius: 10, background: "linear-gradient(135deg, #FF453A 0%, #E5304A 100%)", color: "#FFF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, fontFamily: FONT }}>{branch.weakTeachers.length}</div>
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: 14, fontWeight: 800, color: T.T1, margin: 0, fontFamily: FONT }}>Need coaching · &lt; 70 tier</p>
-              <p style={{ fontSize: 11, fontWeight: 700, color: T.RED, margin: "1px 0 0", fontFamily: FONT }}>Dragging branch — every 5-pt improvement = +0.5 branch score</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: T.RED, margin: "1px 0 0", fontFamily: FONT }}>Dragging school composite</p>
             </div>
             {branch.weakTeachers.length > 0 && (
               <span style={{ fontSize: 18, fontWeight: 800, color: T.RED, fontFamily: FONT }}>
@@ -972,7 +961,7 @@ const BranchInsightsScreen: React.FC<{
         </div>
       </div>
 
-      <SectionHead eyebrow="04 · Student analysis" title={`${branch.totalStudents} students · class-wise clusters`} subtitle="At-risk mapped to specific teachers + classes" />
+      <SectionHead eyebrow="04 · Class clusters" title={`${branch.totalStudents} students · class-wise`} subtitle="Real per-class composite + at-risk attribution" />
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 32 }}>
         {branch.studentClusters.length === 0 && (
           <div style={{ padding: 18, background: T.cardBg, border: T.BORDER, borderRadius: 16, color: T.T3, fontSize: 13, fontFamily: FONT }}>
@@ -1010,33 +999,35 @@ const BranchInsightsScreen: React.FC<{
         })}
       </div>
 
-      <SectionHead eyebrow="05 · Trajectory" title="Branch score: 8 weeks" subtitle={`Now at ${branch.composite.toFixed(1)}`} />
+      <SectionHead eyebrow="05 · Trajectory" title={`${weekly.length}-week composite history`} subtitle="ISO-week bucketed from real test scores" />
       <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: "20px 16px", boxShadow: T.SH_LG, marginBottom: 32 }}>
-        <TrajectoryChart data={trajectory} valueKey="value" />
+        <TrajectoryChart data={chartData} />
       </div>
 
-      <SectionHead eyebrow="06 · The gap" title={`${my.name} vs ${top.name} (#1)`} subtitle={`Where the ${(top.composite - my.composite).toFixed(1)}-point gap lives`} />
+      <SectionHead eyebrow="06 · Class spread" title="Best vs worst class in your school" subtitle="Real per-class composites" />
       <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: 22, boxShadow: T.SH_LG, marginBottom: 32 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div style={{ textAlign: "center", padding: 14, borderRadius: 14, background: "linear-gradient(135deg, rgba(255,170,0,0.08) 0%, rgba(255,136,0,0.04) 100%)", border: "0.5px solid rgba(255,170,0,0.18)" }}>
             <RankBadge rank={1} variant={1} size={28} />
-            <p style={{ fontSize: 12, fontWeight: 700, color: T.T1, margin: "6px 0 4px", fontFamily: FONT }}>{top.name} (#1)</p>
-            <p style={{ fontSize: 22, fontWeight: 800, color: T.T1, margin: 0, fontFamily: FONT }}>{top.composite.toFixed(1)}</p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: T.T1, margin: "6px 0 4px", fontFamily: FONT }}>{topClass ? `Class ${topClass.name}` : "—"}</p>
+            <p style={{ fontSize: 22, fontWeight: 800, color: T.T1, margin: 0, fontFamily: FONT }}>{topClass ? topClass.composite.toFixed(1) : "—"}</p>
+            {topClass && <p style={{ fontSize: 10, fontWeight: 600, color: T.T3, margin: "4px 0 0", fontFamily: FONT }}>{topClass.classTeacher}</p>}
           </div>
-          <div style={{ textAlign: "center", padding: 14, borderRadius: 14, background: "linear-gradient(135deg, rgba(0,85,255,0.10) 0%, rgba(17,102,255,0.05) 100%)", border: `1.5px solid ${T.B1}` }}>
-            <RankBadge rank={my.rank} variant="user" size={28} />
-            <p style={{ fontSize: 12, fontWeight: 700, color: T.T1, margin: "6px 0 4px", fontFamily: FONT }}>{my.name} (#{my.rank})</p>
-            <p style={{ fontSize: 22, fontWeight: 800, color: T.B1, margin: 0, fontFamily: FONT }}>{my.composite.toFixed(1)}</p>
+          <div style={{ textAlign: "center", padding: 14, borderRadius: 14, background: "linear-gradient(135deg, rgba(255,69,58,0.08) 0%, rgba(255,69,58,0.03) 100%)", border: "1.5px solid rgba(255,69,58,0.25)" }}>
+            <RankBadge rank={weakClass?.rank || 0} variant="default" size={28} />
+            <p style={{ fontSize: 12, fontWeight: 700, color: T.T1, margin: "6px 0 4px", fontFamily: FONT }}>{weakClass ? `Class ${weakClass.name}` : "—"}</p>
+            <p style={{ fontSize: 22, fontWeight: 800, color: T.RED, margin: 0, fontFamily: FONT }}>{weakClass ? weakClass.composite.toFixed(1) : "—"}</p>
+            {weakClass && <p style={{ fontSize: 10, fontWeight: 600, color: T.T3, margin: "4px 0 0", fontFamily: FONT }}>{weakClass.classTeacher}</p>}
           </div>
         </div>
       </div>
 
-      <SectionHead eyebrow="07 · Action plan" title="Six priority interventions" subtitle="AI-generated · teacher-specific + class-specific" />
+      <SectionHead eyebrow="07 · Action plan" title="AI interventions" subtitle="Each action references a real teacher or class" />
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 22 }}>
         {(insights?.actions ?? []).map(a => <ActionCard key={a.id} action={a} />)}
-        {!insights?.actions?.length && !insightsLoading && (
+        {!insights?.actions?.length && !insightsLoading && !insightsError && (
           <div style={{ padding: 18, background: T.cardBg, borderRadius: 18, border: T.BORDER, textAlign: "center", color: T.T3, fontFamily: FONT, fontSize: 13 }}>
-            Action plan will appear here once AI has finished generating.
+            No action plan yet.
           </div>
         )}
         {insightsLoading && (
@@ -1047,7 +1038,7 @@ const BranchInsightsScreen: React.FC<{
         )}
       </div>
 
-      <SectionHead eyebrow="08 · Forecast" title="If you implement this plan" subtitle="Projected branch rank next week" />
+      <SectionHead eyebrow="08 · Forecast" title="If you implement this plan" subtitle="Projected school composite next term" />
       {insights?.forecast && <ForecastCard {...insights.forecast} />}
       {insightsLoading && !insights?.forecast && (
         <div style={{ padding: 18, background: T.cardBg, borderRadius: 18, border: T.BORDER, display: "flex", alignItems: "center", gap: 10 }}>
@@ -1060,121 +1051,96 @@ const BranchInsightsScreen: React.FC<{
 };
 
 // ──────────────────────────────────────────────────────────────────────────
-// MAIN PAGE — state-based router (matches the locked spec)
+// MAIN PAGE
 // ──────────────────────────────────────────────────────────────────────────
-type Screen = "principal-leaderboard" | "branch-leaderboard" | "principal-insights" | "branch-insights";
+type Screen = "teacher-leaderboard" | "class-leaderboard" | "principal-insights" | "branch-insights";
 
 const PrincipalNetworkPage: React.FC = () => {
-  const { loading, branch, schoolId, userData } = useBranchLiveData();
-  const [screen, setScreen] = useState<Screen>("principal-leaderboard");
+  const live = useLiveSchoolData();
+  const [screen, setScreen] = useState<Screen>("teacher-leaderboard");
 
-  const principalName = (userData?.name as string) || (userData?.fullName as string) || "Principal";
-  const branchName = (userData?.branchName as string) || (userData?.schoolName as string) || "Your Branch";
-  const ownerNetwork = (userData?.networkName as string) || (userData?.organisationName as string) || "Edullent Network";
-
-  const net = useMemo<NetworkLeaderboard | null>(() => {
-    if (!branch) return null;
-    return buildNetworkLeaderboard(branch, principalName, branchName, ownerNetwork);
-  }, [branch, principalName, branchName, ownerNetwork]);
-
-  // Principal AI insights
   const [pInsights, setPInsights] = useState<AIInsightsResult | null>(null);
   const [pLoading, setPLoading] = useState(false);
   const [pError, setPError] = useState<string | null>(null);
 
-  // Branch AI insights
   const [bInsights, setBInsights] = useState<AIInsightsResult | null>(null);
   const [bLoading, setBLoading] = useState(false);
   const [bError, setBError] = useState<string | null>(null);
 
-  // Trigger AI fetches lazily when entering the corresponding screen
   useEffect(() => {
-    if (screen !== "principal-insights" || !net || !branch) return;
+    if (screen !== "principal-insights" || !live.branch) return;
     if (pInsights || pLoading) return;
     setPLoading(true);
     setPError(null);
     fetchPrincipalInsights({
-      principalName,
-      branchName,
-      ownerNetwork,
-      rank: net.myPrincipalRow.rank,
-      totalPrincipals: net.totalPrincipals,
-      composite: net.myPrincipalRow.composite,
-      networkAvg: net.networkAvg,
-      branch,
-      topPrincipal: { name: net.principals[0].name, branch: net.principals[0].branchName, composite: net.principals[0].composite },
+      principalName: live.principalName,
+      branchName: live.branchName,
+      branch: live.branch,
+      topClass: live.classes[0] || null,
+      weakClass: live.classes[live.classes.length - 1] || null,
     })
       .then(setPInsights)
       .catch(err => setPError(err?.message || "AI request failed"))
       .finally(() => setPLoading(false));
-  }, [screen, net, branch, pInsights, pLoading, principalName, branchName, ownerNetwork]);
+  }, [screen, live.branch, live.classes, live.principalName, live.branchName, pInsights, pLoading]);
 
   useEffect(() => {
-    if (screen !== "branch-insights" || !net || !branch) return;
+    if (screen !== "branch-insights" || !live.branch) return;
     if (bInsights || bLoading) return;
     setBLoading(true);
     setBError(null);
     fetchBranchInsights({
-      branchName,
-      ownerNetwork,
-      rank: net.myBranchRow.rank,
-      totalBranches: net.totalBranches,
-      branch,
-      networkAvg: net.networkAvg,
-      topBranchName: net.branches[0].name,
-      topBranchComposite: net.branches[0].composite,
+      branchName: live.branchName,
+      branch: live.branch,
+      classRanking: live.classes,
     })
       .then(setBInsights)
       .catch(err => setBError(err?.message || "AI request failed"))
       .finally(() => setBLoading(false));
-  }, [screen, net, branch, bInsights, bLoading, branchName, ownerNetwork]);
+  }, [screen, live.branch, live.classes, live.branchName, bInsights, bLoading]);
 
-  if (loading || !branch || !net || !schoolId) {
+  if (live.loading || !live.branch || !live.schoolId) {
     return (
       <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, fontFamily: FONT }}>
         <Loader2 size={28} color={T.B1} style={{ animation: "spin 1s linear infinite" }} />
         <p style={{ fontSize: 12, fontWeight: 700, color: T.T3, letterSpacing: "1.4px", textTransform: "uppercase" }}>
-          Loading your branch data…
+          Loading your school data…
         </p>
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
-  const trendLabel = net.myPrincipalRow.rank <= 2 ? "Holding" : `Up potential`;
-
   return (
     <div style={{ minHeight: "100vh", background: T.pageBg, padding: "20px 0", fontFamily: FONT }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        {screen === "principal-leaderboard" && (
-          <PrincipalLeaderboardScreen
-            net={net} principalName={principalName} trendLabel={trendLabel}
+        {screen === "teacher-leaderboard" && (
+          <TeacherLeaderboardScreen
+            branch={live.branch} teachers={live.teachers} principalName={live.principalName}
             onInsightsClick={() => setScreen("principal-insights")}
-            onBranchLeaderboardClick={() => setScreen("branch-leaderboard")}
+            onClassesClick={() => setScreen("class-leaderboard")}
           />
         )}
-        {screen === "branch-leaderboard" && (
-          <BranchLeaderboardScreen
-            net={net} trendLabel={trendLabel}
+        {screen === "class-leaderboard" && (
+          <ClassLeaderboardScreen
+            branch={live.branch} classes={live.classes} principalName={live.principalName}
             onBranchInsightsClick={() => setScreen("branch-insights")}
-            onPrincipalLeaderboardClick={() => setScreen("principal-leaderboard")}
+            onTeachersClick={() => setScreen("teacher-leaderboard")}
           />
         )}
         {screen === "principal-insights" && (
           <PrincipalInsightsScreen
-            net={net} branch={branch} principalName={principalName}
+            branch={live.branch} principalName={live.principalName} classes={live.classes} weekly={live.weekly}
             insights={pInsights} insightsLoading={pLoading} insightsError={pError}
-            schoolId={schoolId}
-            onBack={() => setScreen("principal-leaderboard")}
+            onBack={() => setScreen("teacher-leaderboard")}
           />
         )}
         {screen === "branch-insights" && (
           <BranchInsightsScreen
-            net={net} branch={branch}
+            branch={live.branch} classes={live.classes} weekly={live.weekly}
             insights={bInsights} insightsLoading={bLoading} insightsError={bError}
-            schoolId={schoolId}
-            onBack={() => setScreen("branch-leaderboard")}
+            onBack={() => setScreen("class-leaderboard")}
           />
         )}
       </div>

@@ -1,20 +1,19 @@
 /**
  * principalNetwork.ts
  * --------------------------------------------------------------------------
- * Data layer for the Principal Network dashboard (Leaderboard + Insights).
+ * REAL-DATA-ONLY data layer for the Principal Network dashboard.
  *
- * This app is single-school. To run the locked Network UI we:
- *   1. Compute the principal's REAL branch composite from live Firestore
- *      (teachers + students) via the same scoring model used elsewhere.
- *   2. Generate a synthetic 5-branch peer network with the principal's
- *      branch slotted in by composite. Peer rows are deterministic
- *      (seeded by schoolId) so the same principal sees the same network
- *      week to week.
- *   3. Call /api/ai-insights (existing OpenAI proxy) for diagnosis +
- *      actions on the Insights screens.
+ * No synthetic peers, no fake trajectories. Every number on the dashboard
+ * is derived from this principal's actual school data in Firestore.
  *
- * Synthetic peer rows are clearly typed `isSynthetic: true` so future
- * multi-tenant work can swap them out without touching UI.
+ * Provides:
+ *   - computeBranchComposite()    school-wide composite from real teachers+students
+ *   - computeClassRanking()       per-class composite (real students per classId)
+ *   - computeTeacherRanking()     wraps existing scoreTeachers
+ *   - computeWeeklyHistory()      ISO-week bucketed real history
+ *   - computeWeekOverWeekTrend()  real week-over-week composite delta
+ *   - fetchPrincipalInsights()    OpenAI proxy call (real, schema-validated)
+ *   - fetchBranchInsights()       OpenAI proxy call (real)
  */
 
 import { auth } from "./firebase";
@@ -33,18 +32,19 @@ import {
 export interface BranchComposite {
   branchName: string;
   schoolId: string;
-  composite: number;       // 0-100
-  studentsAvg: number;     // 0-100 — avg student score
-  teachersAvg: number;     // 0-100 — avg teacher composite
-  improvement: number;     // 0-100 — normalized week-over-week delta proxy
-  atRiskPct: number;       // 0-100 — % students with score < 50
+  composite: number;
+  studentsAvg: number;
+  teachersAvg: number;
+  improvement: number;
+  atRiskPct: number;
   totalStudents: number;
   totalTeachers: number;
   totalSections: number;
-  topTeachers: TeacherScore[];     // top 3
-  weakTeachers: TeacherScore[];    // bottom 3-6 (composite < 70)
+  topTeachers: TeacherScore[];
+  weakTeachers: TeacherScore[];
   midTeachers: TeacherScore[];
   studentClusters: StudentCluster[];
+  weekOverWeekDelta: number | null;
 }
 
 export interface StudentCluster {
@@ -59,44 +59,138 @@ export interface StudentCluster {
   issues: string[];
 }
 
-export interface NetworkPrincipalRow {
+export interface ClassRow {
   rank: number;
+  classId: string;
+  name: string;
+  grade: string;
+  section: string;
+  initial: string;
+  composite: number;
+  totalStudents: number;
+  atRisk: number;
+  atRiskPct: number;
+  classTeacher: string;
+  context: string;
+  avatarBg: string;
+  avatarText: string;
+}
+
+export interface TeacherRow {
+  rank: number;
+  teacherId: string;
   name: string;
   initials: string;
+  subject: string;
+  composite: number;
+  context: string;
+  avatarBg: string;
+  avatarText: string;
+}
+
+export interface SchoolDashboardData {
   branchName: string;
-  composite: number;
-  context: string;
-  avatarBg: string;
-  avatarText: string;
-  isCurrent: boolean;
-  isSynthetic: boolean;
-}
-
-export interface NetworkBranchRow {
-  rank: number;
-  city: string;
-  name: string;
-  initial: string;
-  students: number;
-  composite: number;
-  context: string;
-  avatarBg: string;
-  avatarText: string;
-  isCurrent: boolean;
-  isSynthetic: boolean;
-}
-
-export interface NetworkLeaderboard {
-  ownerNetwork: string;
-  myPrincipalRow: NetworkPrincipalRow;
-  myBranchRow: NetworkBranchRow;
-  principals: NetworkPrincipalRow[];
-  branches: NetworkBranchRow[];
-  networkAvg: number;
-  totalPrincipals: number;
-  totalBranches: number;
   totalStudents: number;
   totalTeachers: number;
+  totalClasses: number;
+  branch: BranchComposite;
+  teachers: TeacherRow[];
+  classes: ClassRow[];
+  weeklyHistory: WeeklyPoint[];
+  weekOverWeekDelta: number | null;
+}
+
+export interface WeeklyPoint {
+  weekId: string;        // YYYY-Www
+  weekLabel: string;     // e.g. "W17"
+  weekStartMs: number;
+  studentsAvg: number;
+  composite: number;
+  sampleSize: number;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function parsePct(s: ScoreDoc): number | null {
+  const p = parseFloat(String(s.percentage));
+  if (Number.isFinite(p)) return Math.max(0, Math.min(100, p));
+  const sc = parseFloat(String(s.score ?? s.marks ?? s.obtainedMarks));
+  const mx = parseFloat(String(s.maxScore ?? s.totalMarks ?? s.maxMarks));
+  if (Number.isFinite(sc) && Number.isFinite(mx) && mx > 0) {
+    return Math.max(0, Math.min(100, (sc / mx) * 100));
+  }
+  return null;
+}
+
+function dateMsOf(s: ScoreDoc): number | null {
+  const candidates: unknown[] = [
+    (s as Record<string, unknown>).testDate,
+    (s as Record<string, unknown>).date,
+    (s as Record<string, unknown>).createdAt,
+    (s as Record<string, unknown>).uploadedAt,
+    (s as Record<string, unknown>).examDate,
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    if (typeof c === "object" && c !== null && typeof (c as { toMillis?: () => number }).toMillis === "function") {
+      const ms = (c as { toMillis: () => number }).toMillis();
+      if (Number.isFinite(ms) && ms > 0) return ms;
+    }
+    if (typeof c === "object" && c !== null && typeof (c as { seconds?: number }).seconds === "number") {
+      return (c as { seconds: number }).seconds * 1000;
+    }
+    if (typeof c === "number" && Number.isFinite(c) && c > 0) return c;
+    if (typeof c === "string") {
+      const ms = new Date(c).getTime();
+      if (Number.isFinite(ms) && ms > 0) return ms;
+    }
+  }
+  return null;
+}
+
+// ISO week (Monday-based)
+function isoWeekKey(ms: number): { weekId: string; weekStartMs: number; weekLabel: string } {
+  const d = new Date(ms);
+  d.setUTCHours(0, 0, 0, 0);
+  // Move to Thursday in current week to determine ISO year
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  // Monday of original week:
+  const orig = new Date(ms);
+  const day = orig.getUTCDay() || 7;
+  const monday = new Date(orig);
+  monday.setUTCDate(orig.getUTCDate() - (day - 1));
+  monday.setUTCHours(0, 0, 0, 0);
+  return {
+    weekId: `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`,
+    weekStartMs: monday.getTime(),
+    weekLabel: `W${weekNum}`,
+  };
+}
+
+interface Indexed {
+  studentScoreMap: Map<string, number[]>;
+  studentAvgs: number[];
+  studentAvgById: Map<string, number>;
+}
+
+function indexStudentScores(scores: ScoreDoc[]): Indexed {
+  const studentScoreMap = new Map<string, number[]>();
+  scores.forEach(s => {
+    const sid = s.studentId;
+    const p = parsePct(s);
+    if (!sid || p === null) return;
+    if (!studentScoreMap.has(sid)) studentScoreMap.set(sid, []);
+    studentScoreMap.get(sid)!.push(p);
+  });
+  const studentAvgs: number[] = [];
+  const studentAvgById = new Map<string, number>();
+  studentScoreMap.forEach((arr, sid) => {
+    const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
+    studentAvgs.push(avg);
+    studentAvgById.set(sid, avg);
+  });
+  return { studentScoreMap, studentAvgs, studentAvgById };
 }
 
 // ── Branch composite calculator ───────────────────────────────────────────
@@ -104,12 +198,12 @@ export interface ComputeBranchInput {
   branchName: string;
   schoolId: string;
   teachers: TeacherDoc[];
-  students: any[];
+  students: Record<string, unknown>[];
   scores: ScoreDoc[];
   attendance: AttendanceDoc[];
   assignments: AssignmentDoc[];
   teacherAttendance: TeacherAttendanceDoc[];
-  classes: any[];
+  classes: Record<string, unknown>[];
   teachingAssignments: TeachingAssignmentDoc[];
 }
 
@@ -124,74 +218,54 @@ export function computeBranchComposite(input: ComputeBranchInput): BranchComposi
     teachers, scores, attendance, assignments,
     teacherAttendance, teachingAssignments,
   });
-
   const withData = ranked.filter(r => r.testCount > 0 || r.assignments > 0 || r.attendance !== null);
-
   const teachersAvg = withData.length
     ? withData.reduce((a, b) => a + b.composite, 0) / withData.length
     : 0;
 
-  // Students avg from score docs (each score doc → percent normalized)
-  const pctOf = (s: ScoreDoc): number | null => {
-    const p = parseFloat(String(s.percentage));
-    if (Number.isFinite(p)) return Math.max(0, Math.min(100, p));
-    const sc = parseFloat(String(s.score ?? s.marks ?? s.obtainedMarks));
-    const mx = parseFloat(String(s.maxScore ?? s.totalMarks ?? s.maxMarks));
-    if (Number.isFinite(sc) && Number.isFinite(mx) && mx > 0) {
-      return Math.max(0, Math.min(100, (sc / mx) * 100));
-    }
-    return null;
-  };
-  const studentScoreMap = new Map<string, number[]>();
-  scores.forEach(s => {
-    const sid = s.studentId;
-    const p = pctOf(s);
-    if (!sid || p === null) return;
-    if (!studentScoreMap.has(sid)) studentScoreMap.set(sid, []);
-    studentScoreMap.get(sid)!.push(p);
-  });
-  const studentAvgs: number[] = [];
-  studentScoreMap.forEach(arr => {
-    const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
-    studentAvgs.push(avg);
-  });
+  const { studentAvgs, studentAvgById } = indexStudentScores(scores);
   const studentsAvg = studentAvgs.length
     ? studentAvgs.reduce((a, b) => a + b, 0) / studentAvgs.length
     : 0;
 
-  // At-risk = students whose avg < 50
   const atRiskCount = studentAvgs.filter(a => a < 50).length;
   const atRiskPct = studentAvgs.length ? (atRiskCount / studentAvgs.length) * 100 : 0;
 
-  // Improvement proxy: percentage of teachers with assignments > 0 + activity > 50
-  // (we lack week-over-week history in this single-school app; approximate engagement)
-  const activeRatio = withData.length ? withData.filter(r => (r.punctuality ?? 0) >= 70 && r.assignments > 0).length / withData.length : 0;
-  const improvement = Math.round(60 + activeRatio * 35);
+  // Improvement = real WoW delta if history exists; else engagement proxy from teacher punctuality+activity
+  const wow = computeWeekOverWeekTrend(scores);
+  const engagementProxy = withData.length
+    ? withData.filter(r => (r.punctuality ?? 0) >= 70 && r.assignments > 0).length / withData.length
+    : 0;
+  const improvement = wow.delta != null
+    // Map delta into 0-100. +5 → ~100, 0 → 70, -5 → ~40.
+    ? Math.max(0, Math.min(100, 70 + wow.delta * 6))
+    : Math.round(60 + engagementProxy * 35);
 
-  // Tiers (top/mid/weak)
+  // Tiers
   const sortedDesc = [...withData].sort((a, b) => b.composite - a.composite);
-  const topTeachers = sortedDesc.slice(0, 3);
-  const weakTeachers = sortedDesc.filter(t => t.composite < 70).slice(-6);
-  const weakIds = new Set(weakTeachers.map(t => t.teacher.id));
+  const topTeachers = sortedDesc.filter(t => t.composite >= 85).slice(0, 5);
   const topIds = new Set(topTeachers.map(t => t.teacher.id));
+  const weakTeachers = sortedDesc.filter(t => t.composite < 70);
+  const weakIds = new Set(weakTeachers.map(t => t.teacher.id));
   const midTeachers = sortedDesc.filter(t => !weakIds.has(t.teacher.id) && !topIds.has(t.teacher.id));
 
-  // Student clusters by class
+  // Student clusters (real per classId)
   const classNameOf = (cid: string) => {
-    const c = classes.find((x: any) => x.id === cid);
+    const c = classes.find((x: Record<string, unknown>) => x.id === cid);
     if (!c) return cid;
-    return c.name || c.className || `${c.grade ?? ""}-${c.section ?? ""}` || cid;
+    return (c.name as string) || (c.className as string)
+      || `${c.grade ?? ""}-${c.section ?? ""}` || cid;
   };
   const teacherOf = (cid: string): string => {
-    const ta = teachingAssignments.find((x: any) => x.classId === cid);
+    const ta = teachingAssignments.find(x => x.classId === cid);
     if (!ta) return "—";
-    const t = teachers.find((x: any) => x.id === ta.teacherId);
-    return t?.name || "—";
+    const t = teachers.find(x => x.id === ta.teacherId);
+    return (t?.name as string) || "—";
   };
 
-  const studentByClass = new Map<string, any[]>();
+  const studentByClass = new Map<string, Record<string, unknown>[]>();
   students.forEach(st => {
-    const cid = (st as any).classId || (st as any).class || "unknown";
+    const cid = (st.classId as string) || (st.class as string) || "unknown";
     if (!studentByClass.has(cid)) studentByClass.set(cid, []);
     studentByClass.get(cid)!.push(st);
   });
@@ -200,26 +274,19 @@ export function computeBranchComposite(input: ComputeBranchInput): BranchComposi
   studentByClass.forEach((list, cid) => {
     if (cid === "unknown" || list.length === 0) return;
     const avgs = list
-      .map((st: any) => {
-        const arr = studentScoreMap.get(st.id);
-        if (!arr || !arr.length) return null;
-        return arr.reduce((a, b) => a + b, 0) / arr.length;
-      })
-      .filter((x): x is number => x !== null);
-
+      .map(st => studentAvgById.get(st.id as string))
+      .filter((x): x is number => typeof x === "number");
     const total = list.length;
     const atRisk = avgs.filter(a => a < 50).length;
     const pct = total > 0 ? Math.round((atRisk / total) * 100) : 0;
     const avg = avgs.length ? Math.round(avgs.reduce((a, b) => a + b, 0) / avgs.length) : 0;
-
     const severity: StudentCluster["severity"] =
       pct >= 30 ? "critical" : pct >= 18 ? "warning" : "okay";
-
     const issues: string[] = [];
-    if (avg < 60) issues.push(`Avg score ${avg}`);
+    if (avg > 0 && avg < 60) issues.push(`Avg score ${avg}`);
     if (atRisk > 0) issues.push(`${atRisk} below 50%`);
+    if (avgs.length === 0) issues.push("No test data yet");
     if (issues.length === 0) issues.push("On track");
-
     studentClusters.push({
       classId: cid,
       className: classNameOf(cid),
@@ -229,8 +296,6 @@ export function computeBranchComposite(input: ComputeBranchInput): BranchComposi
   });
   studentClusters.sort((a, b) => b.pct - a.pct);
 
-  // Branch composite formula:
-  //   students × 0.45 + improvement × 0.25 + teachers × 0.20 + (100 - atRiskPct) × 0.10
   const composite = Math.round(
     (studentsAvg * 0.45) +
     (improvement * 0.25) +
@@ -250,231 +315,208 @@ export function computeBranchComposite(input: ComputeBranchInput): BranchComposi
     totalSections: classes.length,
     topTeachers, weakTeachers, midTeachers,
     studentClusters: studentClusters.slice(0, 8),
+    weekOverWeekDelta: wow.delta,
   };
 }
 
-// ── Synthetic peer network ────────────────────────────────────────────────
-// Deterministic from schoolId so the same principal sees the same peers each visit.
-function seededRandom(seed: string): () => number {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return () => {
-    h ^= h << 13; h ^= h >>> 17; h ^= h << 5;
-    return ((h >>> 0) % 10000) / 10000;
-  };
+// ── Real per-class ranking ────────────────────────────────────────────────
+export interface ComputeClassRankingInput {
+  classes: Record<string, unknown>[];
+  students: Record<string, unknown>[];
+  scores: ScoreDoc[];
+  attendance: AttendanceDoc[];
+  teachers: TeacherDoc[];
+  teachingAssignments: TeachingAssignmentDoc[];
 }
 
-const PEER_CITIES = ["Bangalore", "Delhi", "Chennai", "Mumbai", "Pune", "Kolkata", "Ahmedabad", "Jaipur"];
-const PEER_FIRST_NAMES = ["Deepa", "Akash", "Priya", "Suresh", "Anita", "Vikram", "Meera", "Rohit"];
-const PEER_LAST_NAMES = ["Sharma", "Mehta", "Iyer", "Nair", "Krishnan", "Bose", "Reddy", "Patel"];
-
-const PEER_PALETTES: { bg: string; fg: string }[] = [
+const PALETTES: { bg: string; fg: string }[] = [
   { bg: "rgba(0,200,83,0.12)", fg: "#00C853" },
   { bg: "rgba(123,63,244,0.12)", fg: "#7B3FF4" },
+  { bg: "rgba(0,85,255,0.12)", fg: "#0055FF" },
   { bg: "rgba(255,136,0,0.12)", fg: "#C26A00" },
   { bg: "rgba(255,69,58,0.10)", fg: "#C71F2D" },
-  { bg: "rgba(0,85,255,0.12)", fg: "#0055FF" },
 ];
 
-interface PeerSeed {
-  city: string;
-  brandPrefix: string;       // e.g. "DPS"
-  principalName: string;
-  composite: number;
-  studentsAvg: number;
-  teachersAvg: number;
-  improvement: number;
-  atRiskPct: number;
-  students: number;
-  weakTeacherCount: number;
-  topTeacherCount: number;
-  prevAvg: number;
-}
+export function computeClassRanking(input: ComputeClassRankingInput): ClassRow[] {
+  const { classes, students, scores, attendance, teachers, teachingAssignments } = input;
+  const { studentAvgById } = indexStudentScores(scores);
 
-function generatePeers(rand: () => number, myComposite: number, myBranchName: string): PeerSeed[] {
-  const usedNames = new Set<string>();
-  const usedCities = new Set<string>();
-  // Best guess at brand prefix from the principal's branch name (e.g. "DPS Hyderabad" → "DPS").
-  const myBrand = (myBranchName.split(/\s+/)[0] || "School").trim();
-
-  const peers: PeerSeed[] = [];
-  // Generate 4 peers (we'll have 5 total with the principal's branch).
-  // Composite spread: ~ ±12 around current composite, distributed across rank slots.
-  const offsets = [+8, +4, -4, -10];
-  for (let i = 0; i < 4; i++) {
-    let city: string;
-    do { city = PEER_CITIES[Math.floor(rand() * PEER_CITIES.length)]; } while (usedCities.has(city));
-    usedCities.add(city);
-
-    const fn = PEER_FIRST_NAMES[Math.floor(rand() * PEER_FIRST_NAMES.length)];
-    const ln = PEER_LAST_NAMES[Math.floor(rand() * PEER_LAST_NAMES.length)];
-    const honorific = i % 2 === 0 ? "Mrs." : "Mr.";
-    let principalName = `${honorific} ${fn} ${ln}`;
-    let safety = 0;
-    while (usedNames.has(principalName) && safety < 8) {
-      principalName = `${honorific} ${PEER_FIRST_NAMES[Math.floor(rand() * PEER_FIRST_NAMES.length)]} ${PEER_LAST_NAMES[Math.floor(rand() * PEER_LAST_NAMES.length)]}`;
-      safety++;
-    }
-    usedNames.add(principalName);
-
-    const composite = Math.max(58, Math.min(95, myComposite + offsets[i] + Math.round(rand() * 4 - 2)));
-    const studentsAvg = Math.max(58, Math.min(95, composite - 4 + rand() * 6));
-    const teachersAvg = Math.max(60, Math.min(95, composite - 1 + rand() * 4));
-    const improvement = 70 + Math.round(rand() * 18);
-    const atRiskPct = Math.max(0.5, 8 - composite / 12 + rand() * 2);
-    const students = 880 + Math.floor(rand() * 220);
-    const prevAvg = Math.max(55, studentsAvg - 4 - rand() * 4);
-    peers.push({
-      city,
-      brandPrefix: myBrand,
-      principalName,
-      composite,
-      studentsAvg: Math.round(studentsAvg * 10) / 10,
-      teachersAvg: Math.round(teachersAvg * 10) / 10,
-      improvement,
-      atRiskPct: Math.round(atRiskPct * 10) / 10,
-      students,
-      weakTeacherCount: 1 + Math.floor(rand() * 4),
-      topTeacherCount: 2 + Math.floor(rand() * 4),
-      prevAvg: Math.round(prevAvg),
-    });
-  }
-  return peers;
-}
-
-function principalContext(p: PeerSeed | "current", branch: BranchComposite | null): string {
-  if (p === "current" && branch) {
-    if (branch.composite >= 85) return `Students avg ${branch.studentsAvg} · Teachers avg ${branch.teachersAvg}`;
-    if (branch.atRiskPct > 5) return `Teachers avg ${branch.teachersAvg} · ${Math.round(branch.atRiskPct * branch.totalStudents / 100)} at-risk students dragging`;
-    return `Improving · Teachers avg ${branch.teachersAvg} (gap closing)`;
-  }
-  const peer = p as PeerSeed;
-  if (peer.composite >= 85) return `Students avg ${Math.round(peer.studentsAvg)} · Teachers avg ${Math.round(peer.teachersAvg)}`;
-  if (peer.composite >= 75) return `Strong improvement +${peer.composite - peer.prevAvg} · Teachers avg ${Math.round(peer.teachersAvg)}`;
-  if (peer.composite >= 70) return `Assignment completion low · ${peer.weakTeacherCount} weak teachers`;
-  return `Branch avg ${Math.round(peer.studentsAvg)} · Attendance crisis`;
-}
-
-function branchContext(p: PeerSeed | "current", branch: BranchComposite | null): string {
-  if (p === "current" && branch) {
-    if (branch.composite >= 85) return `Students avg ${branch.studentsAvg} · ${branch.topTeachers.length} top teachers · Zero at-risk trend`;
-    if (branch.atRiskPct > 5) return `Improving · Teacher avg ${branch.teachersAvg} (gap −${(89.6 - branch.teachersAvg).toFixed(1)})`;
-    return `Strong trajectory · Teachers avg ${branch.teachersAvg}`;
-  }
-  const peer = p as PeerSeed;
-  if (peer.composite >= 85) return `Students avg ${Math.round(peer.studentsAvg)} · ${peer.topTeacherCount} top teachers · Zero at-risk trend`;
-  if (peer.composite >= 75) return `Strong trajectory · +${peer.composite - peer.prevAvg} this month · Teachers avg ${Math.round(peer.teachersAvg)}`;
-  if (peer.composite >= 70) return `At-risk ${peer.atRiskPct}% · ${peer.weakTeacherCount} underperforming teachers`;
-  return `Attendance crisis ${Math.max(60, 75 - Math.round((75 - peer.composite) * 0.4))}% · Students avg ${Math.round(peer.studentsAvg)}`;
-}
-
-function initialsOf(name: string): string {
-  const parts = name.replace(/^(Mr\.|Mrs\.|Ms\.|Dr\.)\s+/i, "").trim().split(/\s+/);
-  return (parts.length >= 2 ? parts[0][0] + parts[1][0] : parts[0].slice(0, 2)).toUpperCase();
-}
-
-export function buildNetworkLeaderboard(
-  branch: BranchComposite,
-  myPrincipalName: string,
-  myBranchName: string,
-  ownerNetwork: string,
-): NetworkLeaderboard {
-  const rand = seededRandom(branch.schoolId || myBranchName);
-  const peers = generatePeers(rand, branch.composite, myBranchName);
-
-  // Compose principal rows
-  const myComposite = branch.composite;
-  const allPrincipals = peers.map(p => ({
-    name: p.principalName,
-    composite: p.composite,
-    branchName: `${p.brandPrefix} ${p.city}`,
-    isCurrent: false,
-  } as { name: string; composite: number; branchName: string; isCurrent: boolean }));
-  allPrincipals.push({
-    name: myPrincipalName,
-    composite: myComposite,
-    branchName: myBranchName,
-    isCurrent: true,
-  });
-  allPrincipals.sort((a, b) => b.composite - a.composite);
-
-  const principals: NetworkPrincipalRow[] = allPrincipals.map((p, i) => {
-    const palette = PEER_PALETTES[i % PEER_PALETTES.length];
-    const peerForCtx = peers.find(x => x.principalName === p.name);
-    return {
-      rank: i + 1,
-      name: p.name,
-      initials: initialsOf(p.name),
-      branchName: p.branchName,
-      composite: Math.round(p.composite * 10) / 10,
-      context: p.isCurrent
-        ? principalContext("current", branch)
-        : peerForCtx ? principalContext(peerForCtx, null) : "",
-      avatarBg: p.isCurrent ? "#0055FF" : palette.bg,
-      avatarText: p.isCurrent ? "#FFFFFF" : palette.fg,
-      isCurrent: p.isCurrent,
-      isSynthetic: !p.isCurrent,
-    };
+  // Attendance rate per class
+  const attByClass = new Map<string, { present: number; total: number }>();
+  attendance.forEach(a => {
+    const cid = (a as Record<string, unknown>).classId as string | undefined;
+    if (!cid) return;
+    if (!attByClass.has(cid)) attByClass.set(cid, { present: 0, total: 0 });
+    const bucket = attByClass.get(cid)!;
+    bucket.total++;
+    const status = String(a.status || "").toLowerCase();
+    if (status === "present" || status === "p") bucket.present++;
   });
 
-  // Branch rows mirror the same composite ordering
-  const allBranches = peers.map(p => ({
-    name: `${p.brandPrefix} ${p.city}`,
-    city: p.city,
-    composite: p.composite,
-    students: p.students,
-    isCurrent: false,
-    peer: p,
-  })) as { name: string; city: string; composite: number; students: number; isCurrent: boolean; peer: PeerSeed | null }[];
-  allBranches.push({
-    name: myBranchName,
-    city: (myBranchName.split(/\s+/).slice(1).join(" ") || myBranchName).trim(),
-    composite: myComposite,
-    students: branch.totalStudents,
-    isCurrent: true,
-    peer: null,
-  });
-  allBranches.sort((a, b) => b.composite - a.composite);
-
-  const branches: NetworkBranchRow[] = allBranches.map((b, i) => {
-    const palette = PEER_PALETTES[i % PEER_PALETTES.length];
-    return {
-      rank: i + 1,
-      name: b.name,
-      city: b.city,
-      initial: (b.city[0] || b.name[0] || "?").toUpperCase(),
-      students: b.students,
-      composite: Math.round(b.composite * 10) / 10,
-      context: b.isCurrent
-        ? branchContext("current", branch)
-        : b.peer ? branchContext(b.peer, null) : "",
-      avatarBg: b.isCurrent ? "#0055FF" : palette.bg,
-      avatarText: b.isCurrent ? "#FFFFFF" : palette.fg,
-      isCurrent: b.isCurrent,
-      isSynthetic: !b.isCurrent,
-    };
-  });
-
-  const myPrincipalRow = principals.find(p => p.isCurrent)!;
-  const myBranchRow = branches.find(b => b.isCurrent)!;
-
-  const networkAvg = Math.round((principals.reduce((a, b) => a + b.composite, 0) / principals.length) * 10) / 10;
-  const totalStudents = branches.reduce((a, b) => a + b.students, 0);
-  const totalTeachers = branch.totalTeachers + peers.reduce((a, p) => a + 22 + Math.floor((p.composite - 70) / 2), 0);
-
-  return {
-    ownerNetwork,
-    myPrincipalRow, myBranchRow,
-    principals, branches,
-    networkAvg,
-    totalPrincipals: principals.length,
-    totalBranches: branches.length,
-    totalStudents,
-    totalTeachers,
+  const teacherOf = (cid: string): string => {
+    const ta = teachingAssignments.find(x => x.classId === cid);
+    if (!ta) return "—";
+    const t = teachers.find(x => x.id === ta.teacherId);
+    return (t?.name as string) || "—";
   };
+
+  const studentsByClass = new Map<string, Record<string, unknown>[]>();
+  students.forEach(st => {
+    const cid = (st.classId as string) || "";
+    if (!cid) return;
+    if (!studentsByClass.has(cid)) studentsByClass.set(cid, []);
+    studentsByClass.get(cid)!.push(st);
+  });
+
+  const rows = classes
+    .map(c => {
+      const cid = c.id as string;
+      const studentsInClass = studentsByClass.get(cid) || [];
+      const avgs = studentsInClass
+        .map(st => studentAvgById.get(st.id as string))
+        .filter((x): x is number => typeof x === "number");
+      const studentsAvg = avgs.length ? avgs.reduce((a, b) => a + b, 0) / avgs.length : 0;
+      const atRisk = avgs.filter(a => a < 50).length;
+      const atRiskPct = avgs.length ? (atRisk / avgs.length) * 100 : 0;
+      const att = attByClass.get(cid);
+      const attRate = att && att.total > 0 ? (att.present / att.total) * 100 : 0;
+
+      // Composite: 0.55 student avg + 0.25 attendance + 0.20 inverse-at-risk
+      const composite = Math.round(
+        (studentsAvg * 0.55) +
+        (attRate * 0.25) +
+        ((100 - Math.min(atRiskPct, 100)) * 0.20)
+      );
+
+      const grade = (c.grade as string) || "";
+      const section = (c.section as string) || "";
+      const name = (c.name as string) || (c.className as string) || `${grade}${section ? "-" + section : ""}` || cid;
+
+      const ctxParts: string[] = [];
+      if (avgs.length === 0) ctxParts.push("No test data yet");
+      else {
+        ctxParts.push(`Avg ${Math.round(studentsAvg)}`);
+        if (atRisk > 0) ctxParts.push(`${atRisk} at-risk`);
+        if (attRate > 0) ctxParts.push(`Attendance ${Math.round(attRate)}%`);
+      }
+
+      return {
+        classId: cid,
+        name,
+        grade,
+        section,
+        initial: (name[0] || "?").toUpperCase(),
+        composite,
+        totalStudents: studentsInClass.length,
+        atRisk,
+        atRiskPct: Math.round(atRiskPct * 10) / 10,
+        classTeacher: teacherOf(cid),
+        context: ctxParts.join(" · "),
+        composite_raw: composite,
+      };
+    })
+    .filter(r => r.totalStudents > 0)
+    .sort((a, b) => b.composite - a.composite)
+    .map((r, i) => {
+      const palette = PALETTES[i % PALETTES.length];
+      return {
+        rank: i + 1,
+        classId: r.classId,
+        name: r.name,
+        grade: r.grade,
+        section: r.section,
+        initial: r.initial,
+        composite: r.composite,
+        totalStudents: r.totalStudents,
+        atRisk: r.atRisk,
+        atRiskPct: r.atRiskPct,
+        classTeacher: r.classTeacher,
+        context: r.context,
+        avatarBg: palette.bg,
+        avatarText: palette.fg,
+      } as ClassRow;
+    });
+
+  return rows;
+}
+
+// ── Real teacher ranking ──────────────────────────────────────────────────
+export function computeTeacherRanking(input: {
+  teachers: TeacherDoc[];
+  scores: ScoreDoc[];
+  attendance: AttendanceDoc[];
+  assignments: AssignmentDoc[];
+  teacherAttendance: TeacherAttendanceDoc[];
+  teachingAssignments: TeachingAssignmentDoc[];
+}): TeacherRow[] {
+  const ranked = scoreTeachers(input);
+  const withData = ranked
+    .filter(r => r.testCount > 0 || r.assignments > 0 || r.attendance !== null)
+    .sort((a, b) => b.composite - a.composite);
+
+  return withData.map((t, i) => {
+    const palette = PALETTES[i % PALETTES.length];
+    const initials = (t.teacher.name || "?")
+      .split(/\s+/).map(n => n[0]).join("").slice(0, 2).toUpperCase();
+    const subj = (t.teacher.subjects && t.teacher.subjects[0]) || "—";
+    const ctx: string[] = [];
+    if (t.classAvg !== null) ctx.push(`Class avg ${Math.round(t.classAvg)}`);
+    if (t.attendance !== null) ctx.push(`Att ${Math.round(t.attendance)}%`);
+    if (t.assignments > 0) ctx.push(`${t.assignments} assignments`);
+    return {
+      rank: i + 1,
+      teacherId: t.teacher.id,
+      name: t.teacher.name || "Unnamed",
+      initials,
+      subject: subj,
+      composite: Math.round(t.composite * 10) / 10,
+      context: ctx.join(" · ") || "Limited data",
+      avatarBg: palette.bg,
+      avatarText: palette.fg,
+    };
+  });
+}
+
+// ── Real weekly history (ISO-week bucketed) ───────────────────────────────
+export function computeWeeklyHistory(scores: ScoreDoc[], weeksBack: number = 8): WeeklyPoint[] {
+  const buckets = new Map<string, { weekStartMs: number; weekLabel: string; total: number; count: number }>();
+  scores.forEach(s => {
+    const ms = dateMsOf(s);
+    const p = parsePct(s);
+    if (ms == null || p === null) return;
+    const { weekId, weekStartMs, weekLabel } = isoWeekKey(ms);
+    if (!buckets.has(weekId)) buckets.set(weekId, { weekStartMs, weekLabel, total: 0, count: 0 });
+    const b = buckets.get(weekId)!;
+    b.total += p;
+    b.count++;
+  });
+
+  const arr: WeeklyPoint[] = Array.from(buckets.entries())
+    .map(([weekId, v]) => {
+      const studentsAvg = v.count > 0 ? v.total / v.count : 0;
+      // Composite proxy at week granularity: lean on studentsAvg only
+      // (teachers/at-risk are not week-bucketed in this app yet).
+      const composite = Math.round(studentsAvg);
+      return {
+        weekId,
+        weekLabel: v.weekLabel,
+        weekStartMs: v.weekStartMs,
+        studentsAvg: Math.round(studentsAvg * 10) / 10,
+        composite,
+        sampleSize: v.count,
+      };
+    })
+    .sort((a, b) => a.weekStartMs - b.weekStartMs);
+
+  return arr.slice(-weeksBack);
+}
+
+export function computeWeekOverWeekTrend(scores: ScoreDoc[]): { delta: number | null; current: number | null; previous: number | null } {
+  const hist = computeWeeklyHistory(scores, 2);
+  if (hist.length < 2) return { delta: null, current: hist[hist.length - 1]?.studentsAvg ?? null, previous: null };
+  const cur = hist[hist.length - 1].studentsAvg;
+  const prev = hist[hist.length - 2].studentsAvg;
+  return { delta: Math.round((cur - prev) * 10) / 10, current: cur, previous: prev };
 }
 
 // ── AI insights via /api/ai-insights ──────────────────────────────────────
@@ -508,7 +550,7 @@ export interface AIInsightsResult {
 
 const SESSION_CACHE = new Map<string, AIInsightsResult>();
 
-async function callInsights(instructions: string, data: any, cacheKey: string): Promise<AIInsightsResult> {
+async function callInsights(instructions: string, data: unknown, cacheKey: string): Promise<AIInsightsResult> {
   if (SESSION_CACHE.has(cacheKey)) return SESSION_CACHE.get(cacheKey)!;
   const token = await auth.currentUser?.getIdToken();
   const res = await fetch("/api/ai-insights", {
@@ -521,7 +563,7 @@ async function callInsights(instructions: string, data: any, cacheKey: string): 
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `AI proxy failed (${res.status})`);
+    throw new Error((err as { error?: string }).error || `AI proxy failed (${res.status})`);
   }
   const raw = await res.json();
   const normalised = normaliseInsights(raw);
@@ -529,41 +571,54 @@ async function callInsights(instructions: string, data: any, cacheKey: string): 
   return normalised;
 }
 
-function normaliseInsights(raw: any): AIInsightsResult {
-  const diagnosis: AIDiagnosisItem[] = Array.isArray(raw?.diagnosis)
-    ? raw.diagnosis.filter((d: any) => d && typeof d.text === "string").map((d: any) => ({
-        type: (d.type === "good" || d.type === "concern" || d.type === "note") ? d.type : "note",
-        text: String(d.text),
-      }))
-    : [];
-  const actionsRaw = Array.isArray(raw?.actions) ? raw.actions : [];
-  const actions: AIAction[] = actionsRaw.slice(0, 6).map((a: any, i: number) => ({
-    id: typeof a?.id === "string" ? a.id : `a${i + 1}`,
-    num: String(i + 1).padStart(2, "0"),
-    title: String(a?.title ?? "Action item"),
-    reason: String(a?.reason ?? ""),
-    tracking: (a?.tracking === "auto_pct" || a?.tracking === "manual" || a?.tracking === "auto") ? a.tracking : "manual",
-    status: (a?.status === "in_progress" || a?.status === "completed") ? a.status : "pending",
-    progress: a?.progress && typeof a.progress.current === "number" && typeof a.progress.target === "number"
-      ? { current: a.progress.current, target: a.progress.target } : undefined,
-    current: typeof a?.current === "number" ? a.current : undefined,
-    target: typeof a?.target === "number" ? a.target : undefined,
-    unit: typeof a?.unit === "string" ? a.unit : undefined,
-    reward: typeof a?.reward === "string" ? a.reward : undefined,
-    subStatus: typeof a?.subStatus === "string" ? a.subStatus : undefined,
-  }));
-  const f = raw?.forecast ?? {};
-  const scenarios = Array.isArray(f?.scenarios) ? f.scenarios.slice(0, 4).map((s: any) => ({
-    label: String(s?.label ?? ""),
-    outcome: String(s?.outcome ?? ""),
-    highlight: !!s?.highlight,
-  })) : [];
+function normaliseInsights(raw: unknown): AIInsightsResult {
+  const r = (raw && typeof raw === "object") ? raw as Record<string, unknown> : {};
+  const diagArr = Array.isArray(r.diagnosis) ? r.diagnosis : [];
+  const diagnosis: AIDiagnosisItem[] = diagArr
+    .filter((d): d is { type?: string; text?: string } =>
+      !!d && typeof d === "object" && typeof (d as { text?: unknown }).text === "string"
+    )
+    .map(d => ({
+      type: (d.type === "good" || d.type === "concern" || d.type === "note") ? d.type : "note",
+      text: String(d.text),
+    }));
+  const actionsRaw = Array.isArray(r.actions) ? r.actions : [];
+  const actions: AIAction[] = actionsRaw.slice(0, 6).map((a, i) => {
+    const obj = (a && typeof a === "object") ? a as Record<string, unknown> : {};
+    const progress = (obj.progress && typeof obj.progress === "object") ? obj.progress as Record<string, unknown> : undefined;
+    const tracking = obj.tracking;
+    return {
+      id: typeof obj.id === "string" ? obj.id : `a${i + 1}`,
+      num: String(i + 1).padStart(2, "0"),
+      title: String(obj.title ?? "Action item"),
+      reason: String(obj.reason ?? ""),
+      tracking: (tracking === "auto_pct" || tracking === "manual" || tracking === "auto") ? tracking : "manual",
+      status: (obj.status === "in_progress" || obj.status === "completed") ? obj.status : "pending",
+      progress: progress && typeof progress.current === "number" && typeof progress.target === "number"
+        ? { current: progress.current, target: progress.target } : undefined,
+      current: typeof obj.current === "number" ? obj.current : undefined,
+      target: typeof obj.target === "number" ? obj.target : undefined,
+      unit: typeof obj.unit === "string" ? obj.unit : undefined,
+      reward: typeof obj.reward === "string" ? obj.reward : undefined,
+      subStatus: typeof obj.subStatus === "string" ? obj.subStatus : undefined,
+    };
+  });
+  const f = (r.forecast && typeof r.forecast === "object") ? r.forecast as Record<string, unknown> : {};
+  const scenariosRaw = Array.isArray(f.scenarios) ? f.scenarios : [];
+  const scenarios = scenariosRaw.slice(0, 4).map((s) => {
+    const obj = (s && typeof s === "object") ? s as Record<string, unknown> : {};
+    return {
+      label: String(obj.label ?? ""),
+      outcome: String(obj.outcome ?? ""),
+      highlight: !!obj.highlight,
+    };
+  });
   const forecast: AIForecast = {
-    projectedLabel: String(f?.projectedLabel ?? "—"),
-    changeLabel: String(f?.changeLabel ?? "Same"),
-    changeSubtitle: String(f?.changeSubtitle ?? ""),
+    projectedLabel: String(f.projectedLabel ?? "—"),
+    changeLabel: String(f.changeLabel ?? "Same"),
+    changeSubtitle: String(f.changeSubtitle ?? ""),
     scenarios,
-    confidence: typeof f?.confidence === "number" ? Math.max(0, Math.min(100, f.confidence)) : 70,
+    confidence: typeof f.confidence === "number" ? Math.max(0, Math.min(100, f.confidence)) : 70,
   };
   return { diagnosis, actions, forecast };
 }
@@ -571,19 +626,14 @@ function normaliseInsights(raw: any): AIInsightsResult {
 export async function fetchPrincipalInsights(input: {
   principalName: string;
   branchName: string;
-  ownerNetwork: string;
-  rank: number;
-  totalPrincipals: number;
-  composite: number;
-  networkAvg: number;
   branch: BranchComposite;
-  topPrincipal: { name: string; branch: string; composite: number };
+  topClass: ClassRow | null;
+  weakClass: ClassRow | null;
 }): Promise<AIInsightsResult> {
-  const instructions = `You are a senior school network analyst and principal performance coach. Analyze this principal's metrics and explain WHY they are at their current rank, then provide SPECIFIC, actionable steps to climb.
+  const instructions = `You are a senior K-12 school performance coach. Analyze the principal's school data and explain in Hinglish (natural Hindi-English mix) WHY the school is at its current composite, then provide SPECIFIC actions the principal can take.
 
-Respond ONLY in valid JSON. Mix Hindi and English naturally (Hinglish) in diagnosis text and action reason fields. Keep action titles in English. Reference SPECIFIC numbers in every diagnosis bullet. Never give generic advice — always name the specific teacher (use real names from the data) or class.
+Respond ONLY in valid JSON with the schema below. Mix Hindi and English naturally in diagnosis and action reason fields. Keep action titles in English. Reference SPECIFIC numbers and named entities (real teacher names, real class names) in every diagnosis bullet. Never give generic advice.
 
-Output schema:
 {
   "diagnosis": [
     { "type": "good" | "concern" | "note", "text": "Hinglish diagnosis with specific numbers" }
@@ -592,71 +642,59 @@ Output schema:
     {
       "id": "p1",
       "title": "English action title",
-      "reason": "Hinglish reason citing specific data",
+      "reason": "Hinglish reason citing specific data and a named teacher or class",
       "tracking": "auto" | "auto_pct" | "manual",
-      "status": "pending",
+      "status": "pending" | "in_progress",
       "progress": { "current": 0, "target": 6 }
     }
   ],
   "forecast": {
-    "projectedLabel": "#2",
-    "changeLabel": "Up 1 spot",
-    "changeSubtitle": "Composite: 82.4 → 87.5",
-    "scenarios": [{ "label": "...", "outcome": "...", "highlight": true }],
+    "projectedLabel": "82.4 → 87.5",
+    "changeLabel": "Up",
+    "changeSubtitle": "If the action plan is implemented",
+    "scenarios": [{ "label": "Coach 3 weak teachers", "outcome": "+2.4", "highlight": false }],
     "confidence": 75
   }
 }
 
-Generate 3 diagnosis bullets (good/concern/note) and 4-5 actions.`;
+Generate 3 diagnosis bullets (one good, one concern, one note) and 4-5 actions.`;
 
   const payload = {
-    principal: {
-      name: input.principalName,
-      branch: input.branchName,
-      network: input.ownerNetwork,
-      rank: input.rank,
-      totalPrincipals: input.totalPrincipals,
-      composite: input.composite,
-      networkAvg: input.networkAvg,
-    },
+    principal: { name: input.principalName, branch: input.branchName },
     branchMetrics: {
+      composite: input.branch.composite,
       studentsAvg: input.branch.studentsAvg,
       teachersAvg: input.branch.teachersAvg,
       improvement: input.branch.improvement,
       atRiskPct: input.branch.atRiskPct,
       totalStudents: input.branch.totalStudents,
       totalTeachers: input.branch.totalTeachers,
+      weekOverWeekDelta: input.branch.weekOverWeekDelta,
     },
     topTeachers: input.branch.topTeachers.map(t => ({
-      name: t.teacher.name, composite: t.composite,
-      classAvg: t.classAvg, attendance: t.attendance,
+      name: t.teacher.name, subjects: t.teacher.subjects, composite: t.composite,
     })),
     weakTeachers: input.branch.weakTeachers.map(t => ({
-      name: t.teacher.name, composite: t.composite,
+      name: t.teacher.name, subjects: t.teacher.subjects, composite: t.composite,
       issues: t.reasons.map(r => `${r.label} ${r.value}`).join(" · "),
     })),
+    topClass: input.topClass ? { name: input.topClass.name, composite: input.topClass.composite, classTeacher: input.topClass.classTeacher } : null,
+    weakClass: input.weakClass ? { name: input.weakClass.name, composite: input.weakClass.composite, classTeacher: input.weakClass.classTeacher, atRisk: input.weakClass.atRisk } : null,
     studentClusters: input.branch.studentClusters,
-    topPrincipal: input.topPrincipal,
   };
 
-  return callInsights(instructions, payload, `principal:${input.principalName}:${Math.round(input.composite)}`);
+  return callInsights(instructions, payload, `principal:${input.principalName}:${input.branch.composite}:${input.branch.totalStudents}`);
 }
 
 export async function fetchBranchInsights(input: {
   branchName: string;
-  ownerNetwork: string;
-  rank: number;
-  totalBranches: number;
   branch: BranchComposite;
-  networkAvg: number;
-  topBranchName: string;
-  topBranchComposite: number;
+  classRanking: ClassRow[];
 }): Promise<AIInsightsResult> {
-  const instructions = `You are a school branch performance analyst with access to real teacher and student data. Generate a brutally honest diagnosis of WHY this branch is at its current rank, and provide SPECIFIC interventions naming the actual teachers and classes from the data.
+  const instructions = `You are a school branch performance analyst. Generate a brutally honest diagnosis of WHY this school is at its current composite, and provide SPECIFIC interventions naming the actual teachers and classes from the data.
 
-Respond ONLY in valid JSON. Use Hinglish (natural mix of Hindi and English) in diagnosis text and action reason fields. Keep action titles in English. Every diagnosis bullet and action reason MUST cite specific numbers and named entities from the data.
+Respond ONLY in valid JSON. Use Hinglish in diagnosis text and action reason fields. Keep action titles in English. Every diagnosis bullet and action reason MUST cite specific numbers and named entities from the data. At least one action must name a specific weak teacher; at least one must address a specific at-risk class.
 
-Output schema:
 {
   "diagnosis": [
     { "type": "good" | "concern" | "note", "text": "Hinglish diagnosis citing teacher names + numbers" }
@@ -672,26 +710,20 @@ Output schema:
     }
   ],
   "forecast": {
-    "projectedLabel": "#2",
-    "changeLabel": "Up 1 spot",
+    "projectedLabel": "+5.4",
+    "changeLabel": "Composite uplift",
     "changeSubtitle": "Branch score: 79.8 → 85.2",
-    "scenarios": [{ "label": "...", "outcome": "...", "highlight": true }],
+    "scenarios": [{ "label": "Coach weak teachers", "outcome": "+3.2", "highlight": false }],
     "confidence": 80
   }
 }
 
-Generate 3 diagnosis bullets and 5-6 actions. At least one action must name a specific weak teacher; at least one must address a specific at-risk class.`;
+Generate 3 diagnosis bullets and 5-6 actions.`;
 
   const payload = {
     branch: {
       name: input.branchName,
-      network: input.ownerNetwork,
-      rank: input.rank,
-      totalBranches: input.totalBranches,
       composite: input.branch.composite,
-      networkAvg: input.networkAvg,
-    },
-    metrics: {
       studentsAvg: input.branch.studentsAvg,
       teachersAvg: input.branch.teachersAvg,
       improvement: input.branch.improvement,
@@ -699,48 +731,23 @@ Generate 3 diagnosis bullets and 5-6 actions. At least one action must name a sp
       totalStudents: input.branch.totalStudents,
       totalTeachers: input.branch.totalTeachers,
       totalSections: input.branch.totalSections,
+      weekOverWeekDelta: input.branch.weekOverWeekDelta,
     },
     topTeachers: input.branch.topTeachers.map(t => ({
       name: t.teacher.name, subjects: t.teacher.subjects, composite: t.composite,
     })),
     weakTeachers: input.branch.weakTeachers.map(t => ({
-      name: t.teacher.name, subjects: t.teacher.subjects,
-      composite: t.composite,
+      name: t.teacher.name, subjects: t.teacher.subjects, composite: t.composite,
       classAvg: t.classAvg, passRate: t.passRate, attendance: t.attendance,
       assignments: t.assignments, punctuality: t.punctuality,
       issues: t.reasons.map(r => `${r.label} ${r.value}`).join(" · "),
     })),
     studentClusters: input.branch.studentClusters,
-    topBranch: { name: input.topBranchName, composite: input.topBranchComposite },
+    classRanking: input.classRanking.slice(0, 12).map(c => ({
+      name: c.name, composite: c.composite, totalStudents: c.totalStudents,
+      atRisk: c.atRisk, classTeacher: c.classTeacher,
+    })),
   };
 
-  return callInsights(instructions, payload, `branch:${input.branchName}:${Math.round(input.branch.composite)}`);
-}
-
-// ── Trajectory builder (synthetic when no week-over-week history exists) ──
-export function buildTrajectory(currentComposite: number, schoolId: string): { week: string; value: number }[] {
-  const rand = seededRandom(`${schoolId}:traj`);
-  const start = Math.max(60, currentComposite - 8 - Math.round(rand() * 4));
-  const arr: { week: string; value: number }[] = [];
-  for (let i = 0; i < 8; i++) {
-    const t = i / 7;
-    const noise = (rand() - 0.5) * 1.6;
-    const v = start + (currentComposite - start) * t + noise;
-    arr.push({ week: `W${10 + i}`, value: Math.round(v * 10) / 10 });
-  }
-  arr[arr.length - 1].value = Math.round(currentComposite * 10) / 10;
-  return arr;
-}
-
-export function buildRankTrajectory(currentRank: number, schoolId: string, totalRanks: number): { week: string; rank: number }[] {
-  const rand = seededRandom(`${schoolId}:rank`);
-  const startRank = Math.min(totalRanks, currentRank + 2);
-  const arr: { week: string; rank: number }[] = [];
-  for (let i = 0; i < 8; i++) {
-    const t = i / 7;
-    const v = startRank - (startRank - currentRank) * t + (rand() - 0.5) * 0.4;
-    arr.push({ week: `W${10 + i}`, rank: Math.max(1, Math.min(totalRanks, Math.round(v))) });
-  }
-  arr[arr.length - 1].rank = currentRank;
-  return arr;
+  return callInsights(instructions, payload, `branch:${input.branchName}:${input.branch.composite}:${input.branch.totalStudents}`);
 }
