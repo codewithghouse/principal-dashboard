@@ -13,7 +13,7 @@
  * No synthetic peers, no fake names, no rng-noise trajectories.
  */
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { ArrowLeft, ArrowRight, Check, AlertTriangle, Loader2 } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -640,8 +640,8 @@ const ClassLeaderboardScreen: React.FC<{
 const PrincipalInsightsScreen: React.FC<{
   branch: BranchComposite; principalName: string; classes: ClassRow[]; weekly: WeeklyPoint[];
   insights: AIInsightsResult | null; insightsLoading: boolean; insightsError: string | null;
-  onBack: () => void;
-}> = ({ branch, principalName, classes, weekly, insights, insightsLoading, insightsError, onBack }) => {
+  onBack: () => void; onRetry: () => void;
+}> = ({ branch, principalName, classes, weekly, insights, insightsLoading, insightsError, onBack, onRetry }) => {
   const at = branch.studentClusters.reduce((a, c) => a + c.atRisk, 0);
   const critical = branch.studentClusters[0];
   const wow = trendOf(branch.weekOverWeekDelta);
@@ -709,8 +709,9 @@ const PrincipalInsightsScreen: React.FC<{
 
       <SectionHead eyebrow="02 · Diagnosis" title="Why your school sits here" subtitle="AI analysis from your live branch data" />
       {insightsError ? (
-        <div style={{ padding: 16, marginBottom: 32, background: "rgba(255,69,58,0.06)", border: "0.5px solid rgba(255,69,58,0.20)", borderRadius: 16, color: T.RED, fontSize: 13, fontFamily: FONT }}>
-          AI diagnosis unavailable: {insightsError}
+        <div style={{ padding: 16, marginBottom: 32, background: "rgba(255,69,58,0.06)", border: "0.5px solid rgba(255,69,58,0.20)", borderRadius: 16, fontFamily: FONT }}>
+          <p style={{ fontSize: 13, color: T.RED, margin: "0 0 10px", fontWeight: 600 }}>AI diagnosis unavailable: {insightsError}</p>
+          <button onClick={onRetry} style={{ padding: "8px 14px", borderRadius: 10, background: T.B1, color: "#FFF", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FONT }}>Retry</button>
         </div>
       ) : insightsLoading ? (
         <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: 22, boxShadow: T.SH_LG, marginBottom: 32, display: "flex", alignItems: "center", gap: 12 }}>
@@ -823,8 +824,8 @@ const PrincipalInsightsScreen: React.FC<{
 const BranchInsightsScreen: React.FC<{
   branch: BranchComposite; classes: ClassRow[]; weekly: WeeklyPoint[];
   insights: AIInsightsResult | null; insightsLoading: boolean; insightsError: string | null;
-  onBack: () => void;
-}> = ({ branch, classes, weekly, insights, insightsLoading, insightsError, onBack }) => {
+  onBack: () => void; onRetry: () => void;
+}> = ({ branch, classes, weekly, insights, insightsLoading, insightsError, onBack, onRetry }) => {
   const wow = trendOf(branch.weekOverWeekDelta);
   const chartData: ChartPoint[] = weekly.map(w => ({ week: w.weekLabel, value: w.composite }));
   const topClass = classes[0];
@@ -862,8 +863,9 @@ const BranchInsightsScreen: React.FC<{
 
       <SectionHead eyebrow="02 · AI diagnosis" title="Why your school sits here" subtitle={`Real data from ${branch.totalTeachers} teachers + ${branch.totalStudents} students`} />
       {insightsError ? (
-        <div style={{ padding: 16, marginBottom: 32, background: "rgba(255,69,58,0.06)", border: "0.5px solid rgba(255,69,58,0.20)", borderRadius: 16, color: T.RED, fontSize: 13, fontFamily: FONT }}>
-          AI diagnosis unavailable: {insightsError}
+        <div style={{ padding: 16, marginBottom: 32, background: "rgba(255,69,58,0.06)", border: "0.5px solid rgba(255,69,58,0.20)", borderRadius: 16, fontFamily: FONT }}>
+          <p style={{ fontSize: 13, color: T.RED, margin: "0 0 10px", fontWeight: 600 }}>AI diagnosis unavailable: {insightsError}</p>
+          <button onClick={onRetry} style={{ padding: "8px 14px", borderRadius: 10, background: T.B1, color: "#FFF", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FONT }}>Retry</button>
         </div>
       ) : insightsLoading ? (
         <div style={{ background: T.cardBg, border: T.BORDER, borderRadius: 22, padding: 22, boxShadow: T.SH_LG, marginBottom: 32, display: "flex", alignItems: "center", gap: 12 }}>
@@ -1062,14 +1064,17 @@ const PrincipalNetworkPage: React.FC = () => {
   const [pInsights, setPInsights] = useState<AIInsightsResult | null>(null);
   const [pLoading, setPLoading] = useState(false);
   const [pError, setPError] = useState<string | null>(null);
+  const pTriedRef = useRef(false);
 
   const [bInsights, setBInsights] = useState<AIInsightsResult | null>(null);
   const [bLoading, setBLoading] = useState(false);
   const [bError, setBError] = useState<string | null>(null);
+  const bTriedRef = useRef(false);
 
   useEffect(() => {
     if (screen !== "principal-insights" || !live.branch) return;
-    if (pInsights || pLoading) return;
+    if (pTriedRef.current) return;
+    pTriedRef.current = true;
     setPLoading(true);
     setPError(null);
     fetchPrincipalInsights({
@@ -1082,11 +1087,12 @@ const PrincipalNetworkPage: React.FC = () => {
       .then(setPInsights)
       .catch(err => setPError(err?.message || "AI request failed"))
       .finally(() => setPLoading(false));
-  }, [screen, live.branch, live.classes, live.principalName, live.branchName, pInsights, pLoading]);
+  }, [screen, live.branch, live.classes, live.principalName, live.branchName]);
 
   useEffect(() => {
     if (screen !== "branch-insights" || !live.branch) return;
-    if (bInsights || bLoading) return;
+    if (bTriedRef.current) return;
+    bTriedRef.current = true;
     setBLoading(true);
     setBError(null);
     fetchBranchInsights({
@@ -1097,7 +1103,24 @@ const PrincipalNetworkPage: React.FC = () => {
       .then(setBInsights)
       .catch(err => setBError(err?.message || "AI request failed"))
       .finally(() => setBLoading(false));
-  }, [screen, live.branch, live.classes, live.branchName, bInsights, bLoading]);
+  }, [screen, live.branch, live.classes, live.branchName]);
+
+  // Allow user to retry by re-entering the screen after a failure
+  const retryPrincipal = () => {
+    pTriedRef.current = false;
+    setPError(null);
+    setPInsights(null);
+    // Bump screen state to refire the effect
+    setScreen("teacher-leaderboard");
+    setTimeout(() => setScreen("principal-insights"), 0);
+  };
+  const retryBranch = () => {
+    bTriedRef.current = false;
+    setBError(null);
+    setBInsights(null);
+    setScreen("class-leaderboard");
+    setTimeout(() => setScreen("branch-insights"), 0);
+  };
 
   if (live.loading || !live.branch || !live.schoolId) {
     return (
@@ -1134,6 +1157,7 @@ const PrincipalNetworkPage: React.FC = () => {
             branch={live.branch} principalName={live.principalName} classes={live.classes} weekly={live.weekly}
             insights={pInsights} insightsLoading={pLoading} insightsError={pError}
             onBack={() => setScreen("teacher-leaderboard")}
+            onRetry={retryPrincipal}
           />
         )}
         {screen === "branch-insights" && (
@@ -1141,6 +1165,7 @@ const PrincipalNetworkPage: React.FC = () => {
             branch={live.branch} classes={live.classes} weekly={live.weekly}
             insights={bInsights} insightsLoading={bLoading} insightsError={bError}
             onBack={() => setScreen("class-leaderboard")}
+            onRetry={retryBranch}
           />
         )}
       </div>

@@ -16,7 +16,7 @@
  *   - fetchBranchInsights()       OpenAI proxy call (real)
  */
 
-import { auth } from "./firebase";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import {
   scoreTeachers,
   TeacherScore,
@@ -548,25 +548,39 @@ export interface AIInsightsResult {
   forecast: AIForecast;
 }
 
+// AI calls go through Firebase Cloud Function `parentAIProxy` (us-central1).
+// Same callable shape as `getStudentInsight` in aiInsights.ts:
+//   input  { prompt, systemPrompt, jsonMode }
+//   output { content: string (JSON) }
+const FUNCTIONS_REGION = "us-central1";
 const SESSION_CACHE = new Map<string, AIInsightsResult>();
 
 async function callInsights(instructions: string, data: unknown, cacheKey: string): Promise<AIInsightsResult> {
   if (SESSION_CACHE.has(cacheKey)) return SESSION_CACHE.get(cacheKey)!;
-  const token = await auth.currentUser?.getIdToken();
-  const res = await fetch("/api/ai-insights", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ instructions, data }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || `AI proxy failed (${res.status})`);
+
+  const fns = getFunctions(undefined, FUNCTIONS_REGION);
+  const call = httpsCallable<
+    { prompt: string; systemPrompt: string; jsonMode: boolean },
+    { content: string | Record<string, unknown> }
+  >(fns, "parentAIProxy");
+
+  let parsed: unknown;
+  try {
+    const res = await call({
+      prompt: JSON.stringify(data),
+      systemPrompt: instructions,
+      jsonMode: true,
+    });
+    const raw = res.data?.content;
+    if (!raw) throw new Error("AI returned empty content");
+    parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "AI call failed";
+    const code = (err as { code?: string })?.code;
+    throw new Error(code ? `[${code}] ${msg}` : msg);
   }
-  const raw = await res.json();
-  const normalised = normaliseInsights(raw);
+
+  const normalised = normaliseInsights(parsed);
   SESSION_CACHE.set(cacheKey, normalised);
   return normalised;
 }
