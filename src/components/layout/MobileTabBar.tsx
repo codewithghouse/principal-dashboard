@@ -45,49 +45,54 @@ const MobileTabBar = () => {
 
   return (
     <nav
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 flex pt-2 pb-[max(env(safe-area-inset-bottom),12px)] px-2.5"
-      style={{
-        background: "rgba(255,255,255,0.85)",
-        backdropFilter: "saturate(180%) blur(24px)",
-        WebkitBackdropFilter: "saturate(180%) blur(24px)",
-        borderTop: "0.5px solid rgba(0,0,0,0.06)",
-      }}
+      className="md:hidden fixed inset-x-0 z-40 flex justify-center px-3 pointer-events-none"
+      style={{ bottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
     >
-      {TABS.map(t => {
-        const active = isActive(t);
-        const Icon = t.icon;
-        return (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => handleClick(t)}
-            className={`flex-1 flex flex-col items-center justify-center gap-[3px] py-1 px-1 ${
-              active ? "" : "text-slate-400"
-            }`}
-            aria-label={t.label}
-            aria-current={active ? "page" : undefined}
-          >
-            <div
-              className={`w-[38px] h-[30px] rounded-[10px] grid place-items-center transition-all ${
-                active ? "text-white" : "text-slate-500"
-              }`}
-              style={
-                active
-                  ? { background: GRAD_PILL, boxShadow: "0 4px 12px -2px rgba(17,31,162,0.5)" }
-                  : undefined
-              }
+      <div
+        className="flex items-center w-full max-w-[440px] pointer-events-auto"
+        style={{
+          height: 68,
+          padding: "0 6px",
+          borderRadius: 28,
+          background: "rgba(255,255,255,0.62)",
+          backdropFilter: "saturate(220%) blur(28px)",
+          WebkitBackdropFilter: "saturate(220%) blur(28px)",
+          border: "0.5px solid rgba(255,255,255,0.85)",
+          boxShadow:
+            "0 0 0 0.5px rgba(17,31,162,0.10), 0 2px 6px rgba(17,31,162,0.08), 0 12px 28px rgba(17,31,162,0.18), 0 28px 64px rgba(17,31,162,0.22)",
+        }}
+      >
+        {TABS.map(t => {
+          const active = isActive(t);
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => handleClick(t)}
+              className="flex-1 h-full flex flex-col items-center justify-center gap-[3px] transition-transform active:scale-[0.92]"
+              style={{ transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
+              aria-label={t.label}
+              aria-current={active ? "page" : undefined}
             >
-              <Icon className="w-[18px] h-[18px]" />
-            </div>
-            <span
-              className="text-[10px] font-semibold tracking-tight"
-              style={active ? { color: "#111FA2" } : undefined}
-            >
-              {t.label}
-            </span>
-          </button>
-        );
-      })}
+              <Icon
+                className="w-[20px] h-[20px] transition-colors"
+                style={{ color: active ? "#111FA2" : "#94A3B8" }}
+                strokeWidth={active ? 2.4 : 2}
+              />
+              <span
+                className="text-[10px] tracking-tight leading-tight transition-colors"
+                style={{
+                  color: active ? "#111FA2" : "#94A3B8",
+                  fontWeight: active ? 700 : 500,
+                }}
+              >
+                {t.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </nav>
   );
 };
