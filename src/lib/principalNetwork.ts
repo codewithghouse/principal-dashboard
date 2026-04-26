@@ -589,7 +589,8 @@ async function callViaCloudFunction(instructions: string, data: unknown): Promis
 // Path B: Vercel `/api/ai-insights` — used as fallback when Cloud Function fails.
 // Endpoint code lives in this repo at api/ai-insights.js.
 async function callViaVercelProxy(instructions: string, data: unknown): Promise<unknown> {
-  const token = await auth.currentUser?.getIdToken();
+  // Force-refresh so a stale/expired cached token doesn't cause a 401 here.
+  const token = await auth.currentUser?.getIdToken(true);
   const res = await fetch("/api/ai-insights", {
     method: "POST",
     headers: {
