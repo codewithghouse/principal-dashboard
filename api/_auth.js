@@ -7,7 +7,7 @@
 import admin from "firebase-admin";
 
 // ── Admin SDK singleton ────────────────────────────────────────────────────
-function initAdmin() {
+export function initAdmin() {
   if (admin.apps.length) return admin;
   const saJson = process.env.FIREBASE_ADMIN_SA_JSON;
   if (saJson) {
@@ -57,8 +57,16 @@ export async function requireAuth(req, res) {
     const a = initAdmin();
     return await a.auth().verifyIdToken(token);
   } catch (err) {
-    console.warn("[auth] verifyIdToken failed:", err?.code || err?.message);
-    res.status(401).json({ error: "Invalid or expired token" });
+    const code = err?.code || "auth/unknown";
+    console.warn("[auth] verifyIdToken failed:", code, err?.message);
+    // Surface the firebase-admin error code so /api/diagnostics + clients can
+    // distinguish project mismatch (auth/argument-error) from expired token
+    // (auth/id-token-expired). Codes are documented publicly, not sensitive.
+    res.status(401).json({
+      error: "Invalid or expired token",
+      code,
+      detail: typeof err?.message === "string" ? err.message.slice(0, 200) : undefined,
+    });
     return null;
   }
 }
