@@ -16,7 +16,7 @@ interface RiskAlert {
 }
 interface TrendPoint { day: number; v: number; }
 interface TeacherRow { ini: string; name: string; subject: string; rating: number; bg: string; }
-interface HeatCell { cls: string; color: string; avg: number | null; }
+interface HeatCell { cls: string; color: string; avg: number | null; students?: number; }
 interface UrgentComm { id: string; title: string; from: string; time: string; border: string; }
 
 export interface DashboardMobileProps {

@@ -151,7 +151,7 @@ div[style*="border-radius"][style*="padding"][style*="background"]:not([style*="
 button[style*="border-radius"][style*="padding"][style*="background"]:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not([style*="border-radius: 999"]):not([style*="border-radius:999"]):not([style*="position: absolute"]):not([style*="position:absolute"]):hover,
 a[style*="border-radius"][style*="padding"][style*="background"]:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not([style*="border-radius: 999"]):not([style*="border-radius:999"]):not([style*="position: absolute"]):not([style*="position:absolute"]):hover,
 section[style*="border-radius"][style*="padding"][style*="background"]:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not([style*="border-radius: 999"]):not([style*="border-radius:999"]):not([style*="position: absolute"]):not([style*="position:absolute"]):hover {
-  transform: translate3d(0, -5px, 0) scale(1.02) !important;
+  transform: translate3d(0, -5px, 0) !important;
   box-shadow: 0 0 0 .5px rgba(0, 85, 255, .16),
               0 10px 28px rgba(0, 85, 255, .22),
               0 28px 60px rgba(0, 85, 255, .28) !important;

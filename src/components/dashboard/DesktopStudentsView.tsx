@@ -2,7 +2,7 @@ import {
   Sparkles, Search, AlertTriangle, Plus, Upload, Archive,
   MapPin, GraduationCap, Loader2, ChevronLeft, ChevronRight,
   User as UserIcon, Download, MessageSquare, MoreHorizontal,
-  CheckCircle,
+  CheckCircle, X,
 } from "lucide-react";
 import { tilt3D, tilt3DProfile, tilt3DStyle } from "@/lib/use3DTilt";
 
@@ -52,6 +52,9 @@ interface DesktopStudentsViewProps {
   atRiskFilter: boolean;
   atRiskCount: number;
   setAtRiskFilter: (fn: (prev: boolean) => boolean) => void;
+  classFilter: string;
+  setClassFilter: (v: string) => void;
+  classOptions: string[];
   currentPage: number;
   setCurrentPage: (p: number | ((prev: number) => number)) => void;
   totalPages: number;
@@ -69,6 +72,7 @@ const DesktopStudentsView = ({
   studentsData, paginated, filtered, loading,
   searchTerm, setSearchTerm,
   atRiskFilter, atRiskCount, setAtRiskFilter,
+  classFilter, setClassFilter, classOptions,
   currentPage, setCurrentPage, totalPages, itemsPerPage,
   onAdd, onExport, onBulk, onArchive,
   onProfileClick, onMessageClick,
@@ -90,6 +94,13 @@ const DesktopStudentsView = ({
 
   const pageStart = filtered.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const pageEnd = Math.min(currentPage * itemsPerPage, filtered.length);
+
+  const groupedByClass = paginated.reduce<Record<string, any[]>>((acc, s) => {
+    const key = s.gradeDisplay || "—";
+    (acc[key] = acc[key] || []).push(s);
+    return acc;
+  }, {});
+  const groupOrder = Object.keys(groupedByClass).sort();
 
   return (
     <div
@@ -159,7 +170,7 @@ const DesktopStudentsView = ({
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search roster..."
+            placeholder="Search Student"
             style={{
               width: "100%",
               padding: "14px 18px 14px 46px",
@@ -174,6 +185,48 @@ const DesktopStudentsView = ({
               letterSpacing: "-0.1px",
               fontFamily: "inherit",
             }}
+          />
+        </div>
+
+        <div style={{ position: "relative" }}>
+          <select
+            value={classFilter}
+            onChange={(e) => { setClassFilter(e.target.value); setCurrentPage(1); }}
+            style={{
+              height: 44,
+              padding: "0 38px 0 36px",
+              borderRadius: 14,
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              background: classFilter !== "ALL" ? B1 : "rgba(0,85,255,0.10)",
+              color: classFilter !== "ALL" ? "#fff" : B1,
+              border: `0.5px solid ${classFilter !== "ALL" ? B1 : "rgba(0,85,255,0.22)"}`,
+              outline: "none",
+              appearance: "none",
+              WebkitAppearance: "none",
+              MozAppearance: "none",
+            }}
+          >
+            <option value="ALL">All Classes</option>
+            {classOptions.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <GraduationCap
+            size={14}
+            strokeWidth={2.4}
+            color={classFilter !== "ALL" ? "#fff" : B1}
+            style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+          />
+          <ChevronRight
+            size={13}
+            strokeWidth={2.6}
+            color={classFilter !== "ALL" ? "#fff" : B1}
+            style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%) rotate(90deg)", pointerEvents: "none" }}
           />
         </div>
 
@@ -202,6 +255,39 @@ const DesktopStudentsView = ({
           <AlertTriangle size={13} strokeWidth={2.5} />
           AT RISK{atRiskCount > 0 ? ` ${atRiskCount}` : ""}
         </button>
+
+        {(searchTerm || classFilter !== "ALL" || atRiskFilter) && (
+          <button
+            onClick={() => {
+              setSearchTerm("");
+              setClassFilter("ALL");
+              setAtRiskFilter(() => false);
+              setCurrentPage(1);
+            }}
+            style={{
+              height: 44,
+              padding: "0 16px",
+              borderRadius: 14,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              background: "#fff",
+              color: T2,
+              border: "0.5px solid rgba(0,85,255,0.16)",
+              boxShadow: SHADOW_SM,
+            }}
+          >
+            <X size={13} strokeWidth={2.6} />
+            Reset
+          </button>
+        )}
 
         <button
           onClick={onAdd}
@@ -414,8 +500,52 @@ const DesktopStudentsView = ({
           )}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, perspective: "1200px" }}>
-          {paginated.map((s: any) => {
+        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+          {groupOrder.map((cls) => (
+            <div key={cls}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 10,
+                  padding: "0 4px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "6px 14px",
+                    borderRadius: 12,
+                    background: "rgba(0,85,255,0.10)",
+                    border: "0.5px solid rgba(0,85,255,0.18)",
+                    color: B1,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  <GraduationCap size={13} strokeWidth={2.4} />
+                  {cls}
+                </div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.10em",
+                    textTransform: "uppercase",
+                    color: T4,
+                  }}
+                >
+                  {groupedByClass[cls].length} {groupedByClass[cls].length === 1 ? "Scholar" : "Scholars"}
+                </span>
+                <div style={{ flex: 1, height: "0.5px", background: "rgba(0,85,255,0.10)" }} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, perspective: "1200px" }}>
+                {groupedByClass[cls].map((s: any) => {
             const email = s.email || s.studentEmail || "";
             const isActive = (s.status || "Active") === "Active";
             const attValid = s.attendance !== "—" && s.attPct !== null;
@@ -752,11 +882,14 @@ const DesktopStudentsView = ({
               </div>
             );
           })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
       {/* ── Pagination ── */}
-      {!loading && filtered.length > itemsPerPage && (
+      {!loading && filtered.length > 0 && (
         <div
           style={{
             marginTop: 14,
@@ -772,8 +905,9 @@ const DesktopStudentsView = ({
           }}
         >
           <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T4, margin: 0 }}>
-            {pageStart}–{pageEnd} of {filtered.length}
+            Showing {pageStart}–{pageEnd} of {filtered.length} {filtered.length === 1 ? "Student" : "Students"}
           </p>
+          {totalPages > 1 && (
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button
               disabled={currentPage === 1}
@@ -838,6 +972,7 @@ const DesktopStudentsView = ({
               <ChevronRight size={15} color={T2} />
             </button>
           </div>
+          )}
         </div>
       )}
 

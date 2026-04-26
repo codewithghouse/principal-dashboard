@@ -38,7 +38,57 @@ const TEMPLATE_DATA = [
   { Name: "Priya Verma",  Email: "priya@example.com", Class: "8-B", RollNo: "02", ParentPhone: "9876543211", AdmissionDate: "2024-06-01" },
 ];
 
-const ITEMS_PER_PAGE = 15;
+// ── Smart column detection so users can upload ANY template ─────────────────
+// Each canonical field has a synonym list. Headers are normalized (lowercased,
+// stripped of spaces/underscores/dots) before matching, so "Student Full Name",
+// "student_name", "STUDENT.NAME", "स्टूडेंट" → all funnel to the right field.
+type FieldKey = "name" | "email" | "class" | "rollNo" | "parentPhone" | "admissionDate";
+const FIELD_LABELS: Record<FieldKey, { label: string; required: boolean }> = {
+  name:          { label: "Name",           required: true  },
+  email:         { label: "Email",          required: true  },
+  class:         { label: "Class",          required: false },
+  rollNo:        { label: "Roll No",        required: false },
+  parentPhone:   { label: "Parent Phone",   required: false },
+  admissionDate: { label: "Admission Date", required: false },
+};
+const SYNONYMS: Record<FieldKey, string[]> = {
+  name:          ["name", "fullname", "studentname", "student", "studentfullname", "childname", "pupilname"],
+  email:         ["email", "emailaddress", "mail", "studentemail", "emailid", "mailid"],
+  class:         ["class", "classname", "section", "grade", "standard", "std", "div", "division", "classsection"],
+  rollNo:        ["rollno", "roll", "rollnumber", "regno", "regnumber", "registration", "registrationno", "admissionno", "admno", "studentid", "id", "srno"],
+  parentPhone:   ["parentphone", "phone", "mobile", "contact", "parentmobile", "parentnumber", "parentcontact", "phonenumber", "mobilenumber", "guardianphone", "guardianmobile", "fatherphone", "motherphone"],
+  admissionDate: ["admissiondate", "admission", "doj", "dateofjoining", "joined", "joiningdate", "enrolldate", "enrollmentdate", "admittedon", "admitdate", "startdate", "dateofadmission"],
+};
+const normalizeHeader = (s: string) => String(s).toLowerCase().replace(/[\s_\-./()]/g, "");
+
+const detectColumns = (headers: string[]): Record<FieldKey, string> => {
+  const mapping: Record<FieldKey, string> = {
+    name: "", email: "", class: "", rollNo: "", parentPhone: "", admissionDate: "",
+  };
+  const used = new Set<string>();
+  // Pass 1 — exact normalized match (highest confidence)
+  (Object.keys(SYNONYMS) as FieldKey[]).forEach(field => {
+    const match = headers.find(h => !used.has(h) && SYNONYMS[field].includes(normalizeHeader(h)));
+    if (match) { mapping[field] = match; used.add(match); }
+  });
+  // Pass 2 — partial substring match for whatever's still unmapped
+  (Object.keys(SYNONYMS) as FieldKey[]).forEach(field => {
+    if (mapping[field]) return;
+    const match = headers.find(h => {
+      if (used.has(h)) return false;
+      const n = normalizeHeader(h);
+      return SYNONYMS[field].some(s => n.includes(s) || s.includes(n));
+    });
+    if (match) { mapping[field] = match; used.add(match); }
+  });
+  return mapping;
+};
+
+const EMPTY_MAPPING: Record<FieldKey, string> = {
+  name: "", email: "", class: "", rollNo: "", parentPhone: "", admissionDate: "",
+};
+
+const ITEMS_PER_PAGE = 10;
 
 const Students = () => {
   const { userData } = useAuth();
@@ -55,12 +105,19 @@ const Students = () => {
   const [saving, setSaving]                 = useState(false);
   const [newStudent, setNewStudent]         = useState({ name: "", email: "", classId: "" });
   const [atRiskFilter, setAtRiskFilter]     = useState(false);
+  const [classFilter, setClassFilter]       = useState("ALL");
 
   // Bulk upload
   const [showBulkModal, setShowBulkModal]   = useState(false);
   const [bulkRows, setBulkRows]             = useState<BulkStudent[]>([]);
   const [bulkUploading, setBulkUploading]   = useState(false);
   const bulkFileRef = useRef<HTMLInputElement>(null);
+  // Raw uploaded rows + headers + canonical→header mapping. The mapping is
+  // auto-detected from headers; the user can override via dropdowns. `bulkRows`
+  // is rebuilt from these whenever mapping changes (see effect below).
+  const [bulkRawRows, setBulkRawRows]       = useState<Record<string, unknown>[]>([]);
+  const [bulkHeaders, setBulkHeaders]       = useState<string[]>([]);
+  const [bulkMapping, setBulkMapping]       = useState<Record<FieldKey, string>>(EMPTY_MAPPING);
 
   // Academic year archiving
   const [showArchiveModal, setShowArchiveModal] = useState(false);
@@ -292,25 +349,50 @@ const Students = () => {
   const parseBulkFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = e => {
-      const data = new Uint8Array(e.target?.result as ArrayBuffer);
-      const wb   = XLSX.read(data, { type: "array" });
-      const ws   = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws);
-      const parsed: BulkStudent[] = rows
-        .map((r): BulkStudent => ({
-          name:          String(r["Name"] || r["name"] || "").trim(),
-          email:         String(r["Email"] || r["email"] || "").trim().toLowerCase(),
-          class:         String(r["Class"] || r["class"] || "").trim(),
-          rollNo:        String(r["RollNo"] || r["Roll No"] || r["roll_no"] || "").trim(),
-          parentPhone:   String(r["ParentPhone"] || r["Parent Phone"] || "").trim(),
-          admissionDate: String(r["AdmissionDate"] || r["Admission Date"] || "").trim(),
-          _status:       "pending",
-        }))
-        .filter(r => r.name && r.email);
-      setBulkRows(parsed);
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const wb   = XLSX.read(data, { type: "array" });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+        if (rows.length === 0) {
+          toast.warning("File is empty or has no readable rows.");
+          return;
+        }
+        // Headers come from the first row's keys (XLSX preserves original order)
+        const headers = Object.keys(rows[0]);
+        setBulkRawRows(rows);
+        setBulkHeaders(headers);
+        setBulkMapping(detectColumns(headers));
+      } catch (err: any) {
+        toast.error("Could not read file: " + (err?.message || "unknown error"));
+      }
     };
     reader.readAsArrayBuffer(file);
   };
+
+  // Re-build typed bulkRows whenever the user changes the mapping
+  // (or after parseBulkFile sets the auto-detected mapping).
+  useEffect(() => {
+    if (bulkRawRows.length === 0) {
+      setBulkRows([]);
+      return;
+    }
+    const m = bulkMapping;
+    const pick = (r: Record<string, unknown>, key: string) =>
+      key && r[key] !== undefined && r[key] !== null ? String(r[key]) : "";
+    const parsed: BulkStudent[] = bulkRawRows
+      .map((r): BulkStudent => ({
+        name:          pick(r, m.name).trim(),
+        email:         pick(r, m.email).trim().toLowerCase(),
+        class:         pick(r, m.class).trim(),
+        rollNo:        pick(r, m.rollNo).trim(),
+        parentPhone:   pick(r, m.parentPhone).trim(),
+        admissionDate: pick(r, m.admissionDate).trim(),
+        _status:       "pending",
+      }))
+      .filter(r => r.name && r.email);
+    setBulkRows(parsed);
+  }, [bulkRawRows, bulkMapping]);
 
   const downloadTemplate = () => {
     const ws  = XLSX.utils.json_to_sheet(TEMPLATE_DATA);
@@ -531,15 +613,26 @@ const Students = () => {
       s.gradeDisplay?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (s.email || s.studentEmail || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchRisk = !atRiskFilter || s.isAtRisk;
-    return matchSearch && matchRisk;
+    const matchClass = classFilter === "ALL" || (s.gradeDisplay || "—") === classFilter;
+    return matchSearch && matchRisk && matchClass;
   });
 
-  const atRiskCount = studentsData.filter(s => s.isAtRisk).length;
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
-  const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const classOptions = Array.from(
+    new Set(studentsData.map(s => s.gradeDisplay).filter(Boolean))
+  ).sort();
 
-  // Reset to page 1 when search changes
-  useEffect(() => setCurrentPage(1), [searchTerm]);
+  const atRiskCount = studentsData.filter(s => s.isAtRisk).length;
+  // When a class filter is active, show every student of that class — skip pagination.
+  const showAllForClass = classFilter !== "ALL";
+  const totalPages = showAllForClass
+    ? 1
+    : Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const paginated = showAllForClass
+    ? filtered
+    : filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  // Reset to page 1 when search or class filter changes
+  useEffect(() => setCurrentPage(1), [searchTerm, classFilter]);
 
   // ── Student profile view ─────────────────────────────────────────────────────
 
@@ -590,7 +683,7 @@ const Students = () => {
             setCurrentPage={setCurrentPage}
             onAddClick={() => setIsAddModalOpen(true)}
             onExportClick={handleExport}
-            onBulkClick={() => { setBulkRows([]); setShowBulkModal(true); }}
+            onBulkClick={() => { setBulkRows([]); setBulkRawRows([]); setBulkHeaders([]); setBulkMapping(EMPTY_MAPPING); setShowBulkModal(true); }}
             onArchiveClick={() => setShowArchiveModal(true)}
             onProfileClick={s => setSelectedStudent(s)}
             defaultBranchId={userData?.branchId}
@@ -611,13 +704,16 @@ const Students = () => {
         atRiskFilter={atRiskFilter}
         atRiskCount={atRiskCount}
         setAtRiskFilter={setAtRiskFilter}
+        classFilter={classFilter}
+        setClassFilter={setClassFilter}
+        classOptions={classOptions}
         currentPage={currentPage}
         setCurrentPage={setCurrentPage}
         totalPages={totalPages}
         itemsPerPage={ITEMS_PER_PAGE}
         onAdd={() => setIsAddModalOpen(true)}
         onExport={handleExport}
-        onBulk={() => { setBulkRows([]); setShowBulkModal(true); }}
+        onBulk={() => { setBulkRows([]); setBulkRawRows([]); setBulkHeaders([]); setBulkMapping(EMPTY_MAPPING); setShowBulkModal(true); }}
         onArchive={() => setShowArchiveModal(true)}
         onProfileClick={(s) => setSelectedStudent(s)}
         onMessageClick={(s) => navigate("/parent-communication", { state: { studentId: s.id, studentName: s.name } })}
@@ -654,7 +750,7 @@ const Students = () => {
                 onClick={() => bulkFileRef.current?.click()}>
                 <Upload className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
                 <p className="text-xs font-black text-emerald-700 uppercase tracking-widest">Click to select Excel / CSV file</p>
-                <p className="text-[10px] text-slate-400 mt-1">Columns: Name, Email, Class, RollNo, ParentPhone, AdmissionDate</p>
+                <p className="text-[10px] text-slate-400 mt-1">Any column headers — system auto-detects & lets you re-map below</p>
                 <input
                   ref={bulkFileRef}
                   type="file"
@@ -667,8 +763,61 @@ const Students = () => {
               {/* Template download */}
               <button onClick={downloadTemplate}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-emerald-200 text-xs font-black text-emerald-600 hover:bg-emerald-50 transition-colors">
-                <Download className="w-4 h-4" /> Download Template
+                <Download className="w-4 h-4" /> Download Default Template
               </button>
+
+              {/* Column mapping — appears once a file is parsed */}
+              {bulkHeaders.length > 0 && (
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/40 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Column Mapping</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {bulkHeaders.length} columns detected · auto-matched · adjust if anything looks off
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setBulkMapping(detectColumns(bulkHeaders))}
+                      className="text-[10px] font-black text-emerald-700 hover:text-emerald-800 uppercase tracking-wider px-2 py-1 rounded-md hover:bg-emerald-100 transition-colors">
+                      Auto-match
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {(Object.keys(FIELD_LABELS) as FieldKey[]).map(field => {
+                      const cfg = FIELD_LABELS[field];
+                      const value = bulkMapping[field] || "";
+                      const ok = value !== "";
+                      return (
+                        <div key={field} className="flex items-center gap-2">
+                          <label className="text-[10px] font-black text-slate-600 uppercase tracking-wider w-[88px] shrink-0">
+                            {cfg.label}{cfg.required && <span className="text-rose-500"> *</span>}
+                          </label>
+                          <select
+                            value={value}
+                            onChange={e => setBulkMapping(prev => ({ ...prev, [field]: e.target.value }))}
+                            className={`flex-1 text-xs font-semibold rounded-lg border px-2 py-1.5 bg-white outline-none transition-colors ${
+                              cfg.required && !ok
+                                ? "border-rose-300 text-rose-600 focus:border-rose-400"
+                                : ok
+                                ? "border-emerald-200 text-slate-700 focus:border-emerald-400"
+                                : "border-slate-200 text-slate-500 focus:border-slate-400"
+                            }`}>
+                            <option value="">— skip / not in file —</option>
+                            {bulkHeaders.map(h => (
+                              <option key={h} value={h}>{h}</option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(!bulkMapping.name || !bulkMapping.email) && (
+                    <p className="text-[10px] font-bold text-rose-600 mt-3">
+                      ⚠ Both <strong>Name</strong> and <strong>Email</strong> must be mapped before uploading.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Preview table */}
               {bulkRows.length > 0 && (
@@ -717,13 +866,20 @@ const Students = () => {
 
               {/* Actions */}
               <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowBulkModal(false)}
+                <button onClick={() => {
+                    setShowBulkModal(false);
+                    setBulkRows([]); setBulkRawRows([]); setBulkHeaders([]); setBulkMapping(EMPTY_MAPPING);
+                  }}
                   className="flex-1 h-11 rounded-xl border border-slate-100 text-xs font-black text-slate-500 hover:bg-slate-50 transition-colors">
                   Cancel
                 </button>
                 <button
                   onClick={handleBulkUpload}
-                  disabled={bulkUploading || bulkRows.filter(r => r._status === "pending").length === 0}
+                  disabled={
+                    bulkUploading ||
+                    !bulkMapping.name || !bulkMapping.email ||
+                    bulkRows.filter(r => r._status === "pending").length === 0
+                  }
                   className="flex-1 h-11 rounded-xl bg-emerald-700 text-white text-xs font-black hover:bg-emerald-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                   {bulkUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                   {bulkUploading ? "Uploading..." : `Upload ${bulkRows.filter(r => r._status === "pending").length} Students`}
