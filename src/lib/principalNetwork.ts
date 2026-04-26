@@ -609,25 +609,19 @@ async function callViaVercelProxy(instructions: string, data: unknown): Promise<
 async function callInsights(instructions: string, data: unknown, cacheKey: string): Promise<AIInsightsResult> {
   if (SESSION_CACHE.has(cacheKey)) return SESSION_CACHE.get(cacheKey)!;
 
-  // Try Cloud Function first (matches existing app convention)
+  // The Firebase Cloud Function `parentAIProxy` (in the eduintellect-7e709
+  // parent project) returns 500 for principal-dashboard requests with no logs
+  // — a platform-level rejection we can't fix from this repo. The Vercel proxy
+  // is the dedicated working path: same security posture (server-side OpenAI
+  // key, Firebase token + role check at the edge), but fully owned here.
+  // To re-enable CF as primary once the parent-side bug is resolved, restore
+  // the previous try-CF-then-fallback-to-Vercel block.
   let parsed: unknown;
-  let cfError: string | null = null;
   try {
-    parsed = await callViaCloudFunction(instructions, data);
+    parsed = await callViaVercelProxy(instructions, data);
   } catch (err: unknown) {
-    const e = err as { code?: string; message?: string; details?: { message?: string } };
-    cfError = `[${e?.code ?? "cf"}] ${e?.details?.message || e?.message || "Cloud Function failed"}`;
-    console.warn("[callInsights] Cloud Function failed:", cfError);
-
-    // Fallback to Vercel proxy
-    try {
-      parsed = await callViaVercelProxy(instructions, data);
-    } catch (err2: unknown) {
-      const e2 = err2 as { message?: string };
-      const vercelMsg = e2?.message || "Vercel proxy failed";
-      console.warn("[callInsights] Vercel proxy also failed:", vercelMsg);
-      throw new Error(`${cfError}; vercel: ${vercelMsg}`);
-    }
+    const msg = err instanceof Error ? err.message : "Vercel proxy failed";
+    throw new Error(`vercel: ${msg}`);
   }
 
   const normalised = normaliseInsights(parsed);
