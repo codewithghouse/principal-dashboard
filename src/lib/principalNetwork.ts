@@ -774,6 +774,50 @@ function fallbackPrincipalInsights(
       reason: `${top.teacher.name || "Top teacher"} ka composite ${top.composite.toFixed(1)} hai. Weekly observation sessions schedule karo for the ${branch.weakTeachers.length} weak teachers.`,
       tracking: "manual", status: "pending",
     });
+    n++;
+  }
+
+  // Always-on improvement actions — these guarantee the action plan is non-empty
+  // even when the school has no weak teachers / at-risk students. Healthy
+  // schools still need maintenance, replication, and monitoring moves.
+  if (weakClass && topClass && weakClass.name !== topClass.name) {
+    const gap = (topClass.composite - weakClass.composite).toFixed(1);
+    actions.push({
+      id: `p${n}`, num: String(n).padStart(2, "0"),
+      title: `Close ${gap}-point gap: ${weakClass.name} ↔ ${topClass.name}`,
+      reason: `${weakClass.name} (${weakClass.composite.toFixed(1)}) aur ${topClass.name} (${topClass.composite.toFixed(1)}) ke beech ${gap} ka gap hai. ${weakClass.classTeacher} ko ${topClass.classTeacher} ke saath fortnightly collaboration session lao — pedagogy share karein.`,
+      tracking: "manual", status: "pending",
+    });
+    n++;
+  }
+  if (branch.topTeachers.length > 0) {
+    const top = branch.topTeachers[0];
+    actions.push({
+      id: `p${n}`, num: String(n).padStart(2, "0"),
+      title: `Document & replicate ${top.teacher.name || "top teacher"}'s practices`,
+      reason: `${top.teacher.name || "Top teacher"} ka composite ${top.composite.toFixed(1)} hai — top performer. Monthly classroom observation karwao, lesson plans aur engagement techniques document karo, baki teachers ke saath PD session me share karo.`,
+      tracking: "manual", status: "pending",
+    });
+    n++;
+  }
+  const teacherStudentGap = branch.teachersAvg - branch.studentsAvg;
+  if (teacherStudentGap > 5) {
+    actions.push({
+      id: `p${n}`, num: String(n).padStart(2, "0"),
+      title: `Investigate ${teacherStudentGap.toFixed(1)}-point teacher↔student gap`,
+      reason: `Teachers avg ${branch.teachersAvg.toFixed(1)} hai but students avg ${branch.studentsAvg.toFixed(1)} — ${teacherStudentGap.toFixed(1)} point gap. Teaching strong hai but learning translate nahi ho raha. Weekly formative assessments aur student feedback loops set karo.`,
+      tracking: "manual", status: "pending",
+    });
+    n++;
+  }
+  // Final safety net — guarantees at least one action ALWAYS exists
+  if (actions.length === 0) {
+    actions.push({
+      id: `p${n}`, num: String(n).padStart(2, "0"),
+      title: `Establish weekly performance review cadence`,
+      reason: `${branch.totalStudents} students across ${branch.totalSections} classes ka data abhi healthy hai (composite ${branch.composite.toFixed(1)}). Weekly 30-min principal-teacher review meeting set karo — early warning signals catch karne ke liye baseline cadence chahiye.`,
+      tracking: "manual", status: "pending",
+    });
   }
 
   const projected = Math.min(100, branch.composite + 4);
@@ -797,16 +841,19 @@ function fallbackBranchInsights(
   classRanking: ClassRow[],
 ): AIInsightsResult {
   const base = fallbackPrincipalInsights(branch, classRanking[0] || null, classRanking[classRanking.length - 1] || null);
-  // Add one more action targeting class spread
-  if (classRanking.length >= 2) {
+  // The principal fallback already includes a "close-gap" action when top/weak
+  // classes differ. For the branch view, add a class-spread action only when
+  // the ranking has ≥3 classes — middle-tier visibility helps the principal
+  // see distribution beyond just the extremes.
+  if (classRanking.length >= 3) {
+    const mid = classRanking[Math.floor(classRanking.length / 2)];
     const top = classRanking[0];
-    const weak = classRanking[classRanking.length - 1];
-    const gap = (top.composite - weak.composite).toFixed(1);
+    const midGap = (top.composite - mid.composite).toFixed(1);
     const n = base.actions.length + 1;
     base.actions.push({
       id: `b${n}`, num: String(n).padStart(2, "0"),
-      title: `Close gap: ${weak.name} (${weak.composite.toFixed(1)}) vs ${top.name} (${top.composite.toFixed(1)})`,
-      reason: `Top aur weak class mein ${gap}-point gap hai. ${weak.classTeacher} ko ${top.classTeacher} ke saath collaboration session lao.`,
+      title: `Lift mid-tier: ${mid.name} (${mid.composite.toFixed(1)}) → top tier`,
+      reason: `Mid-tier class ${mid.name} ${midGap} points behind ${top.name}. ${mid.classTeacher} ke saath quarterly goal set karo — top tier tak pahunchne ke liye specific subject-wise gaps target karo.`,
       tracking: "manual", status: "pending",
     });
   }
