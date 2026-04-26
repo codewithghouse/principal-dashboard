@@ -934,40 +934,99 @@ const AccessRequests = () => {
         </div>
       </div>
 
-      {/* Status tab grid 4-col */}
+      {/* 4 Stat Cards — dashboard-style */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 26 }}>
         {statTabs.map((t) => {
           const active = tab === t.k;
           const Ico = t.icon;
+          // Map status → dashboard palette
+          const palette: Record<typeof t.color, { cardGrad: string; tileGrad: string; tileShadow: string; valColor: string; decorColor: string; ringColor: string }> = {
+            yellow: {
+              cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+              tileGrad: "linear-gradient(135deg, #FFAA00, #FFDD44)",
+              tileShadow: "0 4px 14px rgba(255,170,0,0.28)",
+              valColor: "#FFAA00",
+              decorColor: "#FFAA00",
+              ringColor: "rgba(255,170,0,0.42)",
+            },
+            green: {
+              cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+              tileGrad: "linear-gradient(135deg, #00C853, #22EE66)",
+              tileShadow: "0 4px 14px rgba(0,200,83,0.26)",
+              valColor: "#007830",
+              decorColor: "#00C853",
+              ringColor: "rgba(0,200,83,0.42)",
+            },
+            red: {
+              cardGrad: "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)",
+              tileGrad: "linear-gradient(135deg, #FF3355, #FF6688)",
+              tileShadow: "0 4px 14px rgba(255,51,85,0.28)",
+              valColor: "#FF3355",
+              decorColor: "#FF3355",
+              ringColor: "rgba(255,51,85,0.42)",
+            },
+            grey: {
+              cardGrad: "linear-gradient(135deg, #E2E5EC 0%, #F7F9FC 100%)",
+              tileGrad: "linear-gradient(135deg, #475569, #64748B)",
+              tileShadow: "0 4px 14px rgba(71,85,105,0.26)",
+              valColor: "#475569",
+              decorColor: "#475569",
+              ringColor: "rgba(71,85,105,0.36)",
+            },
+          };
+          const p = palette[t.color];
           return (
             <button
               key={t.k}
               onClick={() => setTab(t.k)}
               style={{
-                borderRadius: 18,
-                padding: "22px 24px",
+                borderRadius: 20,
+                padding: 20,
                 position: "relative",
                 overflow: "hidden",
                 cursor: "pointer",
-                background: tabBgMap[t.color],
-                border: active ? "2px solid #000820" : `0.5px solid ${tabBorderMap[t.color]}`,
-                boxShadow: active ? "0 0 0 3px rgba(0,0,0,.08), 0 14px 34px rgba(0,0,0,.1)" : "0 8px 22px rgba(0,0,0,.06)",
-                display: "flex",
-                alignItems: "center",
-                gap: 18,
+                background: p.cardGrad,
+                border: `0.5px solid ${active ? p.ringColor : "rgba(0,85,255,0.08)"}`,
+                boxShadow: active
+                  ? `0 0 0 2px ${p.ringColor}, 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)`
+                  : "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)",
                 fontFamily: "inherit",
                 textAlign: "left",
                 transition: "transform .18s cubic-bezier(.34,1.56,.64,1)",
               }}
             >
-              <div style={{ position: "absolute", top: -30, right: -30, width: 130, height: 130, borderRadius: "50%", background: "radial-gradient(circle,rgba(255,255,255,.65) 0%,transparent 70%)", pointerEvents: "none" }} />
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(255,255,255,.75)", border: "0.5px solid rgba(255,255,255,.95)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative", zIndex: 1, boxShadow: "0 3px 8px rgba(0,0,0,.06)" }}>
-                <Ico size={20} color={t.iconColor} strokeWidth={2.5} />
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 14,
+                  background: p.tileGrad,
+                  boxShadow: p.tileShadow,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: 12,
+                  position: "relative",
+                  zIndex: 1,
+                }}
+              >
+                <Ico size={26} color="#fff" strokeWidth={2.3} />
               </div>
-              <div style={{ position: "relative", zIndex: 1 }}>
-                <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: "-1.2px", lineHeight: 1, marginBottom: 4, color: t.numColor }}>{counts[t.k]}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: t.lblColor }}>{t.label}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: "#99AACC", marginBottom: 6 }}>
+                {t.label}
               </div>
+              <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: "-1.2px", lineHeight: 1, marginBottom: 6, color: p.valColor }}>
+                {counts[t.k]}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#5070B0" }}>
+                {active ? "Filtering" : "Tap to filter"}
+              </div>
+              <Ico
+                size={56}
+                color={p.decorColor}
+                strokeWidth={2}
+                style={{ position: "absolute", bottom: 12, right: 12, opacity: 0.18, pointerEvents: "none" }}
+              />
             </button>
           );
         })}

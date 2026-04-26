@@ -471,30 +471,80 @@ const Reports = () => {
         </div>
       </div>
 
-      {/* Category cards 5-col */}
+      {/* Category cards 5-col — dashboard-style */}
       <div className="grid grid-cols-5 gap-4 mt-5">
         {reportCategories.map(cat => {
-          const t = toneStyles[cat.tone];
           const active = activeCategory === cat.id;
+          // Map category tone → dashboard palette
+          const palette: Record<string, { cardGrad: string; tileGrad: string; tileShadow: string; nameColor: string; decorColor: string; ringColor: string }> = {
+            blue: {
+              cardGrad: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+              tileGrad: "linear-gradient(135deg, #0055FF, #1166FF)",
+              tileShadow: "0 4px 14px rgba(0,85,255,0.28)",
+              nameColor: "#0055FF",
+              decorColor: "#0055FF",
+              ringColor: "rgba(0,85,255,0.42)",
+            },
+            green: {
+              cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+              tileGrad: "linear-gradient(135deg, #00C853, #22EE66)",
+              tileShadow: "0 4px 14px rgba(0,200,83,0.26)",
+              nameColor: "#007830",
+              decorColor: "#00C853",
+              ringColor: "rgba(0,200,83,0.42)",
+            },
+            red: {
+              cardGrad: "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)",
+              tileGrad: "linear-gradient(135deg, #FF3355, #FF6688)",
+              tileShadow: "0 4px 14px rgba(255,51,85,0.28)",
+              nameColor: "#FF3355",
+              decorColor: "#FF3355",
+              ringColor: "rgba(255,51,85,0.42)",
+            },
+            orange: {
+              cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+              tileGrad: "linear-gradient(135deg, #FFAA00, #FFDD44)",
+              tileShadow: "0 4px 14px rgba(255,170,0,0.28)",
+              nameColor: "#FFAA00",
+              decorColor: "#FFAA00",
+              ringColor: "rgba(255,170,0,0.42)",
+            },
+            violet: {
+              cardGrad: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+              tileGrad: "linear-gradient(135deg, #7B3FF4, #A07CF8)",
+              tileShadow: "0 4px 14px rgba(123,63,244,0.26)",
+              nameColor: "#7B3FF4",
+              decorColor: "#7B3FF4",
+              ringColor: "rgba(123,63,244,0.42)",
+            },
+          };
+          const p = palette[cat.tone];
           return (
-            <button key={cat.id}
+            <button
+              key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
-              className="rounded-[18px] p-6 relative overflow-hidden transition-transform hover:-translate-y-0.5 text-left flex flex-col justify-between min-h-[140px]"
+              className="rounded-[20px] p-5 relative overflow-hidden transition-transform hover:-translate-y-0.5 text-left flex flex-col min-h-[150px]"
               style={{
-                background: t.card,
-                border: active ? `2px solid #000820` : `0.5px solid ${t.border}`,
-                boxShadow: active ? "0 0 0 3px rgba(0,0,0,0.08), 0 14px 34px rgba(0,0,0,0.1)" : "0 8px 22px rgba(0,0,0,0.06)",
+                background: p.cardGrad,
+                border: `0.5px solid ${active ? p.ringColor : "rgba(0,85,255,0.08)"}`,
+                boxShadow: active
+                  ? `0 0 0 2px ${p.ringColor}, 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)`
+                  : "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)",
               }}>
-              <div className="absolute -top-[30px] -right-[30px] w-[130px] h-[130px] rounded-full pointer-events-none"
-                style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
-              <div className="w-11 h-11 rounded-[12px] flex items-center justify-center relative z-10"
-                style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)", boxShadow: "0 3px 8px rgba(0,0,0,0.06)" }}>
-                <cat.icon className="w-5 h-5" style={{ color: t.iconColor }} strokeWidth={2.3} />
+              <div
+                className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
+                style={{ background: p.tileGrad, boxShadow: p.tileShadow }}
+              >
+                <cat.icon className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
               </div>
-              <div className="relative z-10">
-                <div className="text-[18px] font-bold mb-1" style={{ color: t.nameColor, letterSpacing: "-0.3px" }}>{cat.label}</div>
-                <div className="text-[12px] font-semibold" style={{ color: t.countColor }}>{cat.count}</div>
-              </div>
+              <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: "#99AACC" }}>{cat.id === "custom" ? "Custom" : "Category"}</span>
+              <p className="text-[20px] font-bold tracking-tight leading-tight mb-1" style={{ color: p.nameColor, letterSpacing: "-0.5px" }}>{cat.label}</p>
+              <p className="text-[11px] font-semibold truncate" style={{ color: "#5070B0" }}>{cat.count}</p>
+              <cat.icon
+                className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none"
+                style={{ color: p.decorColor, opacity: 0.18 }}
+                strokeWidth={2}
+              />
             </button>
           );
         })}

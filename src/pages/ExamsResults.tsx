@@ -8,6 +8,12 @@ import {
   Tooltip as RechartsTip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend
 } from "recharts";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { db } from "@/lib/firebase";
@@ -340,42 +346,90 @@ export default function ExamsResults() {
         </div>
       </div>
 
-      {/* Bright stat cards 4-wide */}
+      {/* 4 Stat Cards — dashboard-style */}
       <div className="grid grid-cols-4 gap-4 mb-5">
         {[
-          { label: "Latest Exam", val: latestExam?.name || "—", sub: latestExam?.dateLabel || "No data", variant: "blue", Icon: FileText, isText: true, onClick: () => latestExam && setSelectedExam(latestExam) },
-          { label: "Students Appeared", val: latestExam?.totalStudents ?? "—", sub: latestExam ? `${latestExam.scores.filter(s => !s.isAbsent).length} of ${latestExam.scores.length} total` : "—", variant: "violet", Icon: Users },
-          { label: "Pass Rate", val: latestExam ? `${latestExam.passRate}%` : "—", sub: passRateDiff !== null ? `${passRateDiff >= 0 ? "+" : ""}${passRateDiff}% vs prev` : dPassTier.label, variant: "green", Icon: Percent },
-          { label: "School Topper", val: topper?.name || "—", sub: topper ? `${topper.className || ""} · ${topper.avgPct}%` : "No data", variant: "gold", Icon: Trophy, isText: true },
+          {
+            label: "Latest Exam",
+            val: latestExam?.name || "—",
+            sub: latestExam?.dateLabel || "No data",
+            isText: true,
+            Icon: FileText,
+            cardGrad: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+            tileGrad: "linear-gradient(135deg, #0055FF, #1166FF)",
+            tileShadow: "0 4px 14px rgba(0,85,255,0.28)",
+            valColor: "#0055FF",
+            decorColor: "#0055FF",
+            onClick: () => latestExam && setSelectedExam(latestExam),
+          },
+          {
+            label: "Students Appeared",
+            val: latestExam?.totalStudents ?? "—",
+            sub: latestExam ? `${latestExam.scores.filter(s => !s.isAbsent).length} of ${latestExam.scores.length} total` : "—",
+            Icon: Users,
+            cardGrad: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+            tileGrad: "linear-gradient(135deg, #7B3FF4, #A07CF8)",
+            tileShadow: "0 4px 14px rgba(123,63,244,0.26)",
+            valColor: "#7B3FF4",
+            decorColor: "#7B3FF4",
+          },
+          {
+            label: "Pass Rate",
+            val: latestExam ? `${latestExam.passRate}%` : "—",
+            sub: passRateDiff !== null ? `${passRateDiff >= 0 ? "+" : ""}${passRateDiff}% vs prev` : dPassTier.label,
+            Icon: Percent,
+            cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+            tileGrad: "linear-gradient(135deg, #00C853, #22EE66)",
+            tileShadow: "0 4px 14px rgba(0,200,83,0.26)",
+            valColor: "#007830",
+            decorColor: "#00C853",
+          },
+          {
+            label: "School Topper",
+            val: topper?.name || "—",
+            sub: topper ? `${topper.className || ""} · ${topper.avgPct}%` : "No data",
+            isText: true,
+            Icon: Trophy,
+            cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+            tileGrad: "linear-gradient(135deg, #FFAA00, #FFDD44)",
+            tileShadow: "0 4px 14px rgba(255,170,0,0.28)",
+            valColor: "#FFAA00",
+            decorColor: "#FFAA00",
+          },
         ].map((s, i) => {
-          const styles: Record<string, { bg: string; bdr: string; lbl: string; val: string; icoColor: string }> = {
-            blue:   { bg: "linear-gradient(140deg, #DDEAFF 0%, #A8C5FF 55%, #7AA5FF 100%)", bdr: "rgba(0,85,255,0.4)",   lbl: "#002080", val: "#001055", icoColor: "#001055" },
-            violet: { bg: "linear-gradient(140deg, #EEE0FF 0%, #C9A8FF 55%, #A880FF 100%)", bdr: "rgba(123,63,244,0.4)", lbl: "#3A1580", val: "#280C5C", icoColor: "#3A1580" },
-            green:  { bg: "linear-gradient(140deg, #DEFCE8 0%, #8CF0B0 55%, #50E088 100%)", bdr: "rgba(0,200,83,0.4)",   lbl: "#005A20", val: "#004018", icoColor: "#005A20" },
-            gold:   { bg: "linear-gradient(140deg, #FFF6D1 0%, #FFE488 55%, #FFCC33 100%)", bdr: "rgba(255,170,0,0.4)",  lbl: "#664400", val: "#472A00", icoColor: "#664400" },
-          };
-          const st = styles[s.variant];
           const Icon = s.Icon;
           return (
-            <div key={i}
+            <div
+              key={i}
               onClick={s.onClick}
-              className={`rounded-[20px] p-5 relative overflow-hidden ${s.onClick ? "cursor-pointer transition-transform active:scale-[0.97] hover:scale-[1.02]" : ""}`}
-              style={{ background: st.bg, border: `0.5px solid ${st.bdr}`, boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
-              <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
-              <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
-                style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)", boxShadow: "0 2px 6px rgba(0,0,0,0.05)" }}>
-                <Icon className="w-[15px] h-[15px]" style={{ color: st.icoColor }} strokeWidth={2.5} />
+              className={`rounded-[20px] p-5 relative overflow-hidden ${s.onClick ? "cursor-pointer transition-transform active:scale-[0.98] hover:-translate-y-[1px]" : ""}`}
+              style={{
+                background: s.cardGrad,
+                boxShadow: "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)",
+                border: "0.5px solid rgba(0,85,255,0.08)",
+              }}
+            >
+              <div
+                className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
+                style={{ background: s.tileGrad, boxShadow: s.tileShadow }}
+              >
+                <Icon className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
               </div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px] relative z-[1]" style={{ color: st.lbl }}>{s.label}</div>
+              <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: "#99AACC" }}>{s.label}</span>
               {s.isText ? (
-                <div className="text-[18px] font-bold leading-tight tracking-[-0.3px] mb-[5px] relative z-[1] truncate" style={{ color: st.val }}>{s.val}</div>
+                <p className="text-[20px] font-bold tracking-tight leading-tight mb-1.5 truncate" style={{ color: s.valColor, letterSpacing: "-0.5px" }}>{s.val}</p>
               ) : (
-                <div className="text-[34px] font-bold leading-none tracking-[-1px] mb-[5px] relative z-[1]" style={{ color: st.val }}>{s.val}</div>
+                <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: s.valColor, letterSpacing: "-1.2px" }}>{s.val}</p>
               )}
-              <div className="text-[11px] font-semibold relative z-[1] truncate flex items-center gap-1" style={{ color: st.lbl }}>
+              <p className="text-[11px] font-semibold truncate flex items-center gap-1" style={{ color: i === 2 && passRateDiff !== null ? (passRateDiff >= 0 ? "#007830" : "#FF3355") : "#5070B0" }}>
                 {i === 2 && passRateDiff !== null && (passRateDiff >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />)}
                 {s.sub}
-              </div>
+              </p>
+              <Icon
+                className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none"
+                style={{ color: s.decorColor, opacity: 0.18 }}
+                strokeWidth={2}
+              />
             </div>
           );
         })}
@@ -494,28 +548,65 @@ export default function ExamsResults() {
               <FileText className="w-10 h-10 mb-2" style={{ color: "rgba(0,85,255,0.20)" }} strokeWidth={1.8} />
               <p className="text-[12px] font-semibold" style={{ color: "#99AACC" }}>No grade data yet</p>
             </div>
-          ) : (
-            <div className="h-60">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={gradeData} cx="45%" cy="50%" innerRadius={60} outerRadius={92}
-                    paddingAngle={3} dataKey="value" stroke="none"
-                    label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
-                    labelLine={false}>
-                    {gradeData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                  </Pie>
-                  <Legend
-                    iconType="circle" iconSize={10}
-                    formatter={(value) => <span style={{ fontSize: 12, color: "#5070B0", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>{value}</span>}
-                  />
-                  <RechartsTip
-                    formatter={(v: any, name) => [`${v} students`, name]}
-                    contentStyle={{ borderRadius: "10px", border: "0.5px solid rgba(0,85,255,0.14)", fontSize: 12, fontFamily: "'DM Sans', sans-serif", boxShadow: "0 4px 16px rgba(0,85,255,0.12)" }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+          ) : (() => {
+            const slugify = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "g";
+            const chartData = gradeData.map((d, i) => ({
+              key: `${slugify(d.name)}-${i}`,
+              name: d.name,
+              value: d.value,
+              fill: d.color,
+            }));
+            const chartConfig: ChartConfig = {
+              value: { label: "Students" },
+              ...Object.fromEntries(chartData.map(d => [d.key, { label: d.name, color: d.fill }])),
+            };
+            return (
+              <>
+                <ChartContainer
+                  config={chartConfig}
+                  className="mx-auto aspect-square max-h-[260px] px-0"
+                >
+                  <PieChart>
+                    <ChartTooltip
+                      content={<ChartTooltipContent nameKey="value" hideLabel formatter={(v: any, n: any) => [`${v} students`, n]} />}
+                    />
+                    <Pie
+                      data={chartData}
+                      dataKey="value"
+                      nameKey="key"
+                      animationDuration={1000}
+                      labelLine={false}
+                      label={({ payload, ...props }: any) => {
+                        if (!payload?.value) return null;
+                        return (
+                          <text
+                            cx={props.cx}
+                            cy={props.cy}
+                            x={props.x}
+                            y={props.y}
+                            textAnchor={props.textAnchor}
+                            dominantBaseline={props.dominantBaseline}
+                            fill="#ffffff"
+                            style={{ fontSize: 14, fontWeight: 800, fontFamily: "'DM Sans', sans-serif" }}
+                          >
+                            {payload.value}
+                          </text>
+                        );
+                      }}
+                    />
+                  </PieChart>
+                </ChartContainer>
+                <div className="flex flex-wrap justify-center gap-x-5 gap-y-2 mt-3">
+                  {gradeData.map((d, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
+                      <span className="text-[12px] font-semibold" style={{ color: "#5070B0", fontFamily: "'DM Sans', sans-serif" }}>{d.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 

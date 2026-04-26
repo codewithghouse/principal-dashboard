@@ -1444,33 +1444,63 @@ const ExamStructure = () => {
       </div>
 
       {/* ── Bright stat cards 4-wide ── */}
+      {/* 4 Stat Cards — dashboard-style */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Exam Types", val: examTypes.length, sub: "Configured", variant: "blue", Icon: BookOpen },
-          { label: "Avg Max Marks", val: dAvgMax || "—", sub: "Per exam", variant: "violet", Icon: Award },
-          { label: "Avg Pass %", val: dAvgPass ? `${dAvgPass}%` : "—", sub: "Required to pass", variant: "green", Icon: Percent },
-          { label: "Total Weight", val: `${dTotalWeight}%`, sub: dWeightChip.label, variant: "gold", Icon: ClipboardList },
+          {
+            label: "Exam Types", val: examTypes.length, sub: "Configured", Icon: BookOpen,
+            cardGrad: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+            tileGrad: "linear-gradient(135deg, #0055FF, #1166FF)",
+            tileShadow: "0 4px 14px rgba(0,85,255,0.28)",
+            valColor: "#0055FF", decorColor: "#0055FF",
+          },
+          {
+            label: "Avg Max Marks", val: dAvgMax || "—", sub: "Per exam", Icon: Award,
+            cardGrad: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+            tileGrad: "linear-gradient(135deg, #7B3FF4, #A07CF8)",
+            tileShadow: "0 4px 14px rgba(123,63,244,0.26)",
+            valColor: "#7B3FF4", decorColor: "#7B3FF4",
+          },
+          {
+            label: "Avg Pass %", val: dAvgPass ? `${dAvgPass}%` : "—", sub: "Required to pass", Icon: Percent,
+            cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+            tileGrad: "linear-gradient(135deg, #00C853, #22EE66)",
+            tileShadow: "0 4px 14px rgba(0,200,83,0.26)",
+            valColor: "#007830", decorColor: "#00C853",
+          },
+          {
+            label: "Total Weight", val: `${dTotalWeight}%`, sub: dWeightChip.label, Icon: ClipboardList,
+            cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+            tileGrad: "linear-gradient(135deg, #FFAA00, #FFDD44)",
+            tileShadow: "0 4px 14px rgba(255,170,0,0.28)",
+            valColor: "#FFAA00", decorColor: "#FFAA00",
+          },
         ].map((s, i) => {
-          const styles: Record<string, { bg: string; bdr: string; lbl: string; val: string; icoColor: string }> = {
-            blue:   { bg: "linear-gradient(140deg, #DDEAFF 0%, #A8C5FF 55%, #7AA5FF 100%)", bdr: "rgba(0,85,255,0.4)",  lbl: "#002080", val: "#001055", icoColor: "#001055" },
-            violet: { bg: "linear-gradient(140deg, #EEE0FF 0%, #C9A8FF 55%, #A880FF 100%)", bdr: "rgba(123,63,244,0.4)", lbl: "#3A1580", val: "#280C5C", icoColor: "#3A1580" },
-            green:  { bg: "linear-gradient(140deg, #DEFCE8 0%, #8CF0B0 55%, #50E088 100%)", bdr: "rgba(0,200,83,0.4)",   lbl: "#005A20", val: "#004018", icoColor: "#005A20" },
-            gold:   { bg: "linear-gradient(140deg, #FFF6D1 0%, #FFE488 55%, #FFCC33 100%)", bdr: "rgba(255,170,0,0.4)",  lbl: "#664400", val: "#472A00", icoColor: "#664400" },
-          };
-          const st = styles[s.variant];
           const Icon = s.Icon;
           return (
-            <div key={i} className="rounded-[20px] p-5 relative overflow-hidden"
-              style={{ background: st.bg, border: `0.5px solid ${st.bdr}`, boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
-              <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none"
-                style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
-              <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
-                style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)", boxShadow: "0 2px 6px rgba(0,0,0,0.05)" }}>
-                <Icon className="w-[15px] h-[15px]" style={{ color: st.icoColor }} strokeWidth={2.5} />
+            <div
+              key={i}
+              className="rounded-[20px] p-5 relative overflow-hidden"
+              style={{
+                background: s.cardGrad,
+                boxShadow: "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)",
+                border: "0.5px solid rgba(0,85,255,0.08)",
+              }}
+            >
+              <div
+                className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
+                style={{ background: s.tileGrad, boxShadow: s.tileShadow }}
+              >
+                <Icon className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
               </div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px] relative z-[1]" style={{ color: st.lbl }}>{s.label}</div>
-              <div className="text-[34px] font-bold leading-none tracking-[-1px] mb-[5px] relative z-[1]" style={{ color: st.val }}>{s.val}</div>
-              <div className="text-[11px] font-semibold relative z-[1]" style={{ color: st.lbl }}>{s.sub}</div>
+              <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: "#99AACC" }}>{s.label}</span>
+              <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: s.valColor, letterSpacing: "-1.2px" }}>{s.val}</p>
+              <p className="text-[11px] font-semibold truncate" style={{ color: "#5070B0" }}>{s.sub}</p>
+              <Icon
+                className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none"
+                style={{ color: s.decorColor, opacity: 0.18 }}
+                strokeWidth={2}
+              />
             </div>
           );
         })}

@@ -1783,143 +1783,84 @@ export default function TeacherLeaderboard() {
         </div>
       </div>
 
-      {/* ─── Bright Stat Grid (4 cards) ─────────────────────────────── */}
+      {/* ─── 4 Stat Cards — dashboard-style ─────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }}>
         {[
           {
             label: "Total Teachers",
             value: stats.total,
             sub: classFilter === "All" ? "In branch" : "Teaching this class",
-            bg: "linear-gradient(140deg,#DDEAFF 0%,#A8C5FF 55%,#7AA5FF 100%)",
-            border: "0.5px solid rgba(0,85,255,.4)",
-            lblColor: "#002080",
-            valColor: "#001055",
-            subColor: "#002080",
-            icon: <Users size={18} color="#001055" strokeWidth={2.5} />,
+            Icon: Users,
+            cardGrad: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+            tileGrad: "linear-gradient(135deg, #0055FF, #1166FF)",
+            tileShadow: "0 4px 14px rgba(0,85,255,0.28)",
+            valColor: "#0055FF",
+            decorColor: "#0055FF",
           },
           {
             label: "Avg Performance",
             value: `${stats.avg.toFixed(1)}%`,
             sub: "Across filtered set",
-            bg: "linear-gradient(140deg,#DEFCE8 0%,#8CF0B0 55%,#50E088 100%)",
-            border: "0.5px solid rgba(0,200,83,.4)",
-            lblColor: "#005A20",
-            valColor: "#004018",
-            subColor: "#005A20",
-            icon: <TrendingUp size={18} color="#005A20" strokeWidth={2.5} />,
+            Icon: TrendingUp,
+            cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+            tileGrad: "linear-gradient(135deg, #00C853, #22EE66)",
+            tileShadow: "0 4px 14px rgba(0,200,83,0.26)",
+            valColor: "#007830",
+            decorColor: "#00C853",
           },
           {
             label: "Active Teachers",
             value: stats.active,
             sub: "With recent data",
-            bg: "linear-gradient(140deg,#EEE0FF 0%,#C9A8FF 55%,#A880FF 100%)",
-            border: "0.5px solid rgba(123,63,244,.4)",
-            lblColor: "#3A1580",
-            valColor: "#280C5C",
-            subColor: "#3A1580",
-            icon: <Sparkles size={18} color="#3A1580" strokeWidth={2.5} />,
+            Icon: Sparkles,
+            cardGrad: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+            tileGrad: "linear-gradient(135deg, #7B3FF4, #A07CF8)",
+            tileShadow: "0 4px 14px rgba(123,63,244,0.26)",
+            valColor: "#7B3FF4",
+            decorColor: "#7B3FF4",
           },
           {
             label: "Top Performer",
             value: stats.top ? `${stats.top.composite.toFixed(0)}%` : "—",
             sub: stats.top?.teacher.name || "No teachers yet",
-            bg: "linear-gradient(140deg,#FFF6D1 0%,#FFE488 55%,#FFCC33 100%)",
-            border: "0.5px solid rgba(255,170,0,.4)",
-            lblColor: "#664400",
-            valColor: "#472A00",
-            subColor: "#664400",
-            icon: <Crown size={18} color="#664400" strokeWidth={2.5} />,
+            Icon: Crown,
+            cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+            tileGrad: "linear-gradient(135deg, #FFAA00, #FFDD44)",
+            tileShadow: "0 4px 14px rgba(255,170,0,0.28)",
+            valColor: "#FFAA00",
+            decorColor: "#FFAA00",
           },
-        ].map((c, i) => (
-          <div
-            key={i}
-            style={{
-              borderRadius: 20,
-              padding: 20,
-              position: "relative",
-              overflow: "hidden",
-              background: c.bg,
-              border: c.border,
-              boxShadow: "0 10px 28px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04)",
-            }}
-          >
+        ].map((c, i) => {
+          const Icon = c.Icon;
+          return (
             <div
+              key={i}
+              className="rounded-[20px] p-5 relative overflow-hidden"
               style={{
-                position: "absolute",
-                top: -24,
-                right: -20,
-                width: 100,
-                height: 100,
-                borderRadius: "50%",
-                background: "radial-gradient(circle, rgba(255,255,255,.65) 0%, transparent 70%)",
-                pointerEvents: "none",
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                top: 16,
-                right: 16,
-                width: 38,
-                height: 38,
-                borderRadius: 12,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "rgba(255,255,255,.75)",
-                border: "0.5px solid rgba(255,255,255,.95)",
-                boxShadow: "0 2px 6px rgba(0,0,0,.05)",
+                background: c.cardGrad,
+                boxShadow: "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)",
+                border: "0.5px solid rgba(0,85,255,0.08)",
               }}
             >
-              {c.icon}
+              <div
+                className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
+                style={{ background: c.tileGrad, boxShadow: c.tileShadow }}
+              >
+                <Icon size={26} color="#fff" strokeWidth={2.3} />
+              </div>
+              <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: "#99AACC" }}>{c.label}</span>
+              <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5 truncate" style={{ color: c.valColor, letterSpacing: "-1.2px" }}>{c.value}</p>
+              <p className="text-[11px] font-semibold truncate" style={{ color: "#5070B0" }}>{c.sub}</p>
+              <Icon
+                size={56}
+                color={c.decorColor}
+                strokeWidth={2}
+                className="absolute bottom-3 right-3 pointer-events-none"
+                style={{ opacity: 0.18 }}
+              />
             </div>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: "0.10em",
-                textTransform: "uppercase",
-                color: c.lblColor,
-                marginBottom: 12,
-                position: "relative",
-                zIndex: 1,
-              }}
-            >
-              {c.label}
-            </div>
-            <div
-              style={{
-                fontSize: 32,
-                fontWeight: 700,
-                color: c.valColor,
-                letterSpacing: "-1px",
-                lineHeight: 1,
-                marginBottom: 6,
-                position: "relative",
-                zIndex: 1,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {c.value}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: c.subColor,
-                position: "relative",
-                zIndex: 1,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {c.sub}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ─── Empty / Rankings ──────────────────────────────────────── */}
@@ -1946,62 +1887,73 @@ export default function TeacherLeaderboard() {
         </div>
       ) : (
         <>
-          {/* Top Performer Spotlight + Podium */}
+          {/* Top Performer Spotlight + Podium — dashboard-style (slate blue) */}
           {top3.length > 0 && (
             <div
               style={{
-                background: "linear-gradient(140deg,#FFF6D6 0%,#FFE58A 42%,#FFCC44 100%)",
-                border: "0.5px solid rgba(255,170,0,.28)",
-                borderRadius: 28,
-                padding: "28px 32px 34px",
+                background: "linear-gradient(135deg, #D4DCEE 0%, #F5F7FC 100%)",
+                border: "0.5px solid rgba(94,122,196,0.10)",
+                borderRadius: 24,
+                padding: "26px 30px 30px",
                 position: "relative",
                 overflow: "hidden",
-                boxShadow: "0 14px 40px rgba(255,170,0,.24), 0 0 0 .5px rgba(255,170,0,.22)",
+                boxShadow: "0 0 0 0.5px rgba(94,122,196,0.14), 0 6px 20px rgba(94,122,196,0.10), 0 22px 56px rgba(94,122,196,0.12)",
                 marginBottom: 20,
               }}
             >
-              <div
+              {/* Decorative faded crown bottom-right */}
+              <Crown
+                size={140}
+                color="#5E7AC4"
+                strokeWidth={1.4}
                 style={{
                   position: "absolute",
-                  top: -60,
-                  right: -40,
-                  width: 240,
-                  height: 240,
-                  background: "radial-gradient(circle, rgba(255,255,255,.6) 0%, transparent 65%)",
-                  borderRadius: "50%",
+                  bottom: -22,
+                  right: -18,
+                  opacity: 0.12,
                   pointerEvents: "none",
                 }}
               />
-              <div
-                style={{
-                  position: "absolute",
-                  backgroundImage:
-                    "linear-gradient(rgba(255,255,255,.3) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.3) 1px,transparent 1px)",
-                  backgroundSize: "22px 22px",
-                  inset: 0,
-                  pointerEvents: "none",
-                  opacity: 0.5,
-                }}
-              />
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, position: "relative", zIndex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22, position: "relative", zIndex: 1 }}>
+                {/* Vibrant gradient tile — dashboard pattern */}
                 <div
                   style={{
-                    display: "inline-flex",
+                    width: 44,
+                    height: 44,
+                    borderRadius: 13,
+                    display: "flex",
                     alignItems: "center",
-                    gap: 6,
-                    padding: "6px 14px",
-                    borderRadius: 100,
-                    background: "rgba(255,255,255,.65)",
-                    border: "0.5px solid rgba(255,170,0,.35)",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    letterSpacing: "0.14em",
-                    textTransform: "uppercase",
-                    color: "#885500",
+                    justifyContent: "center",
+                    background: "linear-gradient(135deg, #5E7AC4, #8094D4)",
+                    boxShadow: "0 4px 14px rgba(94,122,196,0.30)",
                   }}
                 >
-                  <Award size={12} color="#885500" strokeWidth={2.5} />
-                  {top3.length === 1 ? "Top Performer" : top3.length === 2 ? "Top 2 Performers" : "Top 3 Performers"}
+                  <Crown size={22} color="#fff" strokeWidth={2.3} />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: "0.10em",
+                      textTransform: "uppercase",
+                      color: "#99AACC",
+                      marginBottom: 3,
+                    }}
+                  >
+                    Spotlight
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 17,
+                      fontWeight: 700,
+                      color: "#001040",
+                      letterSpacing: "-0.3px",
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    {top3.length === 1 ? "Top Performer" : top3.length === 2 ? "Top 2 Performers" : "Top 3 Performers"}
+                  </div>
                 </div>
               </div>
 
@@ -2183,13 +2135,13 @@ function PodiumCard({ rank, score, onClick }: { rank: 1 | 2 | 3; score: TeacherS
   const accent =
     rank === 1
       ? {
-          bg: "linear-gradient(140deg,#fff 0%,#FFF4D6 60%,#FFE58A 100%)",
-          border: "rgba(255,170,0,.45)",
-          badge: "linear-gradient(135deg,#FF8800,#FFAA00)",
-          badgeShadow: "0 6px 18px rgba(255,136,0,.5)",
-          avRing: "rgba(255,170,0,.45)",
-          avShadow: "0 0 0 4px rgba(255,170,0,.25), 0 10px 24px rgba(0,85,255,.20)",
-          crownColor: "#FF8800",
+          bg: "#FFFFFF",
+          border: "rgba(47,164,215,.18)",
+          badge: "#2FA4D7",
+          badgeShadow: "0 4px 12px rgba(47,164,215,.22)",
+          avRing: "rgba(47,164,215,.20)",
+          avShadow: "0 0 0 1px rgba(47,164,215,.18), 0 4px 14px rgba(15,23,42,.06)",
+          crownColor: "#2FA4D7",
         }
       : rank === 2
       ? {
@@ -2228,7 +2180,7 @@ function PodiumCard({ rank, score, onClick }: { rank: 1 | 2 | 3; score: TeacherS
         textAlign: "center",
         cursor: "pointer",
         minHeight: minH,
-        boxShadow: "0 10px 30px rgba(0,8,60,.10), 0 0 0 .5px rgba(255,255,255,.8) inset",
+        boxShadow: "0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.06)",
         transition: "transform .18s cubic-bezier(.34,1.56,.64,1)",
       }}
     >

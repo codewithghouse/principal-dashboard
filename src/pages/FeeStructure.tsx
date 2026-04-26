@@ -2743,64 +2743,104 @@ export default function FeeStructurePage() {
         </div>
       </div>
 
-      {/* ── Bright stat cards (stats + year/notes inputs combined) ── */}
+      {/* ── 4 Stat Cards — dashboard-style ── */}
       <div className="grid grid-cols-4 gap-4 mb-6">
-        {/* Versions stat */}
+        {/* Versions Saved — blue */}
         <div className="rounded-[20px] p-5 relative overflow-hidden"
-          style={{ background: "linear-gradient(140deg, #DDEAFF 0%, #A8C5FF 55%, #7AA5FF 100%)", border: "0.5px solid rgba(0,85,255,0.4)", boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
-          <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
-          <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
-            style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)" }}>
-            <FileSpreadsheet className="w-[15px] h-[15px]" style={{ color: "#001055" }} strokeWidth={2.5} />
+          style={{
+            background: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+            boxShadow: "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)",
+            border: "0.5px solid rgba(0,85,255,0.08)",
+          }}>
+          <div className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
+            style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 4px 14px rgba(0,85,255,0.28)" }}>
+            <FileSpreadsheet className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
           </div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px]" style={{ color: "#002080" }}>Versions Saved</div>
-          <div className="text-[34px] font-bold leading-none tracking-[-1px] mb-[5px]" style={{ color: "#001055" }}>{allStructures.length}</div>
-          <div className="text-[11px] font-semibold" style={{ color: "#002080" }}>
+          <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: "#99AACC" }}>Versions Saved</span>
+          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: "#0055FF", letterSpacing: "-1.2px" }}>{allStructures.length}</p>
+          <p className="text-[11px] font-semibold truncate" style={{ color: "#5070B0" }}>
             {latest?.uploadedBy ? `Last by ${latest.uploadedBy.split("@")[0]}` : "No uploads yet"}
-          </div>
+          </p>
+          <FileSpreadsheet
+            className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none"
+            style={{ color: "#0055FF", opacity: 0.18 }}
+            strokeWidth={2}
+          />
         </div>
 
-        {/* Students stat */}
+        {/* Students Tracked — violet */}
         <div className="rounded-[20px] p-5 relative overflow-hidden"
-          style={{ background: "linear-gradient(140deg, #EEE0FF 0%, #C9A8FF 55%, #A880FF 100%)", border: "0.5px solid rgba(123,63,244,0.4)", boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
-          <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
-          <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
-            style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)" }}>
-            <Users className="w-[15px] h-[15px]" style={{ color: "#3A1580" }} strokeWidth={2.5} />
+          style={{
+            background: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+            boxShadow: "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)",
+            border: "0.5px solid rgba(0,85,255,0.08)",
+          }}>
+          <div className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
+            style={{ background: "linear-gradient(135deg, #7B3FF4, #A07CF8)", boxShadow: "0 4px 14px rgba(123,63,244,0.26)" }}>
+            <Users className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
           </div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px]" style={{ color: "#3A1580" }}>Students Tracked</div>
-          <div className="text-[34px] font-bold leading-none tracking-[-1px] mb-[5px]" style={{ color: "#280C5C" }}>{dStudentCount || "—"}</div>
-          <div className="text-[11px] font-semibold" style={{ color: "#3A1580" }}>
+          <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: "#99AACC" }}>Students Tracked</span>
+          <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: "#7B3FF4", letterSpacing: "-1.2px" }}>{dStudentCount || "—"}</p>
+          <p className="text-[11px] font-semibold truncate" style={{ color: "#5070B0" }}>
             {dStudentCount > 0 ? "Student-level detail" : "Class-level only"}
-          </div>
+          </p>
+          <Users
+            className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none"
+            style={{ color: "#7B3FF4", opacity: 0.18 }}
+            strokeWidth={2}
+          />
         </div>
 
-        {/* Academic Year input */}
+        {/* Academic Year input — green */}
         <div className="rounded-[20px] p-5 relative overflow-hidden"
-          style={{ background: "linear-gradient(140deg, #DEFCE8 0%, #8CF0B0 55%, #50E088 100%)", border: "0.5px solid rgba(0,200,83,0.4)", boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
-          <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
-          <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
-            style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)" }}>
-            <Calendar className="w-[15px] h-[15px]" style={{ color: "#005A20" }} strokeWidth={2.5} />
+          style={{
+            background: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+            boxShadow: "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)",
+            border: "0.5px solid rgba(0,85,255,0.08)",
+          }}>
+          <div className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
+            style={{ background: "linear-gradient(135deg, #00C853, #22EE66)", boxShadow: "0 4px 14px rgba(0,200,83,0.26)" }}>
+            <Calendar className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
           </div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px]" style={{ color: "#005A20" }}>Academic Year (new upload)</div>
-          <input value={academicYear} onChange={e => setAcademicYear(e.target.value)} placeholder="e.g., 2026-27"
-            className="w-full h-[40px] px-3 rounded-[11px] text-[15px] font-bold outline-none"
-            style={{ background: "rgba(255,255,255,0.65)", border: "0.5px solid rgba(0,200,83,0.35)", color: "#004018" }} />
+          <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: "#99AACC" }}>Academic Year (new upload)</span>
+          <input
+            value={academicYear}
+            onChange={e => setAcademicYear(e.target.value)}
+            placeholder="e.g., 2026-27"
+            className="w-full h-[40px] px-3 rounded-[11px] text-[15px] font-bold outline-none relative z-[1]"
+            style={{
+              background: "#FFFFFF",
+              border: "0.5px solid rgba(0,200,83,0.20)",
+              color: "#007830",
+              boxShadow: "0 1px 2px rgba(0,200,83,0.06)",
+            }}
+          />
         </div>
 
-        {/* Notes input */}
+        {/* Notes input — gold */}
         <div className="rounded-[20px] p-5 relative overflow-hidden"
-          style={{ background: "linear-gradient(140deg, #FFF6D1 0%, #FFE488 55%, #FFCC33 100%)", border: "0.5px solid rgba(255,170,0,0.4)", boxShadow: "0 10px 28px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04)" }}>
-          <div className="absolute -top-6 -right-5 w-[90px] h-[90px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
-          <div className="absolute top-4 right-4 w-[32px] h-[32px] rounded-[11px] flex items-center justify-center z-[1]"
-            style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)" }}>
-            <Tag className="w-[15px] h-[15px]" style={{ color: "#664400" }} strokeWidth={2.5} />
+          style={{
+            background: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+            boxShadow: "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)",
+            border: "0.5px solid rgba(0,85,255,0.08)",
+          }}>
+          <div className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
+            style={{ background: "linear-gradient(135deg, #FFAA00, #FFDD44)", boxShadow: "0 4px 14px rgba(255,170,0,0.28)" }}>
+            <Tag className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
           </div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[10px]" style={{ color: "#664400" }}>Notes (new upload)</div>
-          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g., Revised Q2 fees"
-            className="w-full h-[40px] px-3 rounded-[11px] text-[13px] font-semibold outline-none"
-            style={{ background: "rgba(255,255,255,0.65)", border: "0.5px solid rgba(255,170,0,0.35)", color: "#472A00" }} />
+          <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: "#99AACC" }}>Notes (new upload)</span>
+          <input
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="e.g., Revised Q2 fees"
+            className="w-full h-[40px] px-3 rounded-[11px] text-[13px] font-semibold outline-none relative z-[1]"
+            style={{
+              background: "#FFFFFF",
+              border: "0.5px solid rgba(255,170,0,0.20)",
+              color: "#664400",
+              boxShadow: "0 1px 2px rgba(255,170,0,0.06)",
+            }}
+          />
         </div>
       </div>
 
