@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, LabelList } from "recharts";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import { CheckCircle, XCircle, Clock, TrendingUp, Send, Edit3, Bell, FileText, TrendingDown, AlertTriangle, Sparkles } from "lucide-react";
 import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import ClassAttendanceDetail from "@/components/ClassAttendanceDetail";
@@ -1331,42 +1337,59 @@ const Attendance = () => {
                   <div className="flex items-center justify-center h-48">
                     <p className="text-[13px] font-bold" style={{ color: dT4 }}>No attendance data available</p>
                   </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-4 gap-3 mb-6">
-                      {gradeHeatmap.map((g, i) => {
-                        const grad = g.value >= 90 ? `linear-gradient(135deg, ${dGREEN}, #22EE66)` :
-                                     g.value >= 80 ? `linear-gradient(135deg, ${dGOLD}, #FFDD44)` :
-                                                      `linear-gradient(135deg, ${dRED}, #FF6688)`;
-                        const shadow = g.value >= 90 ? "0 4px 14px rgba(0,200,83,0.24)" :
-                                       g.value >= 80 ? "0 4px 14px rgba(255,170,0,0.24)" :
-                                                        "0 4px 14px rgba(255,51,85,0.26)";
-                        return (
-                          <button key={i} onClick={() => setSelectedClass(g.grade)}
-                            className="flex flex-col items-center gap-2 transition-transform hover:scale-[1.04]">
-                            <span className="text-[11px] font-bold" style={{ color: dT3 }}>{g.grade}</span>
-                            <div className="w-full aspect-square rounded-[14px] flex items-center justify-center text-white text-[16px] font-bold"
-                              style={{ background: grad, boxShadow: shadow, letterSpacing: "-0.4px" }}>
-                              {g.pct}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="flex items-center gap-5 pt-4" style={{ borderTop: `0.5px solid ${dSEP}` }}>
-                      {[
-                        { color: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, label: "90-100%" },
-                        { color: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, label: "80-89%" },
-                        { color: `linear-gradient(135deg, ${dRED}, #FF6688)`, label: "Below 80%" },
-                      ].map(({ color, label }) => (
-                        <div key={label} className="flex items-center gap-[6px]">
-                          <span className="w-3 h-3 rounded-[4px]" style={{ background: color }} />
-                          <span className="text-[11px] font-semibold" style={{ color: dT3 }}>{label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+                ) : (() => {
+                  const barData = gradeHeatmap.map((g) => ({
+                    grade: g.grade,
+                    value: g.value,
+                    fill: g.value >= 90 ? dGREEN : g.value >= 80 ? dGOLD : dRED,
+                  }));
+                  const chartConfig: ChartConfig = {
+                    value: { label: "Attendance %" },
+                  };
+                  return (
+                    <>
+                      <ChartContainer config={chartConfig} className="h-[260px] w-full">
+                        <BarChart accessibilityLayer data={barData}>
+                          <CartesianGrid vertical={false} />
+                          <XAxis
+                            dataKey="grade"
+                            tickLine={false}
+                            tickMargin={10}
+                            axisLine={false}
+                            tick={{ fontSize: 11, fontWeight: 700, fill: dT3 }}
+                          />
+                          <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent indicator="dashed" formatter={(v: any) => [`${v}%`, "Attendance"]} />}
+                          />
+                          <Bar
+                            dataKey="value"
+                            radius={4}
+                            maxBarSize={56}
+                            onClick={(d: any) => d?.grade && setSelectedClass(d.grade)}
+                            className="cursor-pointer"
+                          >
+                            {barData.map((d, i) => (
+                              <Cell key={i} fill={d.fill} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ChartContainer>
+                      <div className="flex items-center gap-5 pt-4 mt-2" style={{ borderTop: `0.5px solid ${dSEP}` }}>
+                        {[
+                          { color: dGREEN, label: "90-100%" },
+                          { color: dGOLD,  label: "80-89%" },
+                          { color: dRED,   label: "Below 80%" },
+                        ].map(({ color, label }) => (
+                          <div key={label} className="flex items-center gap-[6px]">
+                            <span className="w-3 h-3 rounded-[4px]" style={{ background: color }} />
+                            <span className="text-[11px] font-semibold" style={{ color: dT3 }}>{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 

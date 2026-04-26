@@ -6,6 +6,12 @@ import {
 } from "lucide-react";
 import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import SubjectAnalysis from "@/components/SubjectAnalysis";
 import AcademicsMobile from "@/components/dashboard/AcademicsMobile";
 import { useAuth } from "@/lib/AuthContext";
@@ -291,36 +297,72 @@ const AcademicsDesktop = ({
               <div className="flex items-center justify-center h-48">
                 <p className="text-[13px] font-bold" style={{ color: T4 }}>No data yet</p>
               </div>
-            ) : (
-              <>
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie data={gradeDistData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" animationDuration={1000}>
-                      {gradeDistData.map((entry, i) => (
-                        <Cell key={i} fill={i === 0 ? GREEN : i === 1 ? B1 : i === 2 ? GOLD : RED} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value: any, name: any) => [value, name]}
-                      contentStyle={{ borderRadius: 12, border: `0.5px solid ${SEP}`, boxShadow: SH, fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="grid grid-cols-2 gap-3 mt-4">
-                  {gradeDistData.map((g, i) => {
-                    const c = i === 0 ? GREEN : i === 1 ? B1 : i === 2 ? GOLD : RED;
-                    return (
-                      <div key={g.name} className="flex items-center gap-2 px-3 py-2 rounded-[12px]"
-                        style={{ background: BG, border: `0.5px solid ${SEP}` }}>
-                        <span className="w-3 h-3 rounded-[4px]" style={{ background: c }} />
-                        <span className="text-[11px] font-bold flex-1 truncate" style={{ color: T2 }}>{g.name}</span>
-                        <span className="text-[13px] font-bold" style={{ color: c }}>{g.value}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
+            ) : (() => {
+              const gradeColors = [GREEN, B1, GOLD, RED];
+              const gradeKeys = ["a", "b", "c", "d"];
+              const chartData = gradeDistData.map((g, i) => ({
+                grade: gradeKeys[i] ?? `g${i}`,
+                name: g.name,
+                value: g.value,
+                fill: `var(--color-${gradeKeys[i] ?? `g${i}`})`,
+              }));
+              const chartConfig: ChartConfig = {
+                value: { label: "Students" },
+                a: { label: gradeDistData[0]?.name ?? "A", color: GREEN },
+                b: { label: gradeDistData[1]?.name ?? "B", color: B1 },
+                c: { label: gradeDistData[2]?.name ?? "C", color: GOLD },
+                d: { label: gradeDistData[3]?.name ?? "D", color: RED },
+              };
+              return (
+                <>
+                  <ChartContainer
+                    config={chartConfig}
+                    className="mx-auto aspect-square max-h-[260px] px-0"
+                  >
+                    <PieChart>
+                      <ChartTooltip content={<ChartTooltipContent nameKey="value" hideLabel />} />
+                      <Pie
+                        data={chartData}
+                        dataKey="value"
+                        nameKey="grade"
+                        animationDuration={1000}
+                        labelLine={false}
+                        label={({ payload, ...props }: any) => {
+                          if (!payload?.value) return null;
+                          return (
+                            <text
+                              cx={props.cx}
+                              cy={props.cy}
+                              x={props.x}
+                              y={props.y}
+                              textAnchor={props.textAnchor}
+                              dominantBaseline={props.dominantBaseline}
+                              fill="#ffffff"
+                              style={{ fontSize: 14, fontWeight: 800, fontFamily: "'DM Sans', sans-serif" }}
+                            >
+                              {payload.value}
+                            </text>
+                          );
+                        }}
+                      />
+                    </PieChart>
+                  </ChartContainer>
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    {gradeDistData.map((g, i) => {
+                      const c = gradeColors[i];
+                      return (
+                        <div key={g.name} className="flex items-center gap-2 px-3 py-2 rounded-[12px]"
+                          style={{ background: BG, border: `0.5px solid ${SEP}` }}>
+                          <span className="w-3 h-3 rounded-[4px]" style={{ background: c }} />
+                          <span className="text-[11px] font-bold flex-1 truncate" style={{ color: T2 }}>{g.name}</span>
+                          <span className="text-[13px] font-bold" style={{ color: c }}>{g.value}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
 

@@ -1176,27 +1176,65 @@ const Syllabus = () => {
         </div>
       </div>
 
-      {/* 4 Stat Cards */}
+      {/* 4 Stat Cards — dashboard-style */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
         {[
-          { title: "Total Syllabi", val: totalCount, valColor: dB1, sub: totalCount === 0 ? "None uploaded yet" : "Across all classes", Icon: Library, grad: `linear-gradient(135deg, ${dB1}, ${dB2})`, glow: "rgba(0,85,255,0.10)", shadow: "0 4px 14px rgba(0,85,255,0.26)" },
-          { title: "Classes Covered", val: classesCount, valColor: dVIOLET, sub: classesCount === 0 ? "No classes yet" : "With ≥ 1 syllabus", Icon: Building2, grad: `linear-gradient(135deg, ${dVIOLET}, #A07CF8)`, glow: "rgba(123,63,244,0.10)", shadow: "0 4px 14px rgba(123,63,244,0.24)" },
-          { title: "Subjects Covered", val: subjectsCount, valColor: dGREEN_D, sub: subjectsCount === 0 ? "No subjects yet" : "Distinct subjects", Icon: BookOpen, grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, glow: "rgba(0,200,83,0.10)", shadow: "0 4px 14px rgba(0,200,83,0.22)" },
-          { title: "Updated This Week", val: updatedThisWeek, valColor: dGOLD, sub: "Past 7 days", Icon: Calendar, grad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, glow: "rgba(255,170,0,0.12)", shadow: "0 4px 14px rgba(255,170,0,0.26)" },
-        ].map(({ title, val, valColor, sub, Icon, grad, glow, shadow }) => (
-          <div key={title} className="bg-white rounded-[20px] p-5 relative overflow-hidden"
-            style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
-            <div className="absolute -top-6 -right-6 w-[100px] h-[100px] rounded-full pointer-events-none"
-              style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)` }} />
-            <div className="flex items-center justify-between mb-4 relative">
-              <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>{title}</span>
-              <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
-                style={{ background: grad, boxShadow: shadow }}>
-                <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
-              </div>
+          {
+            title: "Total Syllabi", val: totalCount, valColor: dB1,
+            sub: totalCount === 0 ? "None uploaded yet" : "Across all classes",
+            Icon: Library,
+            cardGrad: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+            tileGrad: `linear-gradient(135deg, ${dB1}, ${dB2})`,
+            tileShadow: "0 4px 14px rgba(0,85,255,0.28)",
+            decorColor: dB1,
+          },
+          {
+            title: "Classes Covered", val: classesCount, valColor: dVIOLET,
+            sub: classesCount === 0 ? "No classes yet" : "With ≥ 1 syllabus",
+            Icon: Building2,
+            cardGrad: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+            tileGrad: `linear-gradient(135deg, ${dVIOLET}, #A07CF8)`,
+            tileShadow: "0 4px 14px rgba(123,63,244,0.26)",
+            decorColor: dVIOLET,
+          },
+          {
+            title: "Subjects Covered", val: subjectsCount, valColor: dGREEN_D,
+            sub: subjectsCount === 0 ? "No subjects yet" : "Distinct subjects",
+            Icon: BookOpen,
+            cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+            tileGrad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`,
+            tileShadow: "0 4px 14px rgba(0,200,83,0.26)",
+            decorColor: dGREEN,
+          },
+          {
+            title: "Updated This Week", val: updatedThisWeek, valColor: dGOLD,
+            sub: "Past 7 days",
+            Icon: Calendar,
+            cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+            tileGrad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`,
+            tileShadow: "0 4px 14px rgba(255,170,0,0.28)",
+            decorColor: dGOLD,
+          },
+        ].map(({ title, val, valColor, sub, Icon, cardGrad, tileGrad, tileShadow, decorColor }) => (
+          <div
+            key={title}
+            className="rounded-[20px] p-5 relative overflow-hidden"
+            style={{ background: cardGrad, boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}
+          >
+            <div
+              className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
+              style={{ background: tileGrad, boxShadow: tileShadow }}
+            >
+              <Icon className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
             </div>
+            <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: dT4 }}>{title}</span>
             <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: valColor, letterSpacing: "-1.2px" }}>{val}</p>
             <p className="text-[11px] font-semibold truncate" style={{ color: dT3 }}>{sub}</p>
+            <Icon
+              className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none"
+              style={{ color: decorColor, opacity: 0.18 }}
+              strokeWidth={2}
+            />
           </div>
         ))}
       </div>

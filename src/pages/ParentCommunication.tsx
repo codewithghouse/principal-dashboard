@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Loader2, MessageSquare, Search, Send, User, ChevronLeft, CheckCheck, Users, Mail, Smile, Plus, MoreVertical, Sparkles, Check } from "lucide-react";
+import { Loader2, MessageSquare, Search, Send, User, ChevronLeft, CheckCheck, Users, Mail, Smile, Plus, MoreVertical, Sparkles, Check, Paperclip, Phone, Video, Lock } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
@@ -1029,20 +1029,39 @@ const ParentCommunication = () => {
   // ═══════════════════════════════════════════════════════════════════════════
   // DESKTOP — mirrors the mobile aesthetic (blue palette + gradient hero)
   // ═══════════════════════════════════════════════════════════════════════════
-  const B1 = "#0055FF", B2 = "#1166FF", B3 = "#2277FF";
-  const GREEN = "#00C853", GREEN_D = "#007830";
+  // WhatsApp palette
+  const WA_TEAL_D     = "#008069";  // primary header green (modern WA)
+  const WA_TEAL_DD    = "#005C4B";  // darker green (outgoing bubble in dark mode but used for accents)
+  const WA_GREEN      = "#25D366";  // accent / send button
+  const WA_GREEN_D    = "#1FAD52";
+  const WA_BUBBLE_OUT = "#D9FDD3";  // outgoing bubble (light mint)
+  const WA_BUBBLE_IN  = "#FFFFFF";
+  const WA_TEXT       = "#111B21";  // primary dark text
+  const WA_TEXT_MUTED = "#667781";  // muted secondary
+  const WA_TIME       = "#667781";
+  const WA_TICK_READ  = "#53BDEB";  // blue read tick
+  const WA_TICK_SENT  = "#8696A0";  // grey sent tick
+  const WA_CHAT_BG    = "#EFEAE2";  // warm beige chat background
+  const WA_PANEL      = "#F0F2F5";  // light grey panel (search/input/active)
+  const WA_DIVIDER    = "#E9EDEF";
+  const WA_HOVER      = "#F5F6F6";
+  const WA_BADGE      = "#25D366";
+
+  // Aliases — kept so older references in this scope still compile.
+  const B1 = WA_TEAL_D, B2 = WA_TEAL_DD, B3 = WA_GREEN;
+  const GREEN = WA_GREEN, GREEN_D = WA_GREEN_D;
   const ORANGE = "#FF8800";
   const RED = "#FF3355";
-  const T1 = "#001040", T2 = "#002080", T3 = "#5070B0", T4 = "#99AACC";
-  const SEP = "rgba(0,85,255,.08)";
-  const SH_CARD = "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 18px 44px rgba(0,85,255,.13)";
+  const T1 = WA_TEXT, T2 = "#3B4A54", T3 = WA_TEXT_MUTED, T4 = "#8696A0";
+  const SEP = WA_DIVIDER;
+  const SH_CARD = "0 1px 2px rgba(11,20,26,0.08), 0 1px 3px rgba(11,20,26,0.04)";
 
   const avatarGradsD = [
-    `linear-gradient(135deg, ${B1}, ${B3})`,
-    `linear-gradient(135deg, #002DBB, ${B1})`,
-    `linear-gradient(135deg, #7B3FF4, #AA77FF)`,
-    `linear-gradient(135deg, ${GREEN}, #22EE66)`,
-    `linear-gradient(135deg, ${ORANGE}, #FFCC55)`,
+    "linear-gradient(135deg, #00A884, #25D366)",
+    "linear-gradient(135deg, #128C7E, #20B970)",
+    "linear-gradient(135deg, #6F42C1, #A06CD5)",
+    "linear-gradient(135deg, #DD6B20, #ED8936)",
+    "linear-gradient(135deg, #2B6CB0, #4299E1)",
   ];
 
   return (
@@ -1050,44 +1069,44 @@ const ParentCommunication = () => {
       style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}>
       <style>{`
         .pc-scroll::-webkit-scrollbar { width: 6px; }
-        .pc-scroll::-webkit-scrollbar-thumb { background: rgba(0,85,255,.18); border-radius: 4px; }
+        .pc-scroll::-webkit-scrollbar-thumb { background: rgba(17,27,33,.20); border-radius: 4px; }
       `}</style>
 
-      {/* ── Hero (compact WhatsApp-style top bar) ──────────────────────── */}
+      {/* ── Hero (WhatsApp-style top bar — teal green) ──────────────────── */}
       <div className="rounded-[18px] px-6 py-4 flex items-center gap-4 text-white relative overflow-hidden shrink-0"
         style={{
-          background: "linear-gradient(135deg, #001040 0%, #001888 35%, #0033CC 70%, #0055FF 100%)",
-          boxShadow: "0 6px 22px rgba(0,51,204,0.24), 0 0 0 0.5px rgba(255,255,255,0.10)",
+          background: `linear-gradient(135deg, ${WA_TEAL_DD} 0%, ${WA_TEAL_D} 60%, #00A884 100%)`,
+          boxShadow: "0 6px 22px rgba(0,128,105,0.28), 0 0 0 0.5px rgba(255,255,255,0.10)",
         }}>
         <div className="absolute -right-10 -top-10 w-56 h-56 rounded-full pointer-events-none"
           style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
-        <div className="w-11 h-11 rounded-[14px] flex items-center justify-center shrink-0 relative z-10"
-          style={{ background: "rgba(255,255,255,0.16)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+        <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 relative z-10"
+          style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
           <MessageSquare className="w-5 h-5 text-white" strokeWidth={2.1} />
         </div>
         <div className="relative z-10 flex-1 min-w-0">
           <div className="text-[18px] font-bold tracking-tight leading-tight">Parent Communication</div>
-          <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.60)" }}>
+          <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.72)" }}>
             Direct messaging with parents & guardians
           </p>
         </div>
         <div className="relative z-10 flex items-center gap-4">
           <div className="text-right">
             <div className="text-[18px] font-bold tracking-tight leading-none"
-              style={{ color: stats.unread > 0 ? "#FF8899" : "#fff" }}>
+              style={{ color: stats.unread > 0 ? "#FFE48A" : "#fff" }}>
               {stats.unread}
             </div>
-            <div className="text-[9px] font-bold uppercase tracking-[0.10em] mt-1" style={{ color: "rgba(255,255,255,0.45)" }}>Unread</div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.10em] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>Unread</div>
           </div>
           <div className="w-px h-8" style={{ background: "rgba(255,255,255,0.20)" }} />
           <div className="text-right">
             <div className="text-[18px] font-bold tracking-tight leading-none text-white">{stats.contacted}</div>
-            <div className="text-[9px] font-bold uppercase tracking-[0.10em] mt-1" style={{ color: "rgba(255,255,255,0.45)" }}>Parents</div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.10em] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>Parents</div>
           </div>
           <div className="w-px h-8" style={{ background: "rgba(255,255,255,0.20)" }} />
           <div className="text-right">
             <div className="text-[18px] font-bold tracking-tight leading-none text-white">{stats.total}</div>
-            <div className="text-[9px] font-bold uppercase tracking-[0.10em] mt-1" style={{ color: "rgba(255,255,255,0.45)" }}>Total</div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.10em] mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>Total</div>
           </div>
         </div>
       </div>
@@ -1098,10 +1117,10 @@ const ParentCommunication = () => {
         {/* LEFT — list */}
         <div className="col-span-12 lg:col-span-5 xl:col-span-4 flex flex-col gap-2 min-h-0">
 
-          {/* Search */}
-          <div className="bg-white rounded-[16px] relative"
-            style={{ boxShadow: SH_CARD, border: `0.5px solid ${SEP}` }}>
-            <Search size={15} color="rgba(0,85,255,.42)" strokeWidth={2.2}
+          {/* Search — WhatsApp Web style */}
+          <div className="rounded-[10px] relative"
+            style={{ background: WA_PANEL }}>
+            <Search size={15} color={WA_TEXT_MUTED} strokeWidth={2.2}
               className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               value={searchQuery}
@@ -1109,50 +1128,50 @@ const ParentCommunication = () => {
               placeholder="Search or start a new chat..."
               className="w-full outline-none"
               style={{
-                padding: "12px 14px 12px 42px", background: "transparent",
-                borderRadius: 16, fontSize: 13, color: T1, fontWeight: 400, fontFamily: "inherit",
+                padding: "10px 14px 10px 42px", background: "transparent",
+                borderRadius: 10, fontSize: 13, color: WA_TEXT, fontWeight: 400, fontFamily: "inherit",
               }}
             />
           </div>
 
-          {/* New message button */}
+          {/* New message button — WhatsApp green */}
           <button
             onClick={() => {
               if (filteredStudents.length === 0) { toast.info("No students found."); return; }
               if (!selectedStudent) setSelectedStudent(filteredStudents[0]);
               toast.info("Type your message in the composer on the right.");
             }}
-            className="h-[46px] rounded-[14px] flex items-center justify-center gap-2 text-white text-[14px] font-bold"
+            className="h-[44px] rounded-[10px] flex items-center justify-center gap-2 text-white text-[14px] font-bold transition-colors"
             style={{
-              background: `linear-gradient(135deg, ${B1}, ${B2})`, border: "none",
-              boxShadow: "0 6px 22px rgba(0,85,255,.38), 0 2px 5px rgba(0,85,255,.18)",
+              background: WA_GREEN, border: "none",
+              boxShadow: "0 4px 12px rgba(37,211,102,0.32), 0 2px 4px rgba(37,211,102,0.18)",
               cursor: "pointer",
             }}>
-            <Plus size={14} strokeWidth={2.5} />
+            <Plus size={15} strokeWidth={2.5} />
             New Message to Parent
           </button>
 
           {/* Section label */}
-          <div className="flex items-center gap-2 px-1 pt-1 text-[10px] font-bold uppercase" style={{ color: T4, letterSpacing: "0.10em" }}>
+          <div className="flex items-center gap-2 px-2 pt-1 text-[10px] font-bold uppercase" style={{ color: WA_TEXT_MUTED, letterSpacing: "0.10em" }}>
             <span>Conversations</span>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold"
-              style={{ background: "rgba(0,85,255,.10)", border: "0.5px solid rgba(0,85,255,.16)", color: B1, letterSpacing: "0.04em", textTransform: "none" }}>
+              style={{ background: "rgba(0,128,105,0.10)", color: WA_TEAL_D, letterSpacing: "0.04em", textTransform: "none" }}>
               {filteredStudents.length} parent{filteredStudents.length === 1 ? "" : "s"}
             </span>
-            <span className="flex-1 h-px" style={{ background: "rgba(0,85,255,.12)" }} />
+            <span className="flex-1 h-px" style={{ background: WA_DIVIDER }} />
           </div>
 
-          {/* List */}
-          <div className="bg-white rounded-[18px] overflow-hidden flex-1 flex flex-col min-h-0"
-            style={{ boxShadow: SH_CARD, border: `0.5px solid ${SEP}` }}>
+          {/* List — WhatsApp Web chat list */}
+          <div className="rounded-[12px] overflow-hidden flex-1 flex flex-col min-h-0"
+            style={{ background: "#fff", boxShadow: SH_CARD, border: `0.5px solid ${WA_DIVIDER}` }}>
             <div className="overflow-y-auto flex-1 min-h-0 pc-scroll">
               {studentsLoading ? (
-                <div className="flex justify-center py-16"><Loader2 size={24} color={B1} className="animate-spin" /></div>
+                <div className="flex justify-center py-16"><Loader2 size={24} color={WA_TEAL_D} className="animate-spin" /></div>
               ) : filteredStudents.length === 0 ? (
                 <div className="py-12 flex flex-col items-center gap-2">
-                  <User size={36} color="rgba(0,85,255,.22)" strokeWidth={1.8} />
-                  <div className="text-[13px] font-bold" style={{ color: T2 }}>No students found</div>
-                  <div className="text-[11px]" style={{ color: T4 }}>Try a different search.</div>
+                  <User size={36} color={WA_TEXT_MUTED} strokeWidth={1.8} style={{ opacity: 0.4 }} />
+                  <div className="text-[13px] font-bold" style={{ color: WA_TEXT }}>No students found</div>
+                  <div className="text-[11px]" style={{ color: WA_TEXT_MUTED }}>Try a different search.</div>
                 </div>
               ) : (
                 filteredStudents.map((s, i) => {
@@ -1163,57 +1182,55 @@ const ParentCommunication = () => {
                   const avBg = avatarGradsD[((s.studentName || "").charCodeAt(0) || 0) % avatarGradsD.length];
                   const initText = (s.studentName || "ST").substring(0, 2).toUpperCase();
                   const timeLabel = last ? fmtTime(last.timestamp) : "";
-                  const preview = last ? (last.from === "principal" ? `✓ ${last.message}` : last.message) : (s.className || "No messages yet");
+                  const previewRaw = last ? last.message : (s.className || "");
+                  const preview = previewRaw || "Tap to start the conversation";
                   return (
                     <button key={s.id}
                       onClick={() => setSelectedStudent(s)}
-                      className="w-full flex items-center gap-3 px-5 py-[14px] text-left"
+                      className="w-full flex items-center gap-3 px-3 py-[10px] text-left transition-colors hover:bg-[#F5F6F6]"
                       style={{
-                        borderBottom: i === filteredStudents.length - 1 ? "none" : `0.5px solid ${SEP}`,
-                        background: active ? "rgba(0,85,255,.06)" : unread > 0 ? "rgba(0,85,255,.03)" : "#fff",
+                        background: active ? WA_HOVER : "#fff",
                         border: "none",
+                        borderLeft: active ? `3px solid ${WA_GREEN}` : "3px solid transparent",
                       }}>
-                      <div className="w-[44px] h-[44px] rounded-[14px] flex items-center justify-center text-white text-[14px] font-bold shrink-0 relative"
-                        style={{ background: avBg, boxShadow: "0 3px 10px rgba(0,85,255,.24)" }}>
+                      {/* Avatar — circular WhatsApp style */}
+                      <div className="w-[49px] h-[49px] rounded-full flex items-center justify-center text-white text-[15px] font-bold shrink-0 relative"
+                        style={{ background: avBg, letterSpacing: "-0.3px" }}>
                         {initText}
-                        {unread > 0 && (
-                          <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-[9px] text-[10px] font-bold text-white flex items-center justify-center"
-                            style={{ background: RED, border: "2px solid #fff", boxShadow: "0 2px 6px rgba(255,51,85,.28)" }}>
-                            {unread}
-                          </div>
-                        )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-[3px]">
-                          <span className="text-[13px] font-bold truncate" style={{ color: T1, letterSpacing: "-0.2px" }}>
+                      {/* Name + preview */}
+                      <div className="flex-1 min-w-0 py-1" style={{ borderBottom: i === filteredStudents.length - 1 ? "none" : `0.5px solid ${WA_DIVIDER}` }}>
+                        <div className="flex items-center justify-between gap-2 mb-[3px]">
+                          <span className="text-[15px] font-medium truncate" style={{ color: WA_TEXT, letterSpacing: "-0.2px" }}>
                             {s.studentName || "Student"}
                           </span>
-                          <span className="px-2 py-[2px] rounded-full text-[9px] font-bold shrink-0"
-                            style={{ background: "rgba(0,85,255,.10)", color: B1, border: "0.5px solid rgba(0,85,255,.16)" }}>
-                            Parent
-                          </span>
+                          {last && (
+                            <span className="text-[11.5px] font-medium shrink-0" style={{ color: unread > 0 ? WA_GREEN_D : WA_TEXT_MUTED }}>
+                              {timeLabel}
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[12px] truncate"
-                          style={{ color: unread > 0 ? T2 : T3, fontWeight: unread > 0 ? 600 : 400 }}>
-                          {preview}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1 min-w-0 flex-1">
+                            {last && last.from === "principal" && (
+                              <CheckCheck size={14} color={unread > 0 ? WA_TEXT_MUTED : WA_TICK_READ} strokeWidth={2.4} className="shrink-0" />
+                            )}
+                            <span className="text-[13px] truncate"
+                              style={{ color: unread > 0 ? WA_TEXT : WA_TEXT_MUTED, fontWeight: unread > 0 ? 500 : 400 }}>
+                              {preview}
+                            </span>
+                          </div>
+                          {unread > 0 ? (
+                            <span className="min-w-[20px] h-[20px] px-1.5 rounded-full text-[11px] font-bold text-white flex items-center justify-center shrink-0"
+                              style={{ background: WA_BADGE }}>
+                              {unread}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] truncate shrink-0" style={{ color: WA_TEXT_MUTED, maxWidth: 100 }}>
+                              {s.className || ""}
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[10px] font-semibold mt-0.5 truncate" style={{ color: T4 }}>
-                          {s.className || ""}{s.parentName ? ` · ${s.parentName}` : ""}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        {last ? (
-                          <>
-                            <span className="text-[10px] font-semibold" style={{ color: unread > 0 ? B1 : T4 }}>{timeLabel}</span>
-                            {unread > 0 ? (
-                              <span className="w-2 h-2 rounded-full" style={{ background: B1, boxShadow: "0 0 0 2px rgba(0,85,255,.18)" }} />
-                            ) : last.from === "principal" ? (
-                              <CheckCheck size={12} color={GREEN} strokeWidth={2.5} />
-                            ) : null}
-                          </>
-                        ) : (
-                          <span className="text-[10px] italic" style={{ color: T4 }}>Start chat →</span>
-                        )}
                       </div>
                     </button>
                   );
@@ -1228,117 +1245,143 @@ const ParentCommunication = () => {
           <div className="bg-white rounded-[18px] overflow-hidden flex flex-col h-full"
             style={{ boxShadow: SH_CARD, border: `0.5px solid ${SEP}` }}>
             {!selectedStudent ? (
-              <div className="flex-1 flex flex-col items-center justify-center px-8 py-16 text-center">
-                <div className="w-20 h-20 rounded-[22px] flex items-center justify-center mb-5"
-                  style={{ background: "rgba(0,85,255,.10)", border: "0.5px solid rgba(0,85,255,.20)" }}>
-                  <MessageSquare size={36} color="rgba(0,85,255,.45)" strokeWidth={1.8} />
+              /* Empty state — WhatsApp Web style */
+              <div className="flex-1 flex flex-col items-center justify-center px-8 py-16 text-center relative overflow-hidden"
+                style={{ background: WA_PANEL, borderBottom: `6px solid ${WA_TEAL_D}` }}>
+                <div className="w-[120px] h-[120px] rounded-full flex items-center justify-center mb-6"
+                  style={{ background: "#fff", boxShadow: "0 4px 16px rgba(11,20,26,0.06)" }}>
+                  <MessageSquare size={56} color={WA_TEAL_D} strokeWidth={1.4} />
                 </div>
-                <h3 className="text-[18px] font-bold mb-2" style={{ color: T1 }}>Parent Communication</h3>
-                <p className="text-[13px] max-w-[360px] leading-[1.55]" style={{ color: T3 }}>
-                  Select a student from the left to start messaging their parent — share updates, resolve queries and keep them in the loop.
+                <h3 className="text-[28px] font-light mb-3 tracking-tight" style={{ color: WA_TEXT, letterSpacing: "-0.6px" }}>
+                  Parent Communication
+                </h3>
+                <p className="text-[14px] max-w-[460px] leading-[1.6] mb-6" style={{ color: WA_TEXT_MUTED }}>
+                  Select a parent from the left to start messaging — share updates, resolve queries and keep them in the loop.
                 </p>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px]"
+                  style={{ color: WA_TEXT_MUTED }}>
+                  <Lock size={12} strokeWidth={2.2} />
+                  End-to-end secure with parents
+                </div>
               </div>
             ) : (
               <>
-                {/* Chat header */}
-                <div className="px-6 py-4 flex items-center gap-3 relative overflow-hidden"
-                  style={{ background: "linear-gradient(135deg,#0033CC 0%,#0055FF 50%,#2277FF 100%)", flexShrink: 0 }}>
-                  <div className="absolute -right-4 -top-6 w-[130px] h-[130px] rounded-full pointer-events-none"
-                    style={{ background: "radial-gradient(circle, rgba(255,255,255,.14) 0%, transparent 65%)" }} />
-                  <div className="w-[44px] h-[44px] rounded-[14px] flex items-center justify-center text-white text-[15px] font-bold shrink-0 relative z-10"
+                {/* Chat header — WhatsApp Web (light grey) */}
+                <div className="px-4 py-2.5 flex items-center gap-3 shrink-0"
+                  style={{ background: WA_PANEL, borderBottom: `0.5px solid ${WA_DIVIDER}` }}>
+                  <div className="w-[40px] h-[40px] rounded-full flex items-center justify-center text-white text-[14px] font-bold shrink-0"
                     style={{
                       background: avatarGradsD[((selectedStudent.studentName || "").charCodeAt(0) || 0) % avatarGradsD.length],
-                      border: "2px solid rgba(255,255,255,.26)",
+                      letterSpacing: "-0.2px",
                     }}>
                     {(selectedStudent.studentName || "ST").substring(0, 2).toUpperCase()}
                   </div>
-                  <div className="flex-1 min-w-0 relative z-10">
-                    <div className="text-[16px] font-bold text-white truncate" style={{ letterSpacing: "-0.3px" }}>
-                      {selectedStudent.studentName || "Student"}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[16px] font-medium truncate leading-tight" style={{ color: WA_TEXT, letterSpacing: "-0.2px" }}>
+                      {selectedStudent.parentName || `Parent of ${selectedStudent.studentName || "Student"}`}
                     </div>
-                    <div className="text-[11px] font-medium flex items-center gap-1.5 mt-0.5" style={{ color: "rgba(255,255,255,.65)" }}>
-                      <span className="w-[6px] h-[6px] rounded-full" style={{ background: "#00EE88" }} />
-                      Parent{selectedStudent.className ? ` · ${selectedStudent.className}` : ""} · Online
+                    <div className="text-[12.5px] font-normal flex items-center gap-1.5 mt-[2px] truncate" style={{ color: WA_TEXT_MUTED }}>
+                      <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ background: WA_GREEN }} />
+                      <span className="truncate">{selectedStudent.studentName || "Student"}{selectedStudent.className ? ` · ${selectedStudent.className}` : ""} · online</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 relative z-10 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0">
+                    {[
+                      { Icon: Phone, label: "Voice call (coming soon)" },
+                      { Icon: Video, label: "Video call (coming soon)" },
+                    ].map(({ Icon, label }, i) => (
+                      <button
+                        key={i}
+                        onClick={() => toast.info(label)}
+                        className="w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:bg-[rgba(11,20,26,0.06)]"
+                        style={{ cursor: "pointer" }}
+                        aria-label={label}>
+                        <Icon size={18} color={WA_TEXT_MUTED} strokeWidth={2} />
+                      </button>
+                    ))}
                     <button
                       onClick={() => toast.info(`${selectedStudent.studentName || "Student"} · ${studentMessages.length} message${studentMessages.length === 1 ? "" : "s"}`)}
-                      className="w-9 h-9 rounded-[11px] flex items-center justify-center"
-                      style={{ background: "rgba(255,255,255,.18)", border: "0.5px solid rgba(255,255,255,.26)", cursor: "pointer" }}
+                      className="w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:bg-[rgba(11,20,26,0.06)]"
+                      style={{ cursor: "pointer" }}
                       aria-label="More">
-                      <MoreVertical size={14} color="rgba(255,255,255,.92)" strokeWidth={2.2} />
+                      <MoreVertical size={18} color={WA_TEXT_MUTED} strokeWidth={2} />
                     </button>
                   </div>
                 </div>
 
-                {/* Messages */}
-                <div className="flex-1 overflow-y-auto pc-scroll px-6 py-5 flex flex-col gap-3" style={{ background: "#EEF4FF", minHeight: 0 }}>
+                {/* Messages — WhatsApp beige chat area */}
+                <div className="flex-1 overflow-y-auto pc-scroll px-[5%] py-5 flex flex-col gap-1 relative"
+                  style={{
+                    background: WA_CHAT_BG,
+                    backgroundImage: "radial-gradient(rgba(11,20,26,0.04) 1px, transparent 1px)",
+                    backgroundSize: "20px 20px",
+                    minHeight: 0,
+                  }}>
                   {loading ? (
                     <div className="flex-1 flex items-center justify-center">
-                      <Loader2 size={28} color={B1} className="animate-spin" />
+                      <Loader2 size={28} color={WA_TEAL_D} className="animate-spin" />
                     </div>
                   ) : studentMessages.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-center gap-2 py-10">
-                      <div className="w-[60px] h-[60px] rounded-[18px] flex items-center justify-center mb-2"
-                        style={{ background: "#fff", boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11)" }}>
-                        <MessageSquare size={28} color="rgba(0,85,255,.35)" strokeWidth={1.8} />
+                      <div className="w-[64px] h-[64px] rounded-full flex items-center justify-center mb-2"
+                        style={{ background: "#fff", boxShadow: "0 4px 16px rgba(11,20,26,0.06)" }}>
+                        <MessageSquare size={28} color={WA_TEAL_D} strokeWidth={1.7} />
                       </div>
-                      <p className="text-[14px] font-bold" style={{ color: T1 }}>No messages yet</p>
-                      <p className="text-[12px]" style={{ color: T4 }}>Type below to start the conversation.</p>
+                      <p className="text-[14px] font-medium" style={{ color: WA_TEXT }}>No messages yet</p>
+                      <p className="text-[12.5px]" style={{ color: WA_TEXT_MUTED }}>Type below to start the conversation.</p>
                     </div>
                   ) : (
                     groupedMessages.map(group => (
                       <div key={group.date}>
-                        <div className="flex justify-center mb-3">
-                          <span className="px-3 py-1 rounded-full text-[10px] font-semibold"
-                            style={{ background: "rgba(0,85,255,.08)", border: "0.5px solid rgba(0,85,255,.14)", color: T3 }}>
+                        <div className="flex justify-center my-3">
+                          <span className="px-3 py-[5px] rounded-[8px] text-[12px] font-medium"
+                            style={{
+                              background: "#FFFFFF",
+                              boxShadow: "0 1px 1px rgba(11,20,26,0.04)",
+                              color: WA_TEXT_MUTED,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.04em",
+                            }}>
                             {group.date}
                           </span>
                         </div>
-                        {group.messages.map(n => {
+                        {group.messages.map((n, idx) => {
                           const isSent = n.from === "principal";
-                          if (isSent) {
-                            return (
-                              <div key={n.id} className="flex justify-end mb-2">
-                                <div className="max-w-[70%]">
-                                  <div className="px-4 py-3 text-white text-[13px] leading-[1.65] whitespace-pre-wrap relative overflow-hidden"
-                                    style={{
-                                      background: `linear-gradient(135deg, ${B1}, ${B2})`,
-                                      borderRadius: "18px 4px 18px 18px",
-                                      boxShadow: "0 3px 12px rgba(0,85,255,.24)",
-                                    }}>
-                                    {n.message}
-                                  </div>
-                                  <div className="text-[10px] font-semibold flex items-center gap-1 justify-end mt-1" style={{ color: T4 }}>
-                                    {fmtTime(n.timestamp)}
-                                    <CheckCheck size={12} color={GREEN} strokeWidth={2.5} />
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-                          const senderName = n.senderName || selectedStudent.parentName || "Parent";
+                          const prev = group.messages[idx - 1];
+                          const next = group.messages[idx + 1];
+                          const isFirstInGroup = !prev || (prev.from === "principal") !== isSent;
+                          const isLastInGroup = !next || (next.from === "principal") !== isSent;
+                          const senderName = !isSent ? (n.senderName || selectedStudent.parentName || "Parent") : "";
                           return (
-                            <div key={n.id} className="flex items-start gap-2 max-w-[70%] mb-2">
-                              <div className="w-8 h-8 rounded-[10px] flex items-center justify-center text-white text-[11px] font-bold shrink-0 self-end"
-                                style={{ background: avatarGradsD[(senderName.charCodeAt(0) || 0) % avatarGradsD.length] }}>
-                                {senderName.substring(0, 2).toUpperCase()}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="px-4 py-3 text-[13px] leading-[1.65] whitespace-pre-wrap"
+                            <div key={n.id} className={`flex ${isSent ? "justify-end" : "justify-start"} ${isLastInGroup ? "mb-2" : "mb-[2px]"}`}>
+                              <div className="max-w-[68%] flex flex-col" style={{ alignItems: isSent ? "flex-end" : "flex-start" }}>
+                                <div
+                                  className="px-[9px] py-[6px] text-[14.2px] leading-[1.45] whitespace-pre-wrap break-words relative"
                                   style={{
-                                    background: "#fff", color: T1,
-                                    borderRadius: "4px 18px 18px 18px",
-                                    boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11)",
-                                    border: "0.5px solid rgba(0,85,255,.10)",
+                                    background: isSent ? WA_BUBBLE_OUT : WA_BUBBLE_IN,
+                                    color: WA_TEXT,
+                                    borderRadius: isSent
+                                      ? `8px ${isLastInGroup ? "2px" : "8px"} 8px 8px`
+                                      : `${isFirstInGroup ? "2px" : "8px"} 8px 8px 8px`,
+                                    boxShadow: "0 1px 0.5px rgba(11,20,26,0.13)",
+                                    paddingRight: isSent ? 68 : 60,
+                                    paddingBottom: 18,
                                   }}>
-                                  <div className="text-[11px] font-bold mb-1" style={{ color: B1 }}>{senderName}</div>
-                                  {n.message}
-                                </div>
-                                <div className="text-[10px] font-semibold flex items-center gap-1 justify-end mt-1" style={{ color: T4 }}>
-                                  {fmtTime(n.timestamp)}
-                                  <Check size={12} color={GREEN} strokeWidth={2.5} />
+                                  {!isSent && isFirstInGroup && senderName && (
+                                    <div className="text-[12.5px] font-medium mb-[2px]" style={{ color: WA_TEAL_D }}>{senderName}</div>
+                                  )}
+                                  <span>{n.message}</span>
+                                  {/* Time + tick — inside bubble (WhatsApp pattern) */}
+                                  <span
+                                    className="absolute flex items-center gap-[3px] text-[11px]"
+                                    style={{
+                                      bottom: 3,
+                                      right: 7,
+                                      color: WA_TIME,
+                                    }}>
+                                    {fmtTime(n.timestamp)}
+                                    {isSent && <CheckCheck size={15} color={WA_TICK_READ} strokeWidth={2.4} />}
+                                  </span>
                                 </div>
                               </div>
                             </div>
@@ -1350,42 +1393,55 @@ const ParentCommunication = () => {
                   <div ref={chatEndRef} />
                 </div>
 
-                {/* Input */}
-                <div className="px-4 py-3 flex items-center gap-2 shrink-0"
-                  style={{ background: "rgba(238,244,255,.94)", backdropFilter: "saturate(220%) blur(24px)", WebkitBackdropFilter: "saturate(220%) blur(24px)", borderTop: "0.5px solid rgba(0,85,255,.10)" }}>
+                {/* Input bar — WhatsApp Web */}
+                <div className="px-4 py-2.5 flex items-end gap-3 shrink-0"
+                  style={{ background: WA_PANEL }}>
                   <button
                     onClick={() => setMessageContent((c) => c + "🙂")}
-                    className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
-                    style={{ background: "#fff", border: "0.5px solid rgba(0,85,255,.14)", boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)", cursor: "pointer" }}
+                    className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-[rgba(11,20,26,0.06)]"
+                    style={{ cursor: "pointer" }}
                     aria-label="Emoji">
-                    <Smile size={18} color={T3} strokeWidth={2} />
+                    <Smile size={22} color={WA_TEXT_MUTED} strokeWidth={2} />
                   </button>
-                  <input
-                    value={messageContent}
-                    onChange={(e) => setMessageContent(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                    placeholder="Reply to parent..."
-                    className="flex-1 outline-none"
-                    style={{
-                      padding: "10px 14px", background: "#fff", borderRadius: 14,
-                      border: "0.5px solid rgba(0,85,255,.14)", fontFamily: "inherit",
-                      fontSize: 13, color: T1, fontWeight: 400,
-                      boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
-                    }}
-                  />
+                  <button
+                    onClick={() => toast.info("Attachments coming soon")}
+                    className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-[rgba(11,20,26,0.06)]"
+                    style={{ cursor: "pointer" }}
+                    aria-label="Attach">
+                    <Paperclip size={20} color={WA_TEXT_MUTED} strokeWidth={2} />
+                  </button>
+                  <div className="flex-1 rounded-[10px]" style={{ background: "#fff" }}>
+                    <textarea
+                      value={messageContent}
+                      onChange={(e) => setMessageContent(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                      placeholder="Type a message"
+                      rows={1}
+                      className="w-full outline-none resize-none bg-transparent"
+                      style={{
+                        padding: "10px 14px",
+                        fontFamily: "inherit",
+                        fontSize: 14.5,
+                        color: WA_TEXT,
+                        fontWeight: 400,
+                        lineHeight: "20px",
+                        maxHeight: 120,
+                        border: "none",
+                      }}
+                    />
+                  </div>
                   <button
                     onClick={handleSend}
                     disabled={!messageContent.trim()}
-                    className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
+                    className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all"
                     style={{
-                      background: messageContent.trim() ? `linear-gradient(135deg, ${B1}, ${B2})` : "rgba(0,85,255,.20)",
+                      background: "transparent",
                       border: "none",
-                      boxShadow: messageContent.trim() ? "0 3px 12px rgba(0,85,255,.30)" : "none",
-                      cursor: messageContent.trim() ? "pointer" : "not-allowed",
-                      opacity: messageContent.trim() ? 1 : 0.65,
+                      cursor: messageContent.trim() ? "pointer" : "default",
+                      opacity: messageContent.trim() ? 1 : 0.55,
                     }}
                     aria-label="Send">
-                    <Send size={14} color="#fff" strokeWidth={2.5} />
+                    <Send size={22} color={WA_TEAL_D} strokeWidth={2} style={{ transform: "translateX(1px)" }} />
                   </button>
                 </div>
               </>

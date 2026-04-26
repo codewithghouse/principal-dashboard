@@ -535,10 +535,8 @@ const Dashboard = () => {
           role="button" tabIndex={0}
           {...tilt3D}
           className="rounded-[20px] p-5 relative overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
-          style={{ background: "linear-gradient(135deg, #F4F6FF 0%, #E8EEFF 100%)", boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+          style={{ background: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)", boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
           <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
-          <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
-            style={{ background: "radial-gradient(circle, rgba(0,85,255,0.10) 0%, transparent 70%)" }} />
           <div className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
             style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.28)", transform: "translateZ(18px)" }}>
             <Users className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
@@ -546,7 +544,7 @@ const Dashboard = () => {
           <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: dT4 }}>Total Students</span>
           <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: dB1, letterSpacing: "-1.2px", transform: "translateZ(10px)" }}>{displayStudents}</p>
           <p className="text-[11px] font-semibold" style={{ color: dT3 }}>Enrolled this branch</p>
-          <Users className="absolute bottom-3 right-3 w-9 h-9 pointer-events-none" style={{ color: dB1, opacity: 0.18 }} strokeWidth={2} />
+          <Users className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none" style={{ color: dB1, opacity: 0.18 }} strokeWidth={2} />
         </div>
 
         {/* Teachers — green */}
@@ -554,10 +552,8 @@ const Dashboard = () => {
           role="button" tabIndex={0}
           {...tilt3D}
           className="rounded-[20px] p-5 relative overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
-          style={{ background: "linear-gradient(135deg, #F0FBF4 0%, #DDF5E5 100%)", boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+          style={{ background: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)", boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
           <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
-          <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
-            style={{ background: "radial-gradient(circle, rgba(0,200,83,0.10) 0%, transparent 70%)" }} />
           <div className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
             style={{ background: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, boxShadow: "0 4px 14px rgba(0,200,83,0.26)", transform: "translateZ(18px)" }}>
             <GraduationCap className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
@@ -565,7 +561,7 @@ const Dashboard = () => {
           <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: dT4 }}>Teachers</span>
           <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: dGREEN_D, letterSpacing: "-1.2px", transform: "translateZ(10px)" }}>{displayTeachers}</p>
           <p className="text-[11px] font-semibold" style={{ color: dGREEN_D }}>Active staff</p>
-          <TrendingUp className="absolute bottom-3 right-3 w-9 h-9 pointer-events-none" style={{ color: dGREEN, opacity: 0.22 }} strokeWidth={2} />
+          <TrendingUp className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none" style={{ color: dGREEN, opacity: 0.22 }} strokeWidth={2} />
         </div>
 
         {/* Attendance — gold */}
@@ -573,10 +569,8 @@ const Dashboard = () => {
           role="button" tabIndex={0}
           {...tilt3D}
           className="rounded-[20px] p-5 relative overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
-          style={{ background: "linear-gradient(135deg, #FFFAEB 0%, #FFF1CC 100%)", boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
+          style={{ background: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)", boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle }}>
           <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
-          <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
-            style={{ background: "radial-gradient(circle, rgba(255,170,0,0.12) 0%, transparent 70%)" }} />
           <div className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
             style={{ background: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, boxShadow: "0 4px 14px rgba(255,170,0,0.28)", transform: "translateZ(18px)" }}>
             <CalendarCheck className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
@@ -591,7 +585,7 @@ const Dashboard = () => {
           ) : (
             <p className="text-[11px] font-semibold" style={{ color: dT3 }}>No data yet</p>
           )}
-          <BarChart3 className="absolute bottom-3 right-3 w-9 h-9 pointer-events-none" style={{ color: dGOLD, opacity: 0.22 }} strokeWidth={2} />
+          <BarChart3 className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none" style={{ color: dGOLD, opacity: 0.22 }} strokeWidth={2} />
         </div>
 
         {/* Incidents — red/violet */}
@@ -601,13 +595,11 @@ const Dashboard = () => {
           className="rounded-[20px] p-5 relative overflow-hidden cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
           style={{
             background: (pendingIncidents ?? 0) > 0
-              ? "linear-gradient(135deg, #FFF0F3 0%, #FFE0E6 100%)"
-              : "linear-gradient(135deg, #F6F2FE 0%, #E9DEFD 100%)",
+              ? "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)"
+              : "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
             boxShadow: dSH_LG, border: `0.5px solid ${dSEP}`, ...tilt3DStyle,
           }}>
           <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
-          <div className="absolute -top-6 -right-6 w-[90px] h-[90px] rounded-full pointer-events-none"
-            style={{ background: `radial-gradient(circle, ${(pendingIncidents ?? 0) > 0 ? "rgba(255,51,85,0.12)" : "rgba(123,63,244,0.10)"} 0%, transparent 70%)` }} />
           <div className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
             style={{
               background: (pendingIncidents ?? 0) > 0 ? `linear-gradient(135deg, ${dRED}, #FF6688)` : `linear-gradient(135deg, ${dVIOLET}, #A07CF8)`,
@@ -623,7 +615,7 @@ const Dashboard = () => {
           <p className="text-[11px] font-semibold" style={{ color: (pendingIncidents ?? 0) > 0 ? dRED : dT3 }}>
             {(pendingIncidents ?? 0) > 0 ? "Action required" : "All clear"}
           </p>
-          <PieChart className="absolute bottom-3 right-3 w-9 h-9 pointer-events-none"
+          <PieChart className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none"
             style={{ color: (pendingIncidents ?? 0) > 0 ? dRED : dVIOLET, opacity: 0.22 }} strokeWidth={2} />
         </div>
       </div>

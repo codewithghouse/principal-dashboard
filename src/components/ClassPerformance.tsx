@@ -5,11 +5,18 @@ import {
   UserPlus, Search as SearchIcon, X, Mail, Check
 } from "lucide-react";
 import {
-  PieChart, Pie, Cell,
+  PieChart, Pie, Cell, Sector,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   AreaChart, Area,
   ResponsiveContainer
 } from "recharts";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, getDocs } from "firebase/firestore";
 import { toast } from "sonner";
@@ -71,6 +78,7 @@ const ClassPerformance = ({ classDoc, onBack }: Props) => {
   const [results,      setResults]      = useState<any[]>([]);
   const [enrollments,  setEnrollments]  = useState<any[]>([]);
   const [loading,      setLoading]      = useState(true);
+  const [activePieIdx, setActivePieIdx] = useState(0);
 
   // ── Add Student modal state ─────────────────────────────────────────────────
   const [addModal,        setAddModal]        = useState(false);
@@ -421,68 +429,250 @@ const ClassPerformance = ({ classDoc, onBack }: Props) => {
         </div>
       ) : (
         <>
-          {/* Quick stats */}
+          {/* Quick stats — dashboard-style cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: "Total Students", value: totalStudents, icon: <Users className="w-5 h-5 text-blue-500" />, bg: "bg-blue-50", color: "text-blue-600" },
-              { label: "Class Average",  value: classAvgScore > 0 ? `${classAvgScore}%` : "—", icon: <TrendingUp className="w-5 h-5 text-indigo-500" />, bg: "bg-indigo-50", color: scoreColor(classAvgScore) },
-              { label: "Attendance",     value: classAttPct !== null ? `${classAttPct}%` : "—", icon: <CalendarCheck className="w-5 h-5 text-emerald-500" />, bg: "bg-emerald-50", color: classAttPct !== null ? attColor(classAttPct) : "#94a3b8" },
-              { label: "At Risk",        value: atRisk, icon: <AlertTriangle className="w-5 h-5 text-rose-500" />, bg: "bg-rose-50", color: atRisk > 0 ? "text-rose-600" : "text-slate-400" },
-            ].map((item, i) => (
-              <div key={i} className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-slate-400 font-medium mb-2">{item.label}</p>
-                  <p className={`text-3xl font-black tracking-tight ${item.color}`}
-                    style={typeof item.color === "string" && item.color.startsWith("#") ? { color: item.color } : {}}>
-                    {item.value}
-                  </p>
-                </div>
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.bg}`}>
-                  {item.icon}
-                </div>
-              </div>
-            ))}
+            {(() => {
+              const cards = [
+                {
+                  label: "Total Students",
+                  value: totalStudents,
+                  subtitle: "Enrolled in this class",
+                  Icon: Users,
+                  cardGrad: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+                  tileGrad: "linear-gradient(135deg, #0055FF, #1166FF)",
+                  tileShadow: "0 4px 14px rgba(0,85,255,0.28)",
+                  numColor: "#0055FF",
+                  subColor: "#5070B0",
+                  decorColor: "#0055FF",
+                },
+                {
+                  label: "Class Average",
+                  value: classAvgScore > 0 ? `${classAvgScore}%` : "—",
+                  subtitle: classAvgScore > 0 ? "Average score" : "No data yet",
+                  Icon: TrendingUp,
+                  cardGrad: "linear-gradient(135deg, #E2E0FA 0%, #F8F7FE 100%)",
+                  tileGrad: "linear-gradient(135deg, #4F46E5, #6366F1)",
+                  tileShadow: "0 4px 14px rgba(79,70,229,0.28)",
+                  numColor: "#4F46E5",
+                  subColor: "#6B6FA8",
+                  decorColor: "#4F46E5",
+                },
+                {
+                  label: "Attendance",
+                  value: classAttPct !== null ? `${classAttPct}%` : "—",
+                  subtitle: classAttPct !== null ? "Class average" : "No data yet",
+                  Icon: CalendarCheck,
+                  cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+                  tileGrad: "linear-gradient(135deg, #00C853, #22EE66)",
+                  tileShadow: "0 4px 14px rgba(0,200,83,0.26)",
+                  numColor: "#007830",
+                  subColor: "#007830",
+                  decorColor: "#00C853",
+                },
+                {
+                  label: "At Risk",
+                  value: atRisk,
+                  subtitle: atRisk > 0 ? "Action required" : "All clear",
+                  Icon: AlertTriangle,
+                  cardGrad: atRisk > 0
+                    ? "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)"
+                    : "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+                  tileGrad: atRisk > 0
+                    ? "linear-gradient(135deg, #FF3355, #FF6688)"
+                    : "linear-gradient(135deg, #7B3FF4, #A07CF8)",
+                  tileShadow: atRisk > 0
+                    ? "0 4px 14px rgba(255,51,85,0.28)"
+                    : "0 4px 14px rgba(123,63,244,0.26)",
+                  numColor: atRisk > 0 ? "#FF3355" : "#7B3FF4",
+                  subColor: atRisk > 0 ? "#FF3355" : "#5070B0",
+                  decorColor: atRisk > 0 ? "#FF3355" : "#7B3FF4",
+                },
+              ];
+              return cards.map((c, i) => {
+                const Icon = c.Icon;
+                return (
+                  <div
+                    key={i}
+                    className="rounded-[20px] p-5 relative overflow-hidden"
+                    style={{
+                      background: c.cardGrad,
+                      boxShadow: "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.10), 0 22px 56px rgba(0,85,255,0.10)",
+                      border: "0.5px solid rgba(0,85,255,0.08)",
+                    }}
+                  >
+                    <div
+                      className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
+                      style={{ background: c.tileGrad, boxShadow: c.tileShadow }}
+                    >
+                      <Icon className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
+                    </div>
+                    <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: "#99AACC" }}>
+                      {c.label}
+                    </span>
+                    <p
+                      className="text-[34px] font-bold tracking-tight leading-none mb-1.5"
+                      style={{ color: c.numColor, letterSpacing: "-1.2px" }}
+                    >
+                      {c.value}
+                    </p>
+                    <p className="text-[11px] font-semibold" style={{ color: c.subColor }}>
+                      {c.subtitle}
+                    </p>
+                    <Icon
+                      className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none"
+                      style={{ color: c.decorColor, opacity: 0.18 }}
+                      strokeWidth={2}
+                    />
+                  </div>
+                );
+              });
+            })()}
           </div>
 
           {/* Charts row */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-            {/* Donut — Performance Distribution */}
-            <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-900 mb-4">Performance Distribution</h3>
+            {/* Donut — Performance Distribution (interactive shadcn-style) */}
+            <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm flex flex-col">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Performance Distribution</h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Tap a tier to highlight</p>
+                </div>
+                {pieDataFinal.length > 0 && (
+                  <Select
+                    value={String(Math.min(activePieIdx, pieDataFinal.length - 1))}
+                    onValueChange={(v) => setActivePieIdx(Number(v))}
+                  >
+                    <SelectTrigger className="h-7 w-[130px] rounded-lg pl-2.5 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="end" className="rounded-xl">
+                      {pieDataFinal.map((d, i) => (
+                        <SelectItem key={i} value={String(i)} className="rounded-lg">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="flex h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: d.color }} />
+                            {d.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
               {totalStudents === 0 ? (
-                <div className="h-[200px] flex items-center justify-center text-slate-300 text-sm font-medium">No students enrolled</div>
+                <div className="h-[260px] flex items-center justify-center text-slate-300 text-sm font-medium">No students enrolled</div>
               ) : (
                 <>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <PieChart>
-                      <Pie
-                        data={pieDataFinal}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={55}
-                        outerRadius={80}
-                        paddingAngle={3}
-                        dataKey="value"
-                        animationDuration={1000}
-                      >
-                        {pieDataFinal.map((entry, i) => (
-                          <Cell key={i} fill={entry.color} stroke="none" />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(v: number, n: string) => [`${v} students`, n]}
-                        contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 12, fontWeight: 700 }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="flex flex-wrap gap-3 justify-center mt-2">
-                    {pieDataFinal.map((d, i) => (
-                      <div key={i} className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                        <span className="text-[10px] font-bold text-slate-500">{d.name}</span>
+                  <div className="relative">
+                    <ResponsiveContainer width="100%" height={260}>
+                      <PieChart>
+                        <Pie
+                          data={pieDataFinal}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={62}
+                          outerRadius={92}
+                          paddingAngle={2}
+                          dataKey="value"
+                          animationDuration={1000}
+                          stroke="#ffffff"
+                          strokeWidth={3}
+                          activeIndex={Math.min(activePieIdx, pieDataFinal.length - 1)}
+                          activeShape={(props: any) => {
+                            const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+                            return (
+                              <g>
+                                <Sector
+                                  cx={cx}
+                                  cy={cy}
+                                  innerRadius={innerRadius}
+                                  outerRadius={outerRadius + 8}
+                                  startAngle={startAngle}
+                                  endAngle={endAngle}
+                                  fill={fill}
+                                />
+                                <Sector
+                                  cx={cx}
+                                  cy={cy}
+                                  innerRadius={outerRadius + 12}
+                                  outerRadius={outerRadius + 22}
+                                  startAngle={startAngle}
+                                  endAngle={endAngle}
+                                  fill={fill}
+                                  opacity={0.5}
+                                />
+                              </g>
+                            );
+                          }}
+                          onClick={(_, i) => setActivePieIdx(i)}
+                          label={(props: any) => {
+                            const { cx, cy, midAngle, outerRadius, value, percent } = props;
+                            const total = pieDataFinal.reduce((s, d) => s + d.value, 0);
+                            if (total === 0 || value === 0) return null;
+                            const RADIAN = Math.PI / 180;
+                            const r = outerRadius + 16;
+                            const x = cx + r * Math.cos(-midAngle * RADIAN);
+                            const y = cy + r * Math.sin(-midAngle * RADIAN);
+                            return (
+                              <text
+                                x={x}
+                                y={y}
+                                fill="#0f172a"
+                                textAnchor={x > cx ? "start" : "end"}
+                                dominantBaseline="central"
+                                style={{ fontSize: 11, fontWeight: 700 }}
+                              >
+                                {value} ({Math.round(percent * 100)}%)
+                              </text>
+                            );
+                          }}
+                          labelLine={{ stroke: "#cbd5e1", strokeWidth: 1 }}
+                        >
+                          {pieDataFinal.map((entry, i) => (
+                            <Cell key={i} fill={entry.color} className="cursor-pointer" />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(v: number, n: string) => [`${v} students`, n]}
+                          contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 12, fontWeight: 700 }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    {/* Center label — shows active tier value */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                      <div className="text-[28px] font-black text-slate-900 leading-none tracking-tight">
+                        {pieDataFinal[Math.min(activePieIdx, pieDataFinal.length - 1)]?.value ?? 0}
                       </div>
-                    ))}
+                      <div className="text-[10px] font-bold uppercase tracking-wider mt-1.5"
+                        style={{ color: pieDataFinal[Math.min(activePieIdx, pieDataFinal.length - 1)]?.color ?? "#94a3b8" }}>
+                        {pieDataFinal[Math.min(activePieIdx, pieDataFinal.length - 1)]?.name ?? "Students"}
+                      </div>
+                      <div className="text-[9px] font-semibold text-slate-400 mt-0.5">
+                        of {totalStudents} total
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    {pieDataFinal.map((d, i) => {
+                      const pct = totalStudents > 0 ? Math.round((d.value / totalStudents) * 100) : 0;
+                      const isActive = i === activePieIdx;
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => setActivePieIdx(i)}
+                          className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border transition-all text-left ${
+                            isActive ? "bg-slate-50 border-slate-200 shadow-sm" : "bg-white border-transparent hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[11px] font-bold text-slate-700 truncate">{d.name}</div>
+                            <div className="text-[10px] font-semibold text-slate-400">{d.value} · {pct}%</div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               )}

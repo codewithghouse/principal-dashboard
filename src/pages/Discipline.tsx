@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { ShieldAlert, Clock, AlertTriangle, AlertCircle, Plus, FileText, Calendar, X, Sparkles, ChevronRight, BookOpen } from "lucide-react";
 import { buildReport, openReportWindow } from "@/lib/reportTemplate";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Label } from "recharts";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import { db } from "@/lib/firebase";
 import { collection, query, onSnapshot, where, addDoc, Timestamp } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
@@ -1485,27 +1491,57 @@ const Discipline = () => {
             </div>
           </div>
 
-          {/* 4 Stat Cards */}
+          {/* 4 Stat Cards — dashboard-style */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
             {[
-              { title: "Today's Incidents", val: stats.todayCount, valColor: dRED, sub: "Logged today", Icon: AlertCircle, grad: `linear-gradient(135deg, ${dRED}, #FF6688)`, glow: "rgba(255,51,85,0.12)", shadow: "0 4px 14px rgba(255,51,85,0.26)" },
-              { title: "Pending Actions", val: stats.pendingCount, valColor: dGOLD, sub: "Require follow-up", Icon: Clock, grad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`, glow: "rgba(255,170,0,0.12)", shadow: "0 4px 14px rgba(255,170,0,0.26)" },
-              { title: "This Week", val: stats.weekCount, valColor: dB1, sub: "Total incidents", Icon: Calendar, grad: `linear-gradient(135deg, ${dB1}, ${dB2})`, glow: "rgba(0,85,255,0.10)", shadow: "0 4px 14px rgba(0,85,255,0.26)" },
-              { title: "Critical Cases", val: stats.criticalCount, valColor: dVIOLET, sub: "High priority", Icon: AlertTriangle, grad: `linear-gradient(135deg, ${dVIOLET}, #A07CF8)`, glow: "rgba(123,63,244,0.10)", shadow: "0 4px 14px rgba(123,63,244,0.24)" },
-            ].map(({ title, val, valColor, sub, Icon, grad, glow, shadow }) => (
-              <div key={title} className="bg-white rounded-[20px] p-5 relative overflow-hidden"
-                style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
-                <div className="absolute -top-6 -right-6 w-[100px] h-[100px] rounded-full pointer-events-none"
-                  style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)` }} />
-                <div className="flex items-center justify-between mb-4 relative">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>{title}</span>
-                  <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
-                    style={{ background: grad, boxShadow: shadow }}>
-                    <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
-                  </div>
+              {
+                title: "Today's Incidents", val: stats.todayCount, valColor: dRED, sub: "Logged today", Icon: AlertCircle,
+                cardGrad: "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)",
+                tileGrad: `linear-gradient(135deg, ${dRED}, #FF6688)`,
+                tileShadow: "0 4px 14px rgba(255,51,85,0.28)",
+                decorColor: dRED,
+              },
+              {
+                title: "Pending Actions", val: stats.pendingCount, valColor: dGOLD, sub: "Require follow-up", Icon: Clock,
+                cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+                tileGrad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`,
+                tileShadow: "0 4px 14px rgba(255,170,0,0.28)",
+                decorColor: dGOLD,
+              },
+              {
+                title: "This Week", val: stats.weekCount, valColor: dB1, sub: "Total incidents", Icon: Calendar,
+                cardGrad: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+                tileGrad: `linear-gradient(135deg, ${dB1}, ${dB2})`,
+                tileShadow: "0 4px 14px rgba(0,85,255,0.28)",
+                decorColor: dB1,
+              },
+              {
+                title: "Critical Cases", val: stats.criticalCount, valColor: dVIOLET, sub: "High priority", Icon: AlertTriangle,
+                cardGrad: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+                tileGrad: `linear-gradient(135deg, ${dVIOLET}, #A07CF8)`,
+                tileShadow: "0 4px 14px rgba(123,63,244,0.26)",
+                decorColor: dVIOLET,
+              },
+            ].map(({ title, val, valColor, sub, Icon, cardGrad, tileGrad, tileShadow, decorColor }) => (
+              <div
+                key={title}
+                className="rounded-[20px] p-5 relative overflow-hidden"
+                style={{ background: cardGrad, boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}
+              >
+                <div
+                  className="w-14 h-14 rounded-[14px] flex items-center justify-center mb-3 relative"
+                  style={{ background: tileGrad, boxShadow: tileShadow }}
+                >
+                  <Icon className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
                 </div>
+                <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: dT4 }}>{title}</span>
                 <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: valColor, letterSpacing: "-1.2px" }}>{val}</p>
                 <p className="text-[11px] font-semibold truncate" style={{ color: dT3 }}>{sub}</p>
+                <Icon
+                  className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none"
+                  style={{ color: decorColor, opacity: 0.18 }}
+                  strokeWidth={2}
+                />
               </div>
             ))}
           </div>
@@ -1575,36 +1611,79 @@ const Discipline = () => {
                   <div className="flex items-center justify-center h-[220px]">
                     <p className="text-[13px] font-bold" style={{ color: dT4 }}>No data available</p>
                   </div>
-                ) : (
-                  <>
-                    <ResponsiveContainer width="100%" height={220}>
-                      <PieChart>
-                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={85}
-                          paddingAngle={3} dataKey="value" animationDuration={1200}>
-                          {pieData.map((entry, i) => (
-                            <Cell key={`cell-${i}`} fill={entry.color} stroke="none" />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          formatter={(value: number, name: string) => [`${value}%`, name]}
-                          contentStyle={{ borderRadius: 12, border: `0.5px solid ${dSEP}`, boxShadow: dSH, fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="space-y-2 mt-4">
-                      {pieData.map((p, i) => (
-                        <div key={i} className="flex items-center justify-between px-3 py-2 rounded-[10px]"
-                          style={{ background: dBG, border: `0.5px solid ${dSEP}` }}>
-                          <div className="flex items-center gap-2">
-                            <div className="w-[10px] h-[10px] rounded-[3px]" style={{ background: p.color }} />
-                            <span className="text-[12px] font-bold" style={{ color: dT2 }}>{p.name}</span>
+                ) : (() => {
+                  const totalIncidents = pieData.reduce((acc: number, c: any) => acc + (Number(c.value) || 0), 0);
+                  const chartData = pieData.map((p: any, i: number) => ({
+                    key: `t${i}`,
+                    name: p.name,
+                    value: p.value,
+                    fill: p.color,
+                  }));
+                  const chartConfig: ChartConfig = {
+                    value: { label: "Share %" },
+                    ...Object.fromEntries(
+                      chartData.map((d: any) => [d.key, { label: d.name, color: d.fill }])
+                    ),
+                  };
+                  return (
+                    <>
+                      <ChartContainer config={chartConfig} className="mx-auto aspect-square max-h-[240px]">
+                        <PieChart>
+                          <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent hideLabel formatter={(v: any, n: any) => [`${v}%`, n]} />}
+                          />
+                          <Pie
+                            data={chartData}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius={60}
+                            strokeWidth={5}
+                            animationDuration={1000}
+                          >
+                            <Label
+                              content={({ viewBox }: any) => {
+                                if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                                  return (
+                                    <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                                      <tspan
+                                        x={viewBox.cx}
+                                        y={viewBox.cy}
+                                        style={{ fill: dT1, fontSize: 28, fontWeight: 800, letterSpacing: "-0.5px" }}
+                                      >
+                                        {totalIncidents}%
+                                      </tspan>
+                                      <tspan
+                                        x={viewBox.cx}
+                                        y={(viewBox.cy || 0) + 22}
+                                        style={{ fill: dT4, fontSize: 11, fontWeight: 600 }}
+                                      >
+                                        Total Share
+                                      </tspan>
+                                    </text>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                          </Pie>
+                        </PieChart>
+                      </ChartContainer>
+                      <div className="space-y-2 mt-4">
+                        {pieData.map((p: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between px-3 py-2 rounded-[10px]"
+                            style={{ background: dBG, border: `0.5px solid ${dSEP}` }}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-[10px] h-[10px] rounded-[3px]" style={{ background: p.color }} />
+                              <span className="text-[12px] font-bold" style={{ color: dT2 }}>{p.name}</span>
+                            </div>
+                            <span className="text-[13px] font-bold" style={{ color: p.color }}>{p.value}%</span>
                           </div>
-                          <span className="text-[13px] font-bold" style={{ color: p.color }}>{p.value}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 

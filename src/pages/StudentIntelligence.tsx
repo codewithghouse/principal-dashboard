@@ -649,9 +649,9 @@ export default function StudentIntelligence() {
   const dSH_BTN = "0 6px 22px rgba(0,85,255,0.42), 0 2px 6px rgba(0,85,255,0.22)";
 
   const tierThemeD = {
-    weak:       { color: dRED,    soft: dRED_S,    border: dRED_B,    grad: `linear-gradient(135deg, ${dRED}, #FF6688)`,    shadow: "0 4px 14px rgba(255,51,85,0.26)",  Icon: AlertTriangle, label: "Weak",       desc: "Needs immediate attention" },
-    developing: { color: dORANGE, soft: dORANGE_S, border: dORANGE_B, grad: `linear-gradient(135deg, ${dORANGE}, #FFCC22)`, shadow: "0 4px 14px rgba(255,136,0,0.26)", Icon: TrendingUp,    label: "Developing", desc: "Moderate performance" },
-    smart:      { color: dGREEN,  soft: dGREEN_S,  border: dGREEN_B,  grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`,  shadow: "0 4px 14px rgba(0,200,83,0.24)",  Icon: Award,         label: "Smart",      desc: "Strong performer" },
+    weak:       { color: dRED,    soft: dRED_S,    border: dRED_B,    grad: `linear-gradient(135deg, ${dRED}, #FF6688)`,    shadow: "0 4px 14px rgba(255,51,85,0.28)",  Icon: AlertTriangle, label: "Weak",       desc: "Needs immediate attention", cardGrad: "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)", blobColor: "rgba(255,51,85,0.22)" },
+    developing: { color: dORANGE, soft: dORANGE_S, border: dORANGE_B, grad: `linear-gradient(135deg, ${dORANGE}, #FFCC22)`, shadow: "0 4px 14px rgba(255,136,0,0.28)", Icon: TrendingUp,    label: "Developing", desc: "Moderate performance",       cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)", blobColor: "rgba(255,136,0,0.26)" },
+    smart:      { color: dGREEN,  soft: dGREEN_S,  border: dGREEN_B,  grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`,  shadow: "0 4px 14px rgba(0,200,83,0.26)",  Icon: Award,         label: "Smart",      desc: "Strong performer",            cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)", blobColor: "rgba(0,200,83,0.22)" },
   };
 
   return (
@@ -744,26 +744,25 @@ export default function StudentIntelligence() {
               {...tilt3D}
               className="rounded-[20px] p-5 text-left relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
               style={{
-                background: active ? `linear-gradient(145deg, ${td.soft} 0%, rgba(255,255,255,0.4) 100%)` : "#FFFFFF",
+                background: td.cardGrad,
                 border: `0.5px solid ${active ? td.color + "66" : dSEP}`,
                 boxShadow: active ? `${dSH_LG}, 0 0 0 2px ${td.color}22` : dSH_LG,
                 ...tilt3DStyle,
               }}>
               <div data-glow className="absolute inset-0 pointer-events-none transition-opacity duration-300" style={{ opacity: 0 }} />
-              <div className="absolute -top-8 -right-8 w-[110px] h-[110px] rounded-full pointer-events-none"
-                style={{ background: `radial-gradient(circle, ${td.soft} 0%, transparent 70%)` }} />
-              <div className="flex items-center justify-between mb-3 relative">
-                <div className="w-11 h-11 rounded-[13px] flex items-center justify-center"
+              <div className="flex items-start justify-between mb-3 relative">
+                <div className="w-14 h-14 rounded-[14px] flex items-center justify-center"
                   style={{ background: td.grad, boxShadow: td.shadow }}>
-                  <td.Icon className="w-5 h-5 text-white" strokeWidth={2.3} />
+                  <td.Icon className="w-[26px] h-[26px] text-white" strokeWidth={2.3} />
                 </div>
                 {active && (
-                  <div className="w-[8px] h-[8px] rounded-full animate-pulse" style={{ background: td.color, boxShadow: `0 0 0 3px ${td.color}33` }} />
+                  <div className="w-[8px] h-[8px] rounded-full animate-pulse mt-2" style={{ background: td.color, boxShadow: `0 0 0 3px ${td.color}33` }} />
                 )}
               </div>
-              <div className="text-[36px] font-bold leading-none mb-2" style={{ color: td.color, letterSpacing: "-1.2px" }}>{counts[t.key]}</div>
-              <div className="text-[14px] font-bold mb-1" style={{ color: dT1, letterSpacing: "-0.2px" }}>{td.label}</div>
-              <div className="text-[11px]" style={{ color: dT3 }}>{td.desc}</div>
+              <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: dT4 }}>{td.label}</span>
+              <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: td.color, letterSpacing: "-1.2px" }}>{counts[t.key]}</p>
+              <p className="text-[11px] font-semibold" style={{ color: dT3 }}>{td.desc}</p>
+              <td.Icon className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none" style={{ color: td.color, opacity: 0.18 }} strokeWidth={2} />
             </button>
           );
         })}

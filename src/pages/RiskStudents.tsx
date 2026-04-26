@@ -828,33 +828,47 @@ const RiskStudents = () => {
         </div>
       </div>
 
-      {/* 4 Stat Cards (filters) */}
+      {/* 4 Stat Cards (filters) — Apple-level minimal */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
         {[
-          { key: "CRITICAL" as FilterTab,   label: "Critical",        val: criticalCount,  sub: "Immediate action", Icon: Flame,       grad: `linear-gradient(135deg, ${dRED}, #FF6688)`,   valColor: dRED,    glow: "rgba(255,51,85,0.12)", shadow: "0 4px 14px rgba(255,51,85,0.26)" },
-          { key: "WARNING" as FilterTab,    label: "Warning",         val: warningCount,   sub: "Monitor closely",  Icon: Bell,        grad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`,  valColor: dGOLD,   glow: "rgba(255,170,0,0.12)", shadow: "0 4px 14px rgba(255,170,0,0.24)" },
-          { key: "All" as FilterTab,        label: "New This Week",   val: newThisWeek,    sub: "Since Monday",     Icon: UserPlus,    grad: `linear-gradient(135deg, ${dB1}, ${dB2})`,      valColor: dB1,     glow: "rgba(0,85,255,0.10)",  shadow: "0 4px 14px rgba(0,85,255,0.26)" },
-          { key: "MONITORING" as FilterTab, label: "Monitoring",      val: monitoringCount, sub: "Under watch",     Icon: ShieldAlert, grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, valColor: dGREEN_D, glow: "rgba(0,200,83,0.10)",  shadow: "0 4px 14px rgba(0,200,83,0.22)" },
-        ].map(({ key, label, val, sub, Icon, grad, valColor, glow, shadow }) => (
-          <button key={label}
-            onClick={() => setFilterTab(key)}
-            className="bg-white rounded-[20px] p-5 relative overflow-hidden text-left transition-transform hover:scale-[1.02]"
-            style={{ boxShadow: dSH_LG, border: `0.5px solid ${filterTab === key ? valColor + "66" : dSEP}` }}>
-            <div className="absolute -top-6 -right-6 w-[100px] h-[100px] rounded-full pointer-events-none"
-              style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)` }} />
-            <div className="flex items-center justify-between mb-4 relative">
-              <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: dT4 }}>{label}</span>
-              <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
-                style={{ background: grad, boxShadow: shadow }}>
-                <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
+          { key: "CRITICAL" as FilterTab,   label: "Critical",      val: criticalCount,   sub: "Immediate action", Icon: Flame,       grad: `linear-gradient(135deg, ${dRED}, #FF6688)`,   valColor: dRED,     ringColor: "rgba(255,51,85,0.18)",  shadow: "0 6px 16px rgba(255,51,85,0.22)"  },
+          { key: "WARNING" as FilterTab,    label: "Warning",       val: warningCount,    sub: "Monitor closely",  Icon: Bell,        grad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`,  valColor: dGOLD,    ringColor: "rgba(255,170,0,0.20)",  shadow: "0 6px 16px rgba(255,170,0,0.22)"  },
+          { key: "All" as FilterTab,        label: "New This Week", val: newThisWeek,     sub: "Since Monday",     Icon: UserPlus,    grad: `linear-gradient(135deg, ${dB1}, ${dB2})`,     valColor: dB1,      ringColor: "rgba(0,85,255,0.18)",   shadow: "0 6px 16px rgba(0,85,255,0.22)"  },
+          { key: "MONITORING" as FilterTab, label: "Monitoring",    val: monitoringCount, sub: "Under watch",      Icon: ShieldAlert, grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, valColor: dGREEN_D, ringColor: "rgba(0,200,83,0.20)",   shadow: "0 6px 16px rgba(0,200,83,0.22)"  },
+        ].map(({ key, label, val, sub, Icon, grad, valColor, ringColor, shadow }) => {
+          const active = filterTab === key;
+          return (
+            <button
+              key={label}
+              onClick={() => setFilterTab(key)}
+              className="bg-white rounded-[18px] px-5 py-[18px] relative text-left transition-all duration-200 ease-out hover:-translate-y-[1px] focus:outline-none"
+              style={{
+                boxShadow: active
+                  ? `0 0 0 1px ${ringColor}, 0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.06)`
+                  : "0 0 0 0.5px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.05)",
+              }}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#94A3B8" }}>
+                  {label}
+                </span>
+                <div
+                  className="w-9 h-9 rounded-[11px] flex items-center justify-center shrink-0"
+                  style={{ background: grad, boxShadow: shadow }}
+                >
+                  <Icon className="w-[17px] h-[17px] text-white" strokeWidth={2.4} />
+                </div>
               </div>
-            </div>
-            <p className="text-[34px] font-bold tracking-tight leading-none mb-1.5" style={{ color: valColor, letterSpacing: "-1.2px" }}>
-              {loading ? "—" : val}
-            </p>
-            <p className="text-[11px] font-semibold" style={{ color: dT3 }}>{sub}</p>
-          </button>
-        ))}
+              <p
+                className="text-[32px] font-bold tracking-tight leading-none mb-2"
+                style={{ color: valColor, letterSpacing: "-1px", fontFeatureSettings: "'tnum' 1" }}
+              >
+                {loading ? "—" : val}
+              </p>
+              <p className="text-[11px] font-medium" style={{ color: "#94A3B8" }}>{sub}</p>
+            </button>
+          );
+        })}
       </div>
 
       {/* Filter tabs */}
