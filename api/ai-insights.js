@@ -63,24 +63,25 @@ export default async function handler(req, res) {
     }
 
     const result = await response.json();
-    const rawContent =
-      result.output?.[0]?.content ||
-      result.response?.content    ||
-      result.choices?.[0]?.message?.content;
 
-    if (!rawContent) {
+    // OpenAI Responses API shape:
+    //   result.output = [ { content: [ { type: "output_text", text: "<json>" } ] } ]
+    // Older Chat Completions shape:
+    //   result.choices[0].message.content = "<json>"
+    // Walk every plausible nesting and return the first JSON string we find.
+    const rawContent = extractAIText(result);
+
+    if (!rawContent || typeof rawContent !== "string") {
+      console.warn("[ai-insights] No text in AI response:", JSON.stringify(result).slice(0, 500));
       return res.status(502).json({ error: "Empty AI response." });
     }
 
     let parsed;
-    if (typeof rawContent === "string") {
-      try { parsed = JSON.parse(rawContent); }
-      catch {
-        console.warn("[ai-insights] Malformed JSON (first 500):", rawContent.slice(0, 500));
-        return res.status(502).json({ error: "AI returned invalid JSON." });
-      }
-    } else {
-      parsed = rawContent;
+    try {
+      parsed = JSON.parse(stripCodeFences(rawContent));
+    } catch {
+      console.warn("[ai-insights] Malformed JSON (first 500):", rawContent.slice(0, 500));
+      return res.status(502).json({ error: "AI returned invalid JSON." });
     }
 
     return res.status(200).json(parsed);
@@ -88,4 +89,27 @@ export default async function handler(req, res) {
     console.error("[ai-insights] Handler error:", err);
     return res.status(500).json({ error: "AI processing failed." });
   }
+}
+
+// Walk the OpenAI response and return the first text payload we find.
+// Handles three known shapes: Responses API (output[].content[].text),
+// the `output_text` convenience field, and legacy Chat Completions.
+function extractAIText(result) {
+  const items = Array.isArray(result?.output) ? result.output : [];
+  for (const item of items) {
+    const contents = Array.isArray(item?.content) ? item.content : [];
+    for (const c of contents) {
+      if (typeof c?.text === "string") return c.text;
+    }
+    if (typeof item?.text === "string") return item.text;
+  }
+  if (typeof result?.output_text === "string") return result.output_text;
+  if (typeof result?.response?.content === "string") return result.response.content;
+  return result?.choices?.[0]?.message?.content || null;
+}
+
+// OpenAI sometimes wraps JSON in a ```json ... ``` fence even with json_object
+// mode — strip it so JSON.parse succeeds.
+function stripCodeFences(s) {
+  return s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
 }
