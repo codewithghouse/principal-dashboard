@@ -70,7 +70,7 @@ function currentIsoWeek(): number {
 }
 
 // Bump version when prompt/shape changes so stale caches are invalidated.
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 
 function cacheKey(type: "branch" | "principal", id: string, schoolId: string, week: number): string {
   const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -79,9 +79,18 @@ function cacheKey(type: "branch" | "principal", id: string, schoolId: string, we
 }
 
 // ── Prompt builders ──────────────────────────────────────────────────────
+// CRITICAL: prompts forbid invented numbers. Every figure cited in the output
+// MUST come from a field in the JSON payload. This prevents hallucinated
+// "attendance is 87%" claims when no attendance signal was passed.
 const BRANCH_INSTRUCTIONS = `You are an expert Indian K-12 school performance advisor.
 
-You will receive ONE branch's leaderboard standing within a school, plus context about the highest-ranked branch (if it exists). Explain WHY this branch sits at its rank, and (only for ranks 2+) HOW it can climb.
+You will receive ONE branch's leaderboard standing within a school, plus context about the highest-ranked branch and network averages. Explain WHY this branch sits at its rank, and (only for ranks 2+) HOW it can climb.
+
+ABSOLUTE NUMERIC GROUNDING RULES (violation = bad output):
+1. Every number you mention (averages, percentages, deltas, counts) MUST be either copied verbatim from the JSON payload OR be a simple subtraction of two payload fields (e.g. topBranch.composite − composite, networkBranchAvg − teacherAvg).
+2. NEVER invent attendance, pass-rate, test-count, syllabus-coverage, or other figures that are not present in the payload.
+3. If a field is 0 or missing, treat it as "no data" and do not claim a value.
+4. Do not reference other branches by name unless their name appears in the payload.
 
 Return ONLY valid JSON in this exact shape:
 
@@ -95,16 +104,23 @@ Return ONLY valid JSON in this exact shape:
   "solutionLabel": "Short header e.g. 'How to reach #1' or 'Recovery plan' (empty string for rank 1)"
 }
 
-Rules:
-- 3-4 whyPosition items, each tied to the actual numbers provided. Use tone "green" for strengths (rank 1), "orange" for moderate gaps, "red" for crises (rank 4-5 / declines).
+Content rules:
+- 3-4 whyPosition items, each tied to a SPECIFIC payload field (composite, teacherAvg, studentAvg, atRiskStudents, weekChange, or a delta vs networkBranchAvg / topBranch).
+- Tone: "green" for strengths (≥75 or rank 1 or improving trend); "orange" for moderate gaps (60–74 or 5+ pt gap to top); "red" for crises (<60, declining trend, or atRiskStudents ≥ 5).
 - For rank 1: solutions = [] and solutionLabel = "" (winners have nothing to fix).
-- For rank 2+: 2-4 solutions ordered by impact. Mark urgent=true if the gap is critical (declining trend, at-risk surge, or rank 4-5).
-- "bold" must be a stat-style fragment (numbers preferred). "rest" must start with " — " and complete the thought.
+- For rank 2+: 2-4 solutions ordered by impact. Mark urgent=true if the gap is critical (declining trend, at-risk surge, or rank in bottom third).
+- "bold" must be a stat-style fragment with a number copied from payload. "rest" must start with " — " and complete the thought.
 - Output ONLY JSON. No markdown, no commentary.`;
 
 const PRINCIPAL_INSTRUCTIONS = `You are an expert Indian K-12 school performance advisor.
 
 You will receive ONE principal's leaderboard standing within their school network. The principal's rank reflects their branch composite + their own engagement signal. Explain WHY they rank where they do, and (only for ranks 2+) what THEY personally should do to climb.
+
+ABSOLUTE NUMERIC GROUNDING RULES (violation = bad output):
+1. Every number you mention MUST be copied from the JSON payload OR be a simple delta of two payload fields (e.g. topPrincipal.composite − composite, networkPrincipalAvg − composite).
+2. NEVER invent figures — no "attendance 92%", no "10 observations" — unless that exact field exists in the payload.
+3. If a field is 0 or missing, treat it as "no data" and do not claim a value.
+4. Do not reference other principals by name unless that name appears in the payload.
 
 Return ONLY valid JSON in this exact shape:
 
@@ -118,10 +134,11 @@ Return ONLY valid JSON in this exact shape:
   "solutionLabel": "e.g. 'How to reach #1', 'Recovery plan', or '' for rank 1"
 }
 
-Rules:
-- 2-4 whyPosition items, grounded in their branch's teacher avg, student avg, at-risk count.
+Content rules:
+- 2-4 whyPosition items, each grounded in a SPECIFIC payload field (composite, branchTeacherAvg, branchStudentAvg, atRiskStudents, weekChange, or a delta vs networkPrincipalAvg / topPrincipal).
 - Rank 1: solutions = [] and solutionLabel = "".
-- Solutions are leadership actions (coaching, observation, policy enforcement) — NOT teacher- or student-level tasks.
+- Solutions are LEADERSHIP actions only (coaching, classroom observation, policy enforcement, parent-engagement drives) — NOT teacher- or student-level tasks.
+- "bold" must include a number copied from payload. "rest" must start with " — ".
 - Output ONLY JSON. No markdown, no commentary.`;
 
 function safeFixed(n: number | null | undefined, digits = 1): number {
@@ -129,7 +146,19 @@ function safeFixed(n: number | null | undefined, digits = 1): number {
   return Number(v.toFixed(digits));
 }
 
-function branchPayload(branch: BranchRow, top: BranchRow | null) {
+export interface BranchAIContext {
+  totalBranches: number;
+  networkBranchAvg: number;
+}
+
+export interface PrincipalAIContext {
+  totalPrincipals: number;
+  networkPrincipalAvg: number;
+}
+
+function branchPayload(branch: BranchRow, top: BranchRow | null, ctx?: BranchAIContext) {
+  const gapToTop = top && top.id !== branch.id ? safeFixed(top.composite - branch.composite) : 0;
+  const gapToNetwork = ctx ? safeFixed(branch.composite - ctx.networkBranchAvg) : 0;
   return {
     rank: branch.rank,
     branchName: branch.name,
@@ -141,16 +170,25 @@ function branchPayload(branch: BranchRow, top: BranchRow | null) {
     teachers: branch.teachers,
     students: branch.students,
     atRiskStudents: branch.atRisk,
+    atRiskPct: branch.students > 0 ? safeFixed((branch.atRisk / branch.students) * 100) : 0,
+    network: ctx ? {
+      totalBranches: ctx.totalBranches,
+      networkBranchAvg: safeFixed(ctx.networkBranchAvg),
+      gapToNetworkAvg: gapToNetwork,
+    } : null,
     topBranch: top && top.id !== branch.id ? {
       name: top.name,
       composite: safeFixed(top.composite),
       teacherAvg: safeFixed(top.teacherAvg),
       studentAvg: safeFixed(top.studentAvg),
+      gapToTop,
     } : null,
   };
 }
 
-function principalPayload(principal: PrincipalRow, top: PrincipalRow | null) {
+function principalPayload(principal: PrincipalRow, top: PrincipalRow | null, ctx?: PrincipalAIContext) {
+  const gapToTop = top && top.id !== principal.id ? safeFixed(top.composite - principal.composite) : 0;
+  const gapToNetwork = ctx ? safeFixed(principal.composite - ctx.networkPrincipalAvg) : 0;
   return {
     rank: principal.rank,
     principalName: principal.name,
@@ -161,10 +199,16 @@ function principalPayload(principal: PrincipalRow, top: PrincipalRow | null) {
     branchTeacherAvg: safeFixed(principal.teacherAvg),
     branchStudentAvg: safeFixed(principal.studentAvg),
     atRiskStudents: principal.atRisk,
+    network: ctx ? {
+      totalPrincipals: ctx.totalPrincipals,
+      networkPrincipalAvg: safeFixed(ctx.networkPrincipalAvg),
+      gapToNetworkAvg: gapToNetwork,
+    } : null,
     topPrincipal: top && top.id !== principal.id ? {
       name: top.name,
       branchName: top.branch,
       composite: safeFixed(top.composite),
+      gapToTop,
     } : null,
   };
 }
@@ -469,7 +513,7 @@ export async function getBranchInsight(
   branch: BranchRow,
   top: BranchRow | null,
   schoolId: string,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; ctx?: BranchAIContext } = {},
 ): Promise<LeaderboardInsight> {
   if (!schoolId) throw new Error("schoolId is required");
   const week = currentIsoWeek();
@@ -494,7 +538,7 @@ export async function getBranchInsight(
 
   let shaped: LeaderboardInsight;
   try {
-    const raw = await callAIInsights(BRANCH_INSTRUCTIONS, branchPayload(branch, top));
+    const raw = await callAIInsights(BRANCH_INSTRUCTIONS, branchPayload(branch, top, opts.ctx));
     shaped = shapeAIResponse(raw);
 
     // Cache (best-effort)
@@ -525,7 +569,7 @@ export async function getPrincipalInsight(
   principal: PrincipalRow,
   top: PrincipalRow | null,
   schoolId: string,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; ctx?: PrincipalAIContext } = {},
 ): Promise<LeaderboardInsight> {
   if (!schoolId) throw new Error("schoolId is required");
   const week = currentIsoWeek();
@@ -549,7 +593,7 @@ export async function getPrincipalInsight(
 
   let shaped: LeaderboardInsight;
   try {
-    const raw = await callAIInsights(PRINCIPAL_INSTRUCTIONS, principalPayload(principal, top));
+    const raw = await callAIInsights(PRINCIPAL_INSTRUCTIONS, principalPayload(principal, top, opts.ctx));
     shaped = shapeAIResponse(raw);
 
     try {

@@ -427,21 +427,35 @@ function branchMetaMap(input: LeaderboardInput): Map<string, { name: string; cit
     });
   });
 
-  // 2. Fall back to principal-attached metadata for any branch not in master list
-  input.principals.forEach((p) => {
+  // 2. Fall back to principal-attached metadata for any branch not in master list.
+  // Principal docs in this codebase use varying field names (`branchName` vs `branch`,
+  // `branchCity` vs `city` vs `branchAddress`) — accept all known aliases.
+  input.principals.forEach((p: any) => {
     const bid = p.branchId;
     if (!bid || m.has(bid)) return;
-    m.set(bid, {
-      name: p.branchName || bid,
-      city: p.branchCity || "—",
-    });
+    const name = p.branchName || p.branch || p.branchTitle || bid;
+    const city = p.branchCity || p.city || p.branchLocation || p.branchAddress || "—";
+    m.set(bid, { name, city });
   });
 
-  // 3. Final fallback — any branchId referenced by teachers/students gets a stub
+  // 3. Enrich from teacher/student docs — they also carry `branchName`/`branch`
+  // when present. Last-resort fallback uses the branchId as the name.
   input.teachers.concat(input.students as any).forEach((d: any) => {
     const bid = d.branchId;
-    if (!bid || m.has(bid)) return;
-    m.set(bid, { name: bid, city: "—" });
+    if (!bid) return;
+    if (m.has(bid)) {
+      // Upgrade a stub (name === bid) if a richer name is available on this doc
+      const existing = m.get(bid)!;
+      if (existing.name === bid) {
+        const better = d.branchName || d.branch;
+        if (better) m.set(bid, { name: better, city: existing.city });
+      }
+      return;
+    }
+    m.set(bid, {
+      name: d.branchName || d.branch || bid,
+      city: d.branchCity || d.city || "—",
+    });
   });
   return m;
 }

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -130,8 +129,6 @@ const AppRoutes = () => {
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 const App = () => {
-  const [splashDone, setSplashDone] = useState(false);
-
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -141,8 +138,9 @@ const App = () => {
             <Sonner />
             <BrowserRouter>
               <ErrorBoundary>
-                {!splashDone && <SplashScreen onFinish={() => setSplashDone(true)} />}
                 <AppRoutes />
+                {/* Mobile-only brand splash — shows once per session, above everything */}
+                <SplashScreen />
               </ErrorBoundary>
             </BrowserRouter>
           </TooltipProvider>

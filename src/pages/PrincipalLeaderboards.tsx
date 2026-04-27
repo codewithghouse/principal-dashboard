@@ -113,8 +113,8 @@ const MyBranchBadge: React.FC = () => (
 // DETAIL PANEL — lazy AI insight loader
 // ─────────────────────────────────────────────────────────────
 type DetailEntity =
-  | { type: "branch";    row: BranchRow;    top: BranchRow | null }
-  | { type: "principal"; row: PrincipalRow; top: PrincipalRow | null };
+  | { type: "branch";    row: BranchRow;    top: BranchRow | null;    ctx: { totalBranches: number; networkBranchAvg: number } }
+  | { type: "principal"; row: PrincipalRow; top: PrincipalRow | null; ctx: { totalPrincipals: number; networkPrincipalAvg: number } };
 
 const DetailPanel: React.FC<{ entity: DetailEntity; schoolId: string }> = ({ entity, schoolId }) => {
   const [insight, setInsight] = useState<LeaderboardInsight | null>(null);
@@ -127,8 +127,8 @@ const DetailPanel: React.FC<{ entity: DetailEntity; schoolId: string }> = ({ ent
     if (force) setRefreshing(true); else setLoading(true);
     try {
       const result = entity.type === "branch"
-        ? await getBranchInsight(entity.row, entity.top, schoolId, { force })
-        : await getPrincipalInsight(entity.row, entity.top, schoolId, { force });
+        ? await getBranchInsight(entity.row, entity.top, schoolId, { force, ctx: entity.ctx })
+        : await getPrincipalInsight(entity.row, entity.top, schoolId, { force, ctx: entity.ctx });
       setInsight(result);
     } catch (e: any) {
       setErr(e?.message || "Could not load AI analysis.");
@@ -380,7 +380,15 @@ const BranchLeaderboard: React.FC<{ data: LeaderboardOutput; schoolId: string }>
             />
             {expanded === branch.id && (
               <div style={{ padding: "4px 12px 12px" }}>
-                <DetailPanel entity={{ type: "branch", row: branch, top: top.id === branch.id ? null : top }} schoolId={schoolId} />
+                <DetailPanel
+                  entity={{
+                    type: "branch",
+                    row: branch,
+                    top: top.id === branch.id ? null : top,
+                    ctx: { totalBranches: data.meta.totalBranches, networkBranchAvg: data.meta.networkBranchAvg },
+                  }}
+                  schoolId={schoolId}
+                />
               </div>
             )}
           </React.Fragment>
@@ -437,7 +445,15 @@ const PrincipalLeaderboardView: React.FC<{ data: LeaderboardOutput; schoolId: st
             />
             {expanded === prin.id && (
               <div style={{ padding: "4px 12px 12px" }}>
-                <DetailPanel entity={{ type: "principal", row: prin, top: top.id === prin.id ? null : top }} schoolId={schoolId} />
+                <DetailPanel
+                  entity={{
+                    type: "principal",
+                    row: prin,
+                    top: top.id === prin.id ? null : top,
+                    ctx: { totalPrincipals: data.meta.totalPrincipals, networkPrincipalAvg: data.meta.networkPrincipalAvg },
+                  }}
+                  schoolId={schoolId}
+                />
               </div>
             )}
           </React.Fragment>
@@ -649,37 +665,49 @@ const PrincipalLeaderboards: React.FC = () => {
   const [branchDocs, setBranchDocs] = useState<BranchDoc[]>([]);
 
   const [activeTab, setActiveTab] = useState<TabId>("branch");
+  const [fetchErrors, setFetchErrors] = useState<Record<string, string>>({});
 
   // ── Load Firestore data (always schoolId-scoped — never branch-scoped here,
-  // because the leaderboard is intentionally cross-branch within the school)
+  // because the leaderboard is intentionally cross-branch within the school).
+  // Errors are surfaced (console + state) so silent rule/index failures don't
+  // masquerade as "no data".
   useEffect(() => {
     if (!schoolId) { setLoading(false); return; }
 
+    setFetchErrors({});
     let loadedCount = 0;
     const total = 12;
     const markLoaded = () => { loadedCount++; if (loadedCount >= total) setLoading(false); };
 
-    const scoped = (col: string): QueryConstraint[] => [where("schoolId", "==", schoolId)];
-    const q = (col: string) => query(collection(db, col), ...scoped(col));
+    const onErr = (col: string) => (err: any) => {
+      const msg = err?.code ? `${err.code}: ${err.message || ""}`.trim() : (err?.message || String(err));
+      console.error(`[PrincipalLeaderboards] ${col} query failed:`, err);
+      setFetchErrors(prev => ({ ...prev, [col]: msg }));
+      markLoaded();
+    };
+
+    const scoped: QueryConstraint[] = [where("schoolId", "==", schoolId)];
+    const q = (col: string) => query(collection(db, col), ...scoped);
 
     const unsubs = [
-      onSnapshot(q("teachers"),             (s) => { setTeachers(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); }, () => markLoaded()),
-      onSnapshot(q("students"),             (s) => { setStudents(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); }, () => markLoaded()),
-      onSnapshot(q("principals"),           (s) => { setPrincipals(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); }, () => markLoaded()),
-      onSnapshot(q("test_scores"),          (s) => { setTestScores(s.docs.map((d) => d.data() as ScoreDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(q("results"),              (s) => { setResults(s.docs.map((d) => d.data() as ScoreDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(q("gradebook_scores"),     (s) => { setGradebook(s.docs.map((d) => d.data() as ScoreDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(q("attendance"),           (s) => { setAttendance(s.docs.map((d) => d.data() as AttendanceDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(q("assignments"),          (s) => { setAssignments(s.docs.map((d) => d.data() as AssignmentDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(q("teacher_attendance"),   (s) => { setTAttendance(s.docs.map((d) => d.data() as TeacherAttendanceDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(q("classes"),              (s) => { setClasses(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); }, () => markLoaded()),
-      onSnapshot(q("teaching_assignments"), (s) => { setTeachingAssignments(s.docs.map((d) => d.data() as any)); markLoaded(); }, () => markLoaded()),
-      // Master branches list — `schools/{schoolId}/branches` subcollection.
-      // Source of truth so every branch appears even if no teachers/students assigned yet.
+      onSnapshot(q("teachers"),             (s) => { setTeachers(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); }, onErr("teachers")),
+      onSnapshot(q("students"),             (s) => { setStudents(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); }, onErr("students")),
+      onSnapshot(q("principals"),           (s) => { setPrincipals(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); }, onErr("principals")),
+      onSnapshot(q("test_scores"),          (s) => { setTestScores(s.docs.map((d) => d.data() as ScoreDoc)); markLoaded(); }, onErr("test_scores")),
+      onSnapshot(q("results"),              (s) => { setResults(s.docs.map((d) => d.data() as ScoreDoc)); markLoaded(); }, onErr("results")),
+      onSnapshot(q("gradebook_scores"),     (s) => { setGradebook(s.docs.map((d) => d.data() as ScoreDoc)); markLoaded(); }, onErr("gradebook_scores")),
+      onSnapshot(q("attendance"),           (s) => { setAttendance(s.docs.map((d) => d.data() as AttendanceDoc)); markLoaded(); }, onErr("attendance")),
+      onSnapshot(q("assignments"),          (s) => { setAssignments(s.docs.map((d) => d.data() as AssignmentDoc)); markLoaded(); }, onErr("assignments")),
+      onSnapshot(q("teacher_attendance"),   (s) => { setTAttendance(s.docs.map((d) => d.data() as TeacherAttendanceDoc)); markLoaded(); }, onErr("teacher_attendance")),
+      onSnapshot(q("classes"),              (s) => { setClasses(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); }, onErr("classes")),
+      onSnapshot(q("teaching_assignments"), (s) => { setTeachingAssignments(s.docs.map((d) => d.data() as any)); markLoaded(); }, onErr("teaching_assignments")),
+      // Optional master branches list. Most schools don't populate this; the
+      // aggregator falls back to deriving branches from principal/teacher/
+      // student docs. Failure here is non-fatal.
       onSnapshot(
         collection(doc(db, "schools", schoolId), "branches"),
         (s) => { setBranchDocs(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); },
-        () => markLoaded(),
+        (err) => { console.warn("[PrincipalLeaderboards] schools/{id}/branches subcollection unavailable (falling back to derived branches):", err); markLoaded(); },
       ),
     ];
 
@@ -759,6 +787,17 @@ const PrincipalLeaderboards: React.FC = () => {
           );
         })}
       </div>
+
+      {Object.keys(fetchErrors).length > 0 && (
+        <div style={{
+          background: T.RED_BG, border: `0.5px solid rgba(255,69,58,0.25)`, borderRadius: 14,
+          padding: "11px 14px", marginBottom: 14, color: T.RED_TEXT,
+          fontSize: 11, fontWeight: 600, fontFamily: FONT, lineHeight: 1.5,
+        }}>
+          <strong style={{ fontWeight: 800 }}>Partial data — {Object.keys(fetchErrors).length} collection(s) failed to load:</strong>{" "}
+          {Object.keys(fetchErrors).join(", ")}. Check console for the Firestore error (usually missing rule, missing index, or schoolId field mismatch). Rankings shown reflect only the data that loaded.
+        </div>
+      )}
 
       {loading || !data ? (
         <LoadingState />
