@@ -18,7 +18,7 @@ const DashboardLayout = ({ children }: { children: ReactNode }) => {
         )}
         {/* Sidebar */}
         <div
-          className={`fixed top-14 bottom-0 left-0 z-50 w-64 transition-transform duration-300 ease-in-out md:sticky md:top-16 md:h-[calc(100vh-64px)] md:translate-x-0 ${
+          className={`fixed top-14 bottom-0 left-0 z-50 w-[250px] transition-transform duration-300 ease-in-out md:sticky md:top-16 md:h-[calc(100vh-64px)] md:translate-x-0 ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
