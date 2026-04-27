@@ -336,38 +336,37 @@ const Reports = () => {
           </div>
         </div>
 
-        {/* Category cards — mirrors desktop vibe (eyebrow + bright accent name) */}
+        {/* Category cards */}
         <div className="grid grid-cols-2 gap-[10px] px-5 pt-[14px]">
           {reportCategories.map(cat => {
-            const p = categoryPalette[cat.tone];
+            const v = vibeFor(cat.tone);
             const active = activeCategory === cat.id;
             const isCustom = cat.id === "custom";
             const Icon = cat.icon;
             return (
               <button key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
-                className={`${isCustom ? "col-span-2" : ""} rounded-[20px] p-[14px] relative overflow-hidden active:scale-[0.96] transition-transform text-left flex flex-col min-h-[140px]`}
+                className={`${isCustom ? "col-span-2" : ""} rounded-[20px] p-4 relative overflow-hidden active:scale-[0.96] transition-transform text-left min-h-[110px]`}
                 style={{
-                  background: p.cardGrad,
-                  border: `0.5px solid ${active ? p.ringColor : "rgba(0,85,255,0.08)"}`,
+                  background: v.cardBg,
+                  border: active ? `1.5px solid ${v.accent}` : "0.5px solid rgba(0,85,255,0.10)",
                   boxShadow: active
-                    ? `0 0 0 2px ${p.ringColor}, 0 6px 20px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.10)`
+                    ? `0 0 0 3px ${v.accent}22, 0 8px 22px rgba(0,0,0,0.10)`
                     : SH_LG,
                   transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
                 }}>
                 <div className="w-[44px] h-[44px] rounded-[12px] flex items-center justify-center mb-[10px] relative z-10"
-                  style={{ background: p.tileGrad, boxShadow: p.tileShadow }}>
+                  style={{ background: v.iconBg, boxShadow: v.iconShadow }}>
                   <Icon className="w-[22px] h-[22px] text-white" strokeWidth={2.3} />
                 </div>
-                <span className="block text-[9px] font-bold uppercase tracking-[0.10em] mb-[4px] relative z-10" style={{ color: T4 }}>
-                  {isCustom ? "Custom" : "Category"}
-                </span>
-                <p className="text-[17px] font-bold leading-[1.1] mb-[3px] relative z-10" style={{ color: p.nameColor, letterSpacing: "-0.4px" }}>
-                  {cat.label}
-                </p>
-                <p className="text-[11px] font-semibold relative z-10" style={{ color: T3 }}>{cat.count}</p>
+                <div className="relative z-10">
+                  <div className="text-[14px] font-bold leading-[1.15] mb-[3px]" style={{ color: v.nameColor, letterSpacing: "-0.2px" }}>
+                    {cat.label}{isCustom ? " · Build your own" : ""}
+                  </div>
+                  <div className="text-[11px] font-semibold" style={{ color: v.subColor }}>{cat.count}</div>
+                </div>
                 <Icon className="absolute bottom-[10px] right-[10px] w-12 h-12 pointer-events-none"
-                  style={{ color: p.decorColor, opacity: 0.18 }} strokeWidth={2} />
+                  style={{ color: v.accent, opacity: 0.18 }} strokeWidth={2} />
               </button>
             );
           })}
