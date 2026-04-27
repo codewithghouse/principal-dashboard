@@ -78,7 +78,7 @@ const AppSidebar = ({ onClose }: AppSidebarProps) => {
     : PRINCIPAL_MENU;
 
   return (
-    <aside className="w-64 h-full bg-card border-r border-border flex flex-col shrink-0 overflow-y-auto shadow-sm">
+    <aside className="w-64 h-full bg-card flex flex-col shrink-0 overflow-y-auto shadow-md md:my-3 md:ml-3 md:w-[calc(100%-0.75rem)] md:h-[calc(100%-1.5rem)] md:rounded-tl-2xl md:rounded-bl-2xl">
 
       {/* Role badge */}
       <div className="px-4 py-3 border-b border-slate-50 flex items-center justify-between">
