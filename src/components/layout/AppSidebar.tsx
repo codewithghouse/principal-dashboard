@@ -176,7 +176,7 @@ function Item({ item, active, onSelect }: { item: NavItem; active: boolean; onSe
           height: T.ITEM_H + 4,
           paddingLeft: T.LEFT_PAD, paddingRight: 14,
           width: "100%", borderRadius: 10,
-          border: "none", cursor: "pointer",
+          border: "none", outline: "none", boxShadow: "none", cursor: "pointer",
           background: "#1e3a5f", color: "#fff",
           fontFamily: "inherit", fontSize: 13, fontWeight: 500,
           boxSizing: "border-box",
@@ -201,7 +201,7 @@ function Item({ item, active, onSelect }: { item: NavItem; active: boolean; onSe
           width: "100%",
           /* only left corners round — right side is flush with sidebar edge */
           borderRadius: `${T.CURVE / 2}px 0 0 ${T.CURVE / 2}px`,
-          border: "none", cursor: "pointer",
+          border: "none", outline: "none", boxShadow: "none", cursor: "pointer",
           background: T.accentLight,
           color: T.accent,
           fontFamily: "inherit", fontSize: 13, fontWeight: 600,
@@ -231,7 +231,7 @@ function Item({ item, active, onSelect }: { item: NavItem; active: boolean; onSe
           height: T.ITEM_H,
           paddingLeft: T.LEFT_PAD, paddingRight: 14,
           width: "100%", borderRadius: 8,
-          border: "none", cursor: "pointer",
+          border: "none", outline: "none", boxShadow: "none", cursor: "pointer",
           background: hov ? "#F0F1F8" : "transparent",
           color: hov ? T.textDark : T.textBody,
           fontFamily: "inherit", fontSize: 13, fontWeight: 400,
@@ -296,7 +296,6 @@ function Sidebar({ activeId, onSelect, sections = SECTIONS }: { activeId: string
         display: "flex", flexDirection: "column",
         overflowY: "auto", overflowX: "hidden",
         scrollbarWidth: "none",
-        boxShadow: "0 4px 24px rgba(28,7,112,0.10), 0 1px 4px rgba(28,7,112,0.06)",
       }}>
         {/* Logo */}
         <div style={{
@@ -304,7 +303,6 @@ function Sidebar({ activeId, onSelect, sections = SECTIONS }: { activeId: string
           height: 64,
           paddingLeft: T.LEFT_PAD + T.GAP,
           paddingRight: 16,
-          borderBottom: `1px solid ${T.border}`,
           flexShrink: 0,
         }}>
           <div style={{
