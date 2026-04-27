@@ -399,25 +399,33 @@ const Syllabus = () => {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 20px 0" }}>
           {[
             {
-              label: "Total Syllabi",
+              label: "Total\nSyllabi",
               value: totalCount,
               sub: totalCount === 0 ? "None uploaded yet" : "Across all classes",
-              color: B1,
-              icon: <Library size={14} color={B1} strokeWidth={2.4} />,
-              bg: "rgba(0,85,255,.10)",
-              border: "rgba(0,85,255,.18)",
-              glow: "rgba(0,85,255,.10)",
+              valColor: B1,
+              subColor: T3,
+              cardBg: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+              iconBg: `linear-gradient(135deg, ${B1}, ${B2})`,
+              iconShadow: "0 4px 14px rgba(0,85,255,0.28)",
+              icon: Library,
+              decorIcon: Library,
+              decorColor: B1,
+              decorOpacity: 0.18,
               onClick: () => { setClassFilter(""); setSubjectFilter(""); setSearchQuery(""); },
             },
             {
-              label: "Classes Covered",
+              label: "Classes\nCovered",
               value: classesCount,
               sub: classesCount === 0 ? "No classes yet" : "With at least one syllabus",
-              color: GREEN,
-              icon: <Building2 size={14} color={GREEN} strokeWidth={2.4} />,
-              bg: "rgba(0,200,83,.10)",
-              border: "rgba(0,200,83,.20)",
-              glow: "rgba(0,200,83,.10)",
+              valColor: "#007830",
+              subColor: "#007830",
+              cardBg: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+              iconBg: `linear-gradient(135deg, ${GREEN}, #22EE66)`,
+              iconShadow: "0 4px 14px rgba(0,200,83,0.26)",
+              icon: Building2,
+              decorIcon: Building2,
+              decorColor: GREEN,
+              decorOpacity: 0.22,
               onClick: () => {
                 if (classOptions.length > 0) {
                   toast.info(`${classesCount} class${classesCount === 1 ? "" : "es"} covered: ${classOptions.slice(0, 6).join(", ")}`);
@@ -427,14 +435,18 @@ const Syllabus = () => {
               },
             },
             {
-              label: "Subjects Covered",
+              label: "Subjects\nCovered",
               value: subjectsCount,
               sub: subjectsCount === 0 ? "No subjects yet" : "Distinct subjects",
-              color: VIOLET,
-              icon: <BookOpen size={14} color={VIOLET} strokeWidth={2.4} />,
-              bg: "rgba(123,63,244,.10)",
-              border: "rgba(123,63,244,.20)",
-              glow: "rgba(123,63,244,.10)",
+              valColor: VIOLET,
+              subColor: T3,
+              cardBg: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+              iconBg: `linear-gradient(135deg, ${VIOLET}, #A07CF8)`,
+              iconShadow: "0 4px 14px rgba(123,63,244,0.26)",
+              icon: BookOpen,
+              decorIcon: BookOpen,
+              decorColor: VIOLET,
+              decorOpacity: 0.22,
               onClick: () => {
                 if (subjectOptions.length > 0) {
                   toast.info(`Subjects: ${subjectOptions.join(", ")}`);
@@ -444,14 +456,18 @@ const Syllabus = () => {
               },
             },
             {
-              label: "Updated This Week",
+              label: "Updated\nThis Week",
               value: updatedThisWeek,
               sub: "Past 7 days",
-              color: GOLD,
-              icon: <Calendar size={14} color={GOLD} strokeWidth={2.4} />,
-              bg: "rgba(255,170,0,.12)",
-              border: "rgba(255,170,0,.22)",
-              glow: "rgba(255,170,0,.10)",
+              valColor: "#A86A00",
+              subColor: T3,
+              cardBg: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+              iconBg: `linear-gradient(135deg, ${GOLD}, #FFDD44)`,
+              iconShadow: "0 4px 14px rgba(255,170,0,0.28)",
+              icon: Calendar,
+              decorIcon: Calendar,
+              decorColor: GOLD,
+              decorOpacity: 0.22,
               onClick: () => {
                 if (updatedThisWeek === 0) {
                   toast.info("No uploads in the past 7 days.");
@@ -460,60 +476,59 @@ const Syllabus = () => {
                 }
               },
             },
-          ].map((card, i) => (
-            <button
-              key={i}
-              onClick={card.onClick}
-              style={{
-                background: "#fff",
-                borderRadius: 20,
-                padding: 16,
-                boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 18px 44px rgba(0,85,255,.13)",
-                border: "none",
-                position: "relative",
-                overflow: "hidden",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              <div
+          ].map((card, i) => {
+            const Icon = card.icon;
+            const Decor = card.decorIcon;
+            return (
+              <button
+                key={i}
+                onClick={card.onClick}
+                className="active:scale-[0.96] transition-transform"
                 style={{
-                  position: "absolute",
-                  top: -20,
-                  right: -16,
-                  width: 70,
-                  height: 70,
-                  background: `radial-gradient(circle, ${card.glow} 0%, transparent 70%)`,
-                  borderRadius: "50%",
-                  pointerEvents: "none",
+                  background: card.cardBg,
+                  borderRadius: 20,
+                  padding: 16,
+                  boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 18px 44px rgba(0,85,255,.13)",
+                  border: "0.5px solid rgba(0,85,255,0.10)",
+                  position: "relative",
+                  overflow: "hidden",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
                 }}
-              />
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: T4, lineHeight: 1.4, flex: 1, paddingRight: 6 }}>
-                  {card.label}
-                </div>
+              >
                 <div
                   style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 9,
-                    background: card.bg,
-                    border: `0.5px solid ${card.border}`,
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    background: card.iconBg,
+                    boxShadow: card.iconShadow,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    flexShrink: 0,
+                    marginBottom: 10,
+                    position: "relative",
+                    zIndex: 1,
                   }}
                 >
-                  {card.icon}
+                  <Icon size={22} color="#fff" strokeWidth={2.3} />
                 </div>
-              </div>
-              <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-1px", lineHeight: 1, marginBottom: 5, color: card.color }}>
-                {card.value}
-              </div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: T3 }}>{card.sub}</div>
-            </button>
-          ))}
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T4, lineHeight: 1.3, marginBottom: 6, whiteSpace: "pre-line", position: "relative", zIndex: 1 }}>
+                  {card.label}
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-1px", lineHeight: 1, marginBottom: 6, color: card.valColor, position: "relative", zIndex: 1 }}>
+                  {card.value}
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: card.subColor, position: "relative", zIndex: 1 }}>{card.sub}</div>
+                <Decor
+                  size={48}
+                  strokeWidth={2}
+                  style={{ position: "absolute", bottom: 10, right: 10, color: card.decorColor, opacity: card.decorOpacity, pointerEvents: "none" }}
+                />
+              </button>
+            );
+          })}
         </div>
 
         {/* SEARCH */}
