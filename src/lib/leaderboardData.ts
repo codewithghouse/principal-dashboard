@@ -616,7 +616,9 @@ export function buildLeaderboards(input: LeaderboardInput): LeaderboardOutput {
 
   const studentRowsRaw = input.students.map((stu) => {
     const out = scoreOneStudent(stu.id, scoresByStudentEff, attByStudentEff);
-    if (!out.hasData) return null;
+    // Include all enrolled students — even if no scores/attendance yet they
+    // appear at the bottom with composite 0. Otherwise newly-enrolled students
+    // are invisible in the leaderboard until their first test.
     const bid = stu.branchId || "_default";
     const branchName = meta.get(bid)?.name || bid;
     const prevC = prev.studentScores.get(stu.id);
