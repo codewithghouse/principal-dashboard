@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Users, GraduationCap, CalendarCheck, AlertCircle, ChevronRight,
   ShieldCheck, Star, CheckCircle2, TrendingUp, TrendingDown,
+  BarChart3, PieChart,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -45,7 +46,8 @@ const SEP = "rgba(0,85,255,0.07)";
 const GREEN = "#00C853", GREEN_D = "#007830", GREEN_S = "rgba(0,200,83,0.10)", GREEN_B = "rgba(0,200,83,0.22)";
 const RED = "#FF3355";
 const ORANGE = "#FF8800";
-const GOLD = "#FFAA00";
+const GOLD = "#FFAA00", GOLD_D = "#A86A00";
+const VIOLET = "#7B3FF4";
 const SH    = "0 0 0 0.5px rgba(0,85,255,0.08), 0 2px 8px rgba(0,85,255,0.08), 0 10px 26px rgba(0,85,255,0.10)";
 const SH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.11), 0 18px 44px rgba(0,85,255,0.13)";
 
@@ -144,51 +146,69 @@ const DashboardMobile = ({
     </div>
   );
 
+  const incidentsActive = incidentsNum !== null && incidentsNum > 0;
   const StatGrid = (
     <div className="grid grid-cols-2 gap-[10px] px-5 pt-[14px]">
       {[
         {
-          label: "Total\nStudents", value: displayStudents, valColor: B1, subColor: T3, sub: "Enrolled this branch",
-          icon: Users, iconBg: "rgba(0,85,255,0.10)", iconBorder: "rgba(0,85,255,0.18)", iconColor: B1,
+          label: "Total\nStudents", value: displayStudents, sub: "Enrolled this branch",
+          cardBg: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+          icon: Users, iconBg: `linear-gradient(135deg, ${B1}, ${B2})`, iconShadow: "0 4px 14px rgba(0,85,255,0.28)",
+          valColor: B1, subColor: T3,
+          decorIcon: Users, decorColor: B1, decorOpacity: 0.18,
           to: "/students",
         },
         {
-          label: "Teachers", value: displayTeachers, valColor: GREEN_D, subColor: GREEN_D, sub: "Active staff",
-          icon: GraduationCap, iconBg: "rgba(0,200,83,0.10)", iconBorder: "rgba(0,200,83,0.20)", iconColor: GREEN,
+          label: "Teachers", value: displayTeachers, sub: "Active staff",
+          cardBg: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+          icon: GraduationCap, iconBg: `linear-gradient(135deg, ${GREEN}, #22EE66)`, iconShadow: "0 4px 14px rgba(0,200,83,0.26)",
+          valColor: GREEN_D, subColor: GREEN_D,
+          decorIcon: TrendingUp, decorColor: GREEN, decorOpacity: 0.22,
           to: "/teachers",
         },
         {
-          label: "Today's\nAttendance", value: displayAttendance, valColor: displayAttendance === "--" ? ORANGE : T1,
-          subColor: attDeltaNum !== null ? (attDeltaNum >= 0 ? GREEN : RED) : T4,
+          label: "Today's\nAttendance", value: displayAttendance,
           sub: attDeltaNum !== null ? `${attDeltaNum >= 0 ? "+" : ""}${attDeltaNum}% vs yesterday` : "No data yet",
-          icon: CalendarCheck, iconBg: "rgba(255,136,0,0.10)", iconBorder: "rgba(255,136,0,0.20)", iconColor: ORANGE,
+          cardBg: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+          icon: CalendarCheck, iconBg: `linear-gradient(135deg, ${GOLD}, #FFDD44)`, iconShadow: "0 4px 14px rgba(255,170,0,0.28)",
+          valColor: GOLD_D,
+          subColor: attDeltaNum !== null ? (attDeltaNum >= 0 ? GREEN_D : RED) : T4,
+          decorIcon: BarChart3, decorColor: GOLD, decorOpacity: 0.22,
           to: "/attendance",
         },
         {
           label: "Pending\nIncidents", value: displayIncidents,
-          valColor: incidentsNum !== null && incidentsNum > 0 ? RED : T1,
-          subColor: incidentsNum !== null && incidentsNum > 0 ? RED : GREEN_D,
-          sub: incidentsNum !== null && incidentsNum > 0 ? "Needs review" : "All clear",
-          icon: AlertCircle, iconBg: "rgba(255,51,85,0.10)", iconBorder: "rgba(255,51,85,0.18)", iconColor: RED,
+          sub: incidentsActive ? "Action required" : "All clear",
+          cardBg: incidentsActive
+            ? "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)"
+            : "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+          icon: AlertCircle,
+          iconBg: incidentsActive ? `linear-gradient(135deg, ${RED}, #FF6688)` : `linear-gradient(135deg, ${VIOLET}, #A07CF8)`,
+          iconShadow: incidentsActive ? "0 4px 14px rgba(255,51,85,0.28)" : "0 4px 14px rgba(123,63,244,0.26)",
+          valColor: incidentsActive ? RED : VIOLET,
+          subColor: incidentsActive ? RED : T3,
+          decorIcon: PieChart, decorColor: incidentsActive ? RED : VIOLET, decorOpacity: 0.22,
           to: "/discipline",
         },
-      ].map(({ label, value, valColor, subColor, sub, icon: Icon, iconBg, iconBorder, iconColor, to }) => (
+      ].map(({ label, value, sub, cardBg, icon: Icon, iconBg, iconShadow, valColor, subColor, decorIcon: Decor, decorColor, decorOpacity, to }) => (
         <button
           key={label}
           onClick={() => navigate(to)}
-          className="bg-white rounded-[20px] px-4 py-4 relative overflow-hidden cursor-pointer active:scale-[0.96] transition-transform text-left"
-          style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
-          <div className="flex items-start justify-between mb-[10px]">
-            <div className="text-[10px] font-bold uppercase tracking-[0.07em] leading-[1.4] whitespace-pre-line" style={{ color: T4 }}>{label}</div>
-            <div className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center"
-              style={{ background: iconBg, border: `0.5px solid ${iconBorder}` }}>
-              <Icon className="w-[15px] h-[15px]" style={{ color: iconColor }} strokeWidth={2.3} />
-            </div>
+          className="rounded-[20px] px-4 py-4 relative overflow-hidden cursor-pointer active:scale-[0.96] transition-transform text-left"
+          style={{ background: cardBg, boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+          <div
+            className="w-[44px] h-[44px] rounded-[12px] flex items-center justify-center mb-[10px] relative z-10"
+            style={{ background: iconBg, boxShadow: iconShadow }}>
+            <Icon className="w-[22px] h-[22px] text-white" strokeWidth={2.3} />
           </div>
-          <div className="text-[28px] font-bold leading-none mb-1" style={{ color: valColor, letterSpacing: "-1px" }}>
+          <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-[6px] leading-[1.3] whitespace-pre-line relative z-10" style={{ color: T4 }}>
+            {label}
+          </span>
+          <div className="text-[28px] font-bold leading-none mb-[6px] relative z-10" style={{ color: valColor, letterSpacing: "-1px" }}>
             {String(value)}
           </div>
-          <div className="text-[11px] font-medium truncate" style={{ color: subColor }}>{sub}</div>
+          <div className="text-[11px] font-semibold truncate relative z-10" style={{ color: subColor }}>{sub}</div>
+          <Decor className="absolute bottom-[10px] right-[10px] w-12 h-12 pointer-events-none" style={{ color: decorColor, opacity: decorOpacity }} strokeWidth={2} />
         </button>
       ))}
     </div>

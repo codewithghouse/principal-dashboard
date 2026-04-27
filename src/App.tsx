@@ -9,6 +9,8 @@ import { AuthProvider, useAuth } from "./lib/AuthContext";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import SplashScreen from "@/components/SplashScreen";
+import { InstallBanner } from "@/components/InstallBanner";
+import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
 import LoginPage from "./pages/Login";
 import RequestAccess from "./pages/RequestAccess";
 
@@ -139,6 +141,10 @@ const App = () => {
             <BrowserRouter>
               <ErrorBoundary>
                 <AppRoutes />
+                {/* PWA: Android/desktop install banner + iOS Add-to-Home-Screen hint */}
+                <InstallBanner />
+                {/* PWA: SW update notification (production only) */}
+                <PWAUpdatePrompt />
                 {/* Mobile-only brand splash — shows once per session, above everything */}
                 <SplashScreen />
               </ErrorBoundary>
