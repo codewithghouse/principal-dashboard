@@ -2,7 +2,11 @@
  * leaderboardAI.ts — AI-powered "why this rank" + "how to improve" generator
  * for branch and principal leaderboard rows.
  *
- * Backend: Vercel `/api/ai-insights` (OpenAI proxy with auth + rate limit).
+ * Backend: Firebase Cloud Function `parentAIProxy` (universal OpenAI proxy,
+ * authenticated callers only). This works identically in dev + prod —
+ * unlike the Vercel `/api/ai-insights` endpoint which only exists at the
+ * deployed origin.
+ *
  * Cache:   Firestore `leaderboard_ai_insights/{schoolId}_{type}_{id}_W{week}`
  *          — keyed by ISO week so a fresh analysis is cached per week without
  *          re-billing OpenAI on every row expand.
@@ -11,9 +15,13 @@
  *   { whyPosition: [{ color, bold, rest }], solutions: [{ urgent, text }] }
  */
 
-import { db, auth } from "./firebase";
+import { db } from "./firebase";
 import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import type { BranchRow, PrincipalRow } from "./leaderboardData";
+
+// Cloud Functions region — must match where parentAIProxy is deployed.
+const FUNCTIONS_REGION = "us-central1";
 
 // Tone colors must match the UI palette in PrincipalLeaderboards.tsx.
 const TONE = {
@@ -37,6 +45,10 @@ export interface LeaderboardInsight {
   whyPosition: WhyItem[];
   solutions: SolutionItem[];
   solutionLabel: string;
+  /** True when result is the deterministic fallback (AI proxy unavailable). */
+  isFallback?: boolean;
+  /** When isFallback is true, friendly explanation of why. */
+  fallbackReason?: string;
 }
 
 interface CachedInsight extends LeaderboardInsight {
@@ -57,11 +69,13 @@ function currentIsoWeek(): number {
   return Math.ceil((((t.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
+// Bump version when prompt/shape changes so stale caches are invalidated.
+const CACHE_VERSION = "v2";
+
 function cacheKey(type: "branch" | "principal", id: string, schoolId: string, week: number): string {
-  // Doc IDs cannot contain "/", and we keep underscores predictable.
   const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
   const safeSchool = schoolId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  return `${safeSchool}_${type}_${safeId}_W${week}`;
+  return `${safeSchool}_${type}_${safeId}_W${week}_${CACHE_VERSION}`;
 }
 
 // ── Prompt builders ──────────────────────────────────────────────────────
@@ -110,23 +124,28 @@ Rules:
 - Solutions are leadership actions (coaching, observation, policy enforcement) — NOT teacher- or student-level tasks.
 - Output ONLY JSON. No markdown, no commentary.`;
 
+function safeFixed(n: number | null | undefined, digits = 1): number {
+  const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  return Number(v.toFixed(digits));
+}
+
 function branchPayload(branch: BranchRow, top: BranchRow | null) {
   return {
     rank: branch.rank,
     branchName: branch.name,
-    composite: Number(branch.composite.toFixed(1)),
-    weekChange: Number(branch.weekChange.toFixed(1)),
+    composite: safeFixed(branch.composite),
+    weekChange: safeFixed(branch.weekChange),
     trend: branch.trend,
-    teacherAvg: Number(branch.teacherAvg.toFixed(1)),
-    studentAvg: Number(branch.studentAvg.toFixed(1)),
+    teacherAvg: safeFixed(branch.teacherAvg),
+    studentAvg: safeFixed(branch.studentAvg),
     teachers: branch.teachers,
     students: branch.students,
     atRiskStudents: branch.atRisk,
     topBranch: top && top.id !== branch.id ? {
       name: top.name,
-      composite: Number(top.composite.toFixed(1)),
-      teacherAvg: Number(top.teacherAvg.toFixed(1)),
-      studentAvg: Number(top.studentAvg.toFixed(1)),
+      composite: safeFixed(top.composite),
+      teacherAvg: safeFixed(top.teacherAvg),
+      studentAvg: safeFixed(top.studentAvg),
     } : null,
   };
 }
@@ -136,16 +155,16 @@ function principalPayload(principal: PrincipalRow, top: PrincipalRow | null) {
     rank: principal.rank,
     principalName: principal.name,
     branchName: principal.branch,
-    composite: Number(principal.composite.toFixed(1)),
-    weekChange: Number(principal.weekChange.toFixed(1)),
+    composite: safeFixed(principal.composite),
+    weekChange: safeFixed(principal.weekChange),
     trend: principal.trend,
-    branchTeacherAvg: Number(principal.teacherAvg.toFixed(1)),
-    branchStudentAvg: Number(principal.studentAvg.toFixed(1)),
+    branchTeacherAvg: safeFixed(principal.teacherAvg),
+    branchStudentAvg: safeFixed(principal.studentAvg),
     atRiskStudents: principal.atRisk,
     topPrincipal: top && top.id !== principal.id ? {
       name: top.name,
       branchName: top.branch,
-      composite: Number(top.composite.toFixed(1)),
+      composite: safeFixed(top.composite),
     } : null,
   };
 }
@@ -161,39 +180,288 @@ function shapeAIResponse(raw: any): LeaderboardInsight {
   const why = Array.isArray(raw?.whyPosition) ? raw.whyPosition : [];
   const sols = Array.isArray(raw?.solutions) ? raw.solutions : [];
   return {
-    whyPosition: why.map((w: any) => ({
-      color: toneToColor(w?.tone),
-      bold:  String(w?.bold || "").slice(0, 120),
-      rest:  String(w?.rest || "").slice(0, 280),
-    })).filter((w: WhyItem) => w.bold && w.rest),
+    whyPosition: why.map((w: any) => {
+      // Normalise — accept either { tone, bold, rest } (raw AI) or
+      // { color, bold, rest } (already shaped, e.g. an older cache).
+      const color = w?.color || toneToColor(w?.tone);
+      const bold  = String(w?.bold || w?.title || "").trim().slice(0, 120);
+      let rest    = String(w?.rest || w?.text || w?.description || "").trim().slice(0, 280);
+      // Auto-prefix the em-dash separator if the AI dropped it.
+      if (rest && !rest.startsWith("—") && !rest.startsWith(" —")) {
+        rest = " — " + rest.replace(/^[—\-:\s]+/, "");
+      }
+      return { color, bold, rest };
+    }).filter((w: WhyItem) => w.bold || w.rest),
     solutions: sols.map((s: any) => ({
       urgent: Boolean(s?.urgent),
-      text:   String(s?.text || "").slice(0, 280),
+      text:   String(s?.text || s?.action || "").trim().slice(0, 280),
     })).filter((s: SolutionItem) => s.text),
-    solutionLabel: String(raw?.solutionLabel || "").slice(0, 60),
+    solutionLabel: String(raw?.solutionLabel || "").trim().slice(0, 60),
   };
 }
 
-// ── Vercel AI call ───────────────────────────────────────────────────────
-async function callAIInsights(instructions: string, data: any): Promise<any> {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in.");
-  const token = await user.getIdToken();
+/** Build a deterministic stat-based insight when AI returns nothing usable. */
+function fallbackBranchInsight(branch: BranchRow, top: BranchRow | null): LeaderboardInsight {
+  const isTop = branch.rank === 1;
+  const why: WhyItem[] = [];
+  const tone = (v: number, good = 75, ok = 60) => v >= good ? TONE.GREEN : v >= ok ? TONE.ORANGE : TONE.RED;
+  const teacherTone = tone(branch.teacherAvg);
+  const studentTone = tone(branch.studentAvg);
 
-  const res = await fetch("/api/ai-insights", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ instructions, data }),
-  });
-
-  if (!res.ok) {
-    const errBody = await res.json().catch(() => ({}));
-    throw new Error(errBody?.error || `AI request failed (${res.status}).`);
+  // Lead with the strongest or weakest signal depending on rank
+  if (isTop) {
+    why.push({
+      color: TONE.GREEN,
+      bold: `#1 with composite ${branch.composite.toFixed(1)}`,
+      rest: ` — leading the network across ${branch.teachers} teachers and ${branch.students.toLocaleString()} students.`,
+    });
+    if (branch.teacherAvg > 0) {
+      why.push({
+        color: teacherTone,
+        bold: `Teachers averaging ${branch.teacherAvg.toFixed(1)}`,
+        rest: ` — strong faculty signal supporting the rank.`,
+      });
+    }
+    if (branch.studentAvg > 0) {
+      why.push({
+        color: studentTone,
+        bold: `Students averaging ${branch.studentAvg.toFixed(1)}`,
+        rest: ` — combined academic + attendance health is the best in the network.`,
+      });
+    }
+    if (branch.atRisk === 0) {
+      why.push({
+        color: TONE.GREEN,
+        bold: `Zero at-risk students`,
+        rest: ` — safety score at maximum.`,
+      });
+    }
+  } else {
+    why.push({
+      color: tone(branch.composite),
+      bold: `Composite ${branch.composite.toFixed(1)} (rank #${branch.rank})`,
+      rest: ` — ${branch.teachers} teachers, ${branch.students.toLocaleString()} students.`,
+    });
+    if (branch.teacherAvg > 0 && branch.teacherAvg < 75) {
+      why.push({
+        color: teacherTone,
+        bold: `Teachers avg ${branch.teacherAvg.toFixed(1)}`,
+        rest: ` — below the network's strong-performer threshold of 75.`,
+      });
+    } else if (branch.teacherAvg > 0) {
+      why.push({
+        color: teacherTone,
+        bold: `Teachers avg ${branch.teacherAvg.toFixed(1)}`,
+        rest: ` — staff signal is healthy.`,
+      });
+    }
+    if (branch.studentAvg > 0 && branch.studentAvg < 75) {
+      why.push({
+        color: studentTone,
+        bold: `Students avg ${branch.studentAvg.toFixed(1)}`,
+        rest: ` — academic + attendance signal pulling the composite down.`,
+      });
+    }
+    if (branch.atRisk > 0) {
+      const pct = branch.students > 0 ? Math.round((branch.atRisk / branch.students) * 100) : 0;
+      why.push({
+        color: TONE.RED,
+        bold: `${branch.atRisk} at-risk students (${pct}%)`,
+        rest: ` — directly costing the safety component of composite.`,
+      });
+    }
   }
-  return res.json();
+
+  const solutions: SolutionItem[] = [];
+  if (!isTop && top) {
+    const gap = top.composite - branch.composite;
+    const teacherGap = top.teacherAvg - branch.teacherAvg;
+    const studentGap = top.studentAvg - branch.studentAvg;
+    const biggestGap = teacherGap >= studentGap ? "teachers" : "students";
+
+    solutions.push({
+      urgent: gap > 10,
+      text: `Close the ${gap.toFixed(1)}-point gap to #1 ${top.name} — biggest delta is in ${biggestGap} (${(biggestGap === "teachers" ? teacherGap : studentGap).toFixed(1)} pts).`,
+    });
+    if (branch.atRisk > 0) {
+      solutions.push({
+        urgent: branch.atRisk >= 5,
+        text: `Triage the ${branch.atRisk} at-risk students this week — parent meetings + remedial plan per student.`,
+      });
+    }
+    if (branch.teacherAvg > 0 && branch.teacherAvg < 70) {
+      solutions.push({
+        urgent: false,
+        text: `Run a peer-coaching session for the bottom-quartile teachers — target ${(branch.teacherAvg + 5).toFixed(0)}+ avg next week.`,
+      });
+    }
+    if (branch.trend === "down") {
+      solutions.push({
+        urgent: true,
+        text: `Composite dropped ${Math.abs(branch.weekChange).toFixed(1)} pts this week — call a leadership review on Monday to identify the cause.`,
+      });
+    }
+  }
+
+  return {
+    whyPosition: why,
+    solutions,
+    solutionLabel: isTop ? "" : (solutions.length ? `How to climb to #${branch.rank - 1}` : ""),
+  };
+}
+
+function fallbackPrincipalInsight(principal: PrincipalRow, top: PrincipalRow | null): LeaderboardInsight {
+  const isTop = principal.rank === 1;
+  const why: WhyItem[] = [];
+  const tone = (v: number, good = 75, ok = 60) => v >= good ? TONE.GREEN : v >= ok ? TONE.ORANGE : TONE.RED;
+
+  if (isTop) {
+    why.push({
+      color: TONE.GREEN,
+      bold: `#1 leadership rank`,
+      rest: ` — composite ${principal.composite.toFixed(1)} at branch ${principal.branch}.`,
+    });
+    if (principal.teacherAvg > 0) {
+      why.push({
+        color: tone(principal.teacherAvg),
+        bold: `Teachers avg ${principal.teacherAvg.toFixed(1)}`,
+        rest: ` — strong faculty outcomes under your leadership.`,
+      });
+    }
+    if (principal.atRisk === 0) {
+      why.push({
+        color: TONE.GREEN,
+        bold: `Zero at-risk students`,
+        rest: ` — proactive intervention is paying off.`,
+      });
+    }
+  } else {
+    why.push({
+      color: tone(principal.composite),
+      bold: `Composite ${principal.composite.toFixed(1)} (rank #${principal.rank})`,
+      rest: ` — branch ${principal.branch}.`,
+    });
+    if (principal.teacherAvg > 0 && principal.teacherAvg < 75) {
+      why.push({
+        color: tone(principal.teacherAvg),
+        bold: `Branch teachers avg ${principal.teacherAvg.toFixed(1)}`,
+        rest: ` — staff outcomes under your leadership need attention.`,
+      });
+    }
+    if (principal.atRisk > 0) {
+      why.push({
+        color: TONE.RED,
+        bold: `${principal.atRisk} students at risk in your branch`,
+        rest: ` — requires your personal weekly review.`,
+      });
+    }
+  }
+
+  const solutions: SolutionItem[] = [];
+  if (!isTop && top) {
+    const gap = top.composite - principal.composite;
+    solutions.push({
+      urgent: gap > 10,
+      text: `${gap.toFixed(1)}-point gap to #1 (${top.name}, ${top.branch}) — schedule a 1-on-1 with them this week to learn what's working.`,
+    });
+    if (principal.teacherAvg > 0 && principal.teacherAvg < 75) {
+      solutions.push({
+        urgent: false,
+        text: `Personally observe 2 weak-teacher classes per week — structured feedback raises faculty avg fastest.`,
+      });
+    }
+    if (principal.atRisk > 0) {
+      solutions.push({
+        urgent: principal.atRisk >= 5,
+        text: `Lead a Friday case-review meeting for all ${principal.atRisk} at-risk students — assign a tracker per student.`,
+      });
+    }
+    if (principal.trend === "down") {
+      solutions.push({
+        urgent: true,
+        text: `Composite dropped ${Math.abs(principal.weekChange).toFixed(1)} pts — diagnose root cause in your weekly leadership review.`,
+      });
+    }
+  }
+
+  return {
+    whyPosition: why,
+    solutions,
+    solutionLabel: isTop ? "" : (solutions.length ? `How to climb to #${principal.rank - 1}` : ""),
+  };
+}
+
+// ── AI call via parentAIProxy Cloud Function ─────────────────────────────
+// Same backend used by aiInsights.ts (student insights) — works in dev + prod.
+async function callAIInsights(instructions: string, data: any): Promise<any> {
+  const fns = getFunctions(undefined, FUNCTIONS_REGION);
+  const call = httpsCallable<
+    { prompt: string; systemPrompt: string; jsonMode: boolean },
+    { content: string }
+  >(fns, "parentAIProxy");
+
+  let raw: string | undefined;
+  try {
+    const res = await call({
+      prompt: JSON.stringify(data),
+      systemPrompt: instructions,
+      jsonMode: true,
+    });
+    raw = res.data?.content;
+  } catch (err: any) {
+    const code = err?.code ? `[${err.code}] ` : "";
+    console.error("[leaderboardAI] parentAIProxy call failed:", err);
+    throw new Error(`${code}${err?.message || "AI call failed"}`);
+  }
+
+  if (!raw) {
+    console.warn("[leaderboardAI] AI returned empty content");
+    throw new Error("AI returned an empty response.");
+  }
+
+  // Strip code fences if present, then JSON.parse. parentAIProxy w/ jsonMode
+  // asks for json_object output but stray fences slip through occasionally.
+  const cleaned = String(raw)
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("[leaderboardAI] JSON parse failed. Raw response was:", raw);
+    throw new Error("AI returned invalid JSON.");
+  }
+}
+
+/** Merge AI result with stat-based fallback so the UI never shows a blank box. */
+function mergeWithFallback(shaped: LeaderboardInsight, fallback: LeaderboardInsight): LeaderboardInsight {
+  return {
+    whyPosition: shaped.whyPosition.length > 0 ? shaped.whyPosition : fallback.whyPosition,
+    solutions:   shaped.solutions.length   > 0 ? shaped.solutions   : fallback.solutions,
+    solutionLabel: shaped.solutionLabel || fallback.solutionLabel,
+  };
+}
+
+/** Translate raw FirebaseError / OpenAI error into a short, user-readable hint. */
+function friendlyAIError(e: any): string {
+  const msg = String(e?.message || e || "").toLowerCase();
+  const code = String(e?.code || "");
+  if (code === "functions/internal" || msg.includes("ai call failed") || msg.includes("500")) {
+    return "AI service temporarily unavailable. Showing data-driven analysis instead.";
+  }
+  if (code === "functions/permission-denied" || msg.includes("permission")) {
+    return "AI access unavailable for your role.";
+  }
+  if (code === "functions/unauthenticated") {
+    return "Sign in expired — refresh the page.";
+  }
+  if (code === "functions/deadline-exceeded" || msg.includes("timeout")) {
+    return "AI request timed out. Try again in a moment.";
+  }
+  if (msg.includes("quota") || msg.includes("rate")) {
+    return "AI quota reached for this period. Try later.";
+  }
+  return "AI service unavailable — showing data-driven analysis.";
 }
 
 // ── Public API ───────────────────────────────────────────────────────────
@@ -206,6 +474,7 @@ export async function getBranchInsight(
   if (!schoolId) throw new Error("schoolId is required");
   const week = currentIsoWeek();
   const ref = doc(db, "leaderboard_ai_insights", cacheKey("branch", branch.id, schoolId, week));
+  const fallback = fallbackBranchInsight(branch, top);
 
   if (!opts.force) {
     try {
@@ -213,38 +482,43 @@ export async function getBranchInsight(
       if (snap.exists()) {
         const cached = snap.data() as CachedInsight;
         if (cached._schoolId === schoolId && cached._week === week) {
-          return shapeAIResponse(cached);
+          const shaped = shapeAIResponse(cached);
+          if (shaped.whyPosition.length > 0) return mergeWithFallback(shaped, fallback);
+          // Cached doc was malformed/empty — fall through to fresh call
         }
       }
-    } catch {
-      // Non-fatal — fall through to fresh AI call
+    } catch (e) {
+      console.warn("[leaderboardAI] cache read failed:", e);
     }
   }
 
-  const raw = await callAIInsights(BRANCH_INSTRUCTIONS, branchPayload(branch, top));
-  const shaped = shapeAIResponse(raw);
-
-  // Cache (best-effort — we still return result if Firestore write fails)
+  let shaped: LeaderboardInsight;
   try {
-    await setDoc(ref, {
-      // Persist the *raw* AI response shape so re-reads can be re-shaped if
-      // the UI tone palette changes. We also tag it with tenancy metadata
-      // so security rules can scope reads.
-      whyPosition: (raw?.whyPosition || []).slice(0, 10),
-      solutions:   (raw?.solutions   || []).slice(0, 10),
-      solutionLabel: raw?.solutionLabel || "",
-      _cachedAt: serverTimestamp(),
-      _schoolId: schoolId,
-      _type: "branch",
-      _id: branch.id,
-      _week: week,
-      schoolId,
-    });
-  } catch {
-    // ignore — return shaped result anyway
+    const raw = await callAIInsights(BRANCH_INSTRUCTIONS, branchPayload(branch, top));
+    shaped = shapeAIResponse(raw);
+
+    // Cache (best-effort)
+    try {
+      await setDoc(ref, {
+        whyPosition: (raw?.whyPosition || []).slice(0, 10),
+        solutions:   (raw?.solutions   || []).slice(0, 10),
+        solutionLabel: raw?.solutionLabel || "",
+        _cachedAt: serverTimestamp(),
+        _schoolId: schoolId,
+        _type: "branch",
+        _id: branch.id,
+        _week: week,
+        schoolId,
+      });
+    } catch (e) {
+      console.warn("[leaderboardAI] cache write failed:", e);
+    }
+  } catch (e: any) {
+    console.warn("[leaderboardAI] AI failed — returning fallback insight:", e);
+    return { ...fallback, isFallback: true, fallbackReason: friendlyAIError(e) };
   }
 
-  return shaped;
+  return mergeWithFallback(shaped, fallback);
 }
 
 export async function getPrincipalInsight(
@@ -256,6 +530,7 @@ export async function getPrincipalInsight(
   if (!schoolId) throw new Error("schoolId is required");
   const week = currentIsoWeek();
   const ref = doc(db, "leaderboard_ai_insights", cacheKey("principal", principal.id, schoolId, week));
+  const fallback = fallbackPrincipalInsight(principal, top);
 
   if (!opts.force) {
     try {
@@ -263,32 +538,39 @@ export async function getPrincipalInsight(
       if (snap.exists()) {
         const cached = snap.data() as CachedInsight;
         if (cached._schoolId === schoolId && cached._week === week) {
-          return shapeAIResponse(cached);
+          const shaped = shapeAIResponse(cached);
+          if (shaped.whyPosition.length > 0) return mergeWithFallback(shaped, fallback);
         }
       }
-    } catch {
-      // Non-fatal
+    } catch (e) {
+      console.warn("[leaderboardAI] cache read failed:", e);
     }
   }
 
-  const raw = await callAIInsights(PRINCIPAL_INSTRUCTIONS, principalPayload(principal, top));
-  const shaped = shapeAIResponse(raw);
-
+  let shaped: LeaderboardInsight;
   try {
-    await setDoc(ref, {
-      whyPosition: (raw?.whyPosition || []).slice(0, 10),
-      solutions:   (raw?.solutions   || []).slice(0, 10),
-      solutionLabel: raw?.solutionLabel || "",
-      _cachedAt: serverTimestamp(),
-      _schoolId: schoolId,
-      _type: "principal",
-      _id: principal.id,
-      _week: week,
-      schoolId,
-    });
-  } catch {
-    // ignore
+    const raw = await callAIInsights(PRINCIPAL_INSTRUCTIONS, principalPayload(principal, top));
+    shaped = shapeAIResponse(raw);
+
+    try {
+      await setDoc(ref, {
+        whyPosition: (raw?.whyPosition || []).slice(0, 10),
+        solutions:   (raw?.solutions   || []).slice(0, 10),
+        solutionLabel: raw?.solutionLabel || "",
+        _cachedAt: serverTimestamp(),
+        _schoolId: schoolId,
+        _type: "principal",
+        _id: principal.id,
+        _week: week,
+        schoolId,
+      });
+    } catch (e) {
+      console.warn("[leaderboardAI] cache write failed:", e);
+    }
+  } catch (e: any) {
+    console.warn("[leaderboardAI] AI failed — returning fallback insight:", e);
+    return { ...fallback, isFallback: true, fallbackReason: friendlyAIError(e) };
   }
 
-  return shaped;
+  return mergeWithFallback(shaped, fallback);
 }

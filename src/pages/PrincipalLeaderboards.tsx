@@ -150,7 +150,13 @@ const DetailPanel: React.FC<{ entity: DetailEntity; schoolId: string }> = ({ ent
     <div style={{ background: T.cardBg, border: `0.5px solid rgba(0,85,255,0.12)`, borderRadius: 16, margin: "0 0 4px", overflow: "hidden", boxShadow: T.SH_LG }}>
       <div style={{ padding: "16px 18px", borderBottom: hasSolutions ? T.BORDER_SOFT : "none" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-          <AIChip label={entity.type === "branch" ? "Edullent AI · Branch + Teacher + Student data" : "Edullent AI · Principal + Branch performance data"} />
+          <AIChip label={
+            insight?.isFallback
+              ? "Stat-based analysis (AI offline)"
+              : entity.type === "branch"
+                ? "Edullent AI · Branch + Teacher + Student data"
+                : "Edullent AI · Principal + Branch performance data"
+          } />
           {!loading && (
             <button
               onClick={() => fetchInsight(true)}
@@ -163,6 +169,12 @@ const DetailPanel: React.FC<{ entity: DetailEntity; schoolId: string }> = ({ ent
           )}
         </div>
 
+        {!loading && !err && insight?.isFallback && insight.fallbackReason && (
+          <div style={{ padding: "8px 12px", background: T.ORANGE_BG, border: `0.5px solid rgba(255,136,0,0.20)`, borderRadius: 10, color: T.ORANGE_TEXT, fontSize: 11, fontWeight: 600, fontFamily: FONT, marginBottom: 10 }}>
+            {insight.fallbackReason}
+          </div>
+        )}
+
         {loading && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0", color: T.T3, fontSize: 12, fontWeight: 600, fontFamily: FONT }}>
             <Loader2 size={14} className="animate-spin" />
@@ -171,8 +183,14 @@ const DetailPanel: React.FC<{ entity: DetailEntity; schoolId: string }> = ({ ent
         )}
 
         {err && !loading && (
-          <div style={{ padding: "10px 12px", background: T.RED_BG, border: `0.5px solid rgba(255,69,58,0.20)`, borderRadius: 10, color: T.RED_TEXT, fontSize: 12, fontWeight: 600, fontFamily: FONT }}>
-            {err}
+          <div style={{ padding: "10px 12px", background: T.RED_BG, border: `0.5px solid rgba(255,69,58,0.20)`, borderRadius: 10, color: T.RED_TEXT, fontSize: 12, fontWeight: 600, fontFamily: FONT, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <span style={{ flex: 1 }}>{err}</span>
+            <button
+              onClick={() => fetchInsight(true)}
+              style={{ background: "rgba(255,69,58,0.12)", border: `0.5px solid rgba(255,69,58,0.28)`, color: T.RED_TEXT, fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8, cursor: "pointer", fontFamily: FONT, flexShrink: 0 }}
+            >
+              Retry
+            </button>
           </div>
         )}
 
@@ -180,17 +198,22 @@ const DetailPanel: React.FC<{ entity: DetailEntity; schoolId: string }> = ({ ent
           <>
             <Eyebrow color={T.T4}>{isTop ? "Why #1 — what makes this the top" : `Why #${entity.row.rank} — root causes`}</Eyebrow>
             <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-              {insight.whyPosition.length === 0 && (
-                <p style={{ fontSize: 12, color: T.T3, fontFamily: FONT, margin: 0 }}>Not enough data this week to explain the rank.</p>
+              {insight.whyPosition.length === 0 ? (
+                <p style={{ fontSize: 12, color: T.T3, fontFamily: FONT, margin: 0, lineHeight: 1.55 }}>
+                  Rank <strong style={{ color: T.T1 }}>#{entity.row.rank}</strong> with composite{" "}
+                  <strong style={{ color: T.T1 }}>{entity.row.composite.toFixed(1)}</strong>. Add more
+                  scores or attendance for richer analysis.
+                </p>
+              ) : (
+                insight.whyPosition.map((item, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ width: 5, height: 5, borderRadius: "50%", background: item.color, marginTop: 7, flexShrink: 0 }} />
+                    <p style={{ fontSize: 13, fontWeight: 500, color: T.T1, margin: 0, lineHeight: 1.65, fontFamily: FONT }}>
+                      <strong style={{ color: T.T1 }}>{item.bold}</strong>{item.rest}
+                    </p>
+                  </div>
+                ))
               )}
-              {insight.whyPosition.map((item, i) => (
-                <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                  <div style={{ width: 5, height: 5, borderRadius: "50%", background: item.color, marginTop: 7, flexShrink: 0 }} />
-                  <p style={{ fontSize: 13, fontWeight: 500, color: T.T1, margin: 0, lineHeight: 1.65, fontFamily: FONT }}>
-                    <strong style={{ color: T.T1 }}>{item.bold}</strong>{item.rest}
-                  </p>
-                </div>
-              ))}
             </div>
           </>
         )}
