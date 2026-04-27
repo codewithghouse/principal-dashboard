@@ -230,13 +230,14 @@ function Item({ item, active, onSelect }: { item: NavItem; active: boolean; onSe
           display: "flex", alignItems: "center", gap: 10,
           height: T.ITEM_H,
           paddingLeft: T.LEFT_PAD, paddingRight: 14,
-          width: "100%", borderRadius: 8,
+          width: "100%", borderRadius: 0,
           border: "none", outline: "none", boxShadow: "none", cursor: "pointer",
-          background: hov ? "#F0F1F8" : "transparent",
+          background: "transparent",
           color: hov ? T.textDark : T.textBody,
           fontFamily: "inherit", fontSize: 13, fontWeight: 400,
-          transition: "background 0.1s, color 0.1s",
+          transition: "color 0.1s",
           boxSizing: "border-box",
+          WebkitTapHighlightColor: "transparent",
         }}
       >
         <Ico size={T.ICON} strokeWidth={1.6} style={{ flexShrink: 0 }} />
