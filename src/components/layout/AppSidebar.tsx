@@ -2,29 +2,11 @@ import { useMemo, useState, type CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../lib/AuthContext";
 import {
-  LayoutGrid,
-  Users,
-  Brain,
-  AlertTriangle,
-  Monitor,
-  GraduationCap,
-  BookOpen,
-  AlignLeft,
-  CalendarCheck,
-  ShieldAlert,
-  MessageSquare,
-  MessageCircle,
-  FileText,
-  ClipboardList,
-  TrendingUp,
-  Trophy,
-  Award,
-  DollarSign,
-  Bookmark,
-  Clock,
-  Shield,
-  BarChart2,
-  Settings,
+  LayoutGrid, Users, Brain, AlertTriangle, Monitor,
+  GraduationCap, BookOpen, AlignLeft, CalendarCheck,
+  ShieldAlert, MessageSquare, MessageCircle, FileText,
+  ClipboardList, TrendingUp, Trophy, Award, DollarSign,
+  Bookmark, Clock, Shield, BarChart2, Settings,
   type LucideIcon,
 } from "lucide-react";
 
@@ -33,7 +15,7 @@ const T = {
   accent:      "#1C0770",
   accentLight: "#EDE9FF",
   sidebar:     "#ffffff",
-  pageBg:      "#ECEEF5",
+  pageBg:      "#ECEEF5",   // outer background behind the floating sidebar
   textMuted:   "#8A94A6",
   textBody:    "#4A5568",
   textDark:    "#1A202C",
@@ -42,15 +24,15 @@ const T = {
   ITEM_H:      36,
   ICON:        17,
   LEFT_PAD:    16,
-  GAP:         10,
-  RADIUS:      16,
-} as const;
+  GAP:         10,          // gap around sidebar (top / left / bottom)
+  RADIUS:      16,          // sidebar card border-radius
+};
 
 // ── Nav data ──────────────────────────────────────────────────────────────────
 type NavItem = {
+  id: string;
   label: string;
   icon: LucideIcon;
-  path: string;
   badge?: boolean;
   special?: boolean;
 };
@@ -65,74 +47,104 @@ const SECTIONS: NavSection[] = [
   {
     id: "overview", label: "Overview",
     items: [
-      { label: "Dashboard",             icon: LayoutGrid,    path: "/" },
+      { id: "dashboard",   label: "Dashboard",             icon: LayoutGrid },
     ],
   },
   {
     id: "students", label: "Students",
     items: [
-      { label: "Students",              icon: Users,         path: "/students" },
-      { label: "Student Intelligence",  icon: Brain,         path: "/student-intelligence" },
-      { label: "Risk Students",         icon: AlertTriangle, path: "/risk-students" },
+      { id: "students",    label: "Students",              icon: Users         },
+      { id: "intelligence",label: "Student Intelligence",  icon: Brain         },
+      { id: "risk",        label: "Risk Students",         icon: AlertTriangle },
     ],
   },
   {
     id: "academic", label: "Academic Setup",
     items: [
-      { label: "Classes & Sections",    icon: Monitor,       path: "/classes" },
-      { label: "Academics",             icon: BookOpen,      path: "/academics" },
-      { label: "Syllabus",              icon: AlignLeft,     path: "/syllabus" },
-      { label: "Timetable Setup",       icon: Clock,         path: "/timetable" },
-      { label: "Exam Structure",        icon: Bookmark,      path: "/exam-structure" },
+      { id: "classes",     label: "Classes & Sections",    icon: Monitor       },
+      { id: "academics",   label: "Academics",             icon: BookOpen      },
+      { id: "syllabus",    label: "Syllabus",              icon: AlignLeft     },
+      { id: "timetable",   label: "Timetable Setup",       icon: Clock         },
+      { id: "examStruct",  label: "Exam Structure",        icon: Bookmark      },
     ],
   },
   {
     id: "staff", label: "Staff",
     items: [
-      { label: "Teachers",              icon: GraduationCap, path: "/teachers" },
-      { label: "Teacher Notes",         icon: MessageCircle, path: "/teacher-notes" },
-      { label: "Teacher Performance",   icon: TrendingUp,    path: "/teacher-performance" },
-      { label: "Teacher Leaderboard",   icon: Trophy,        path: "/teacher-leaderboard" },
-      { label: "Principal Leaderboards",icon: Award,         path: "/principal-leaderboards" },
-      { label: "Staff Access",          icon: Shield,        path: "/access-requests", badge: true },
+      { id: "teachers",    label: "Teachers",              icon: GraduationCap },
+      { id: "tNotes",      label: "Teacher Notes",         icon: MessageCircle },
+      { id: "performance", label: "Teacher Performance",   icon: TrendingUp    },
+      { id: "leaderboard", label: "Teacher Leaderboard",   icon: Trophy        },
+      { id: "principal",   label: "Principal Leaderboards",icon: Award         },
+      { id: "staffAccess", label: "Staff Access",          icon: Shield, badge: true },
     ],
   },
   {
     id: "assessment", label: "Assessment",
     items: [
-      { label: "Attendance",            icon: CalendarCheck, path: "/attendance" },
-      { label: "Exams & Results",       icon: FileText,      path: "/exams" },
-      { label: "Assignments & Marks",   icon: ClipboardList, path: "/assignments" },
+      { id: "attendance",  label: "Attendance",            icon: CalendarCheck },
+      { id: "exams",       label: "Exams & Results",       icon: FileText      },
+      { id: "assignments", label: "Assignments & Marks",   icon: ClipboardList },
     ],
   },
   {
     id: "comms", label: "Communication",
     items: [
-      { label: "Discipline & Incidents",icon: ShieldAlert,   path: "/discipline" },
-      { label: "Parent Communication",  icon: MessageSquare, path: "/parent-communication" },
+      { id: "discipline",  label: "Discipline & Incidents",icon: ShieldAlert   },
+      { id: "parentComm",  label: "Parent Communication",  icon: MessageSquare },
     ],
   },
   {
     id: "admin", label: "Administration",
     items: [
-      { label: "Fee Structure",         icon: DollarSign,    path: "/fee-structure" },
-      { label: "Reports",               icon: BarChart2,     path: "/reports" },
-      { label: "Settings",              icon: Settings,      path: "/settings", special: true },
+      { id: "fee",         label: "Fee Structure",         icon: DollarSign    },
+      { id: "reports",     label: "Reports",               icon: BarChart2     },
+      { id: "settings",    label: "Settings",              icon: Settings, special: true },
     ],
   },
 ];
 
+// id → route path glue (kept outside the design code; visually irrelevant)
+const ID_TO_PATH: Record<string, string> = {
+  dashboard:    "/",
+  students:     "/students",
+  intelligence: "/student-intelligence",
+  risk:         "/risk-students",
+  classes:      "/classes",
+  academics:    "/academics",
+  syllabus:     "/syllabus",
+  timetable:    "/timetable",
+  examStruct:   "/exam-structure",
+  teachers:     "/teachers",
+  tNotes:       "/teacher-notes",
+  performance:  "/teacher-performance",
+  leaderboard:  "/teacher-leaderboard",
+  principal:    "/principal-leaderboards",
+  staffAccess:  "/access-requests",
+  attendance:   "/attendance",
+  exams:        "/exams",
+  assignments:  "/assignments",
+  discipline:   "/discipline",
+  parentComm:   "/parent-communication",
+  fee:          "/fee-structure",
+  reports:      "/reports",
+  settings:     "/settings",
+};
+
+const PATH_TO_ID: Record<string, string> = Object.fromEntries(
+  Object.entries(ID_TO_PATH).map(([id, p]) => [p, id])
+);
+
 // ── Concave notch ─────────────────────────────────────────────────────────────
-function Notch({ top }: { top: boolean }) {
+function Notch({ top }: { top?: boolean }) {
   const wrapStyle: CSSProperties = {
     position: "absolute",
     right: 0,
     ...(top ? { bottom: "100%" } : { top: "100%" }),
     width: T.CURVE,
     height: T.CURVE,
-    background: T.accentLight,
-    zIndex: 3,
-    pointerEvents: "none",
+    background: T.accentLight,        // match active item bg — not sidebar bg
+    zIndex: 3, pointerEvents: "none",
   };
   const innerStyle: CSSProperties = {
     position: "absolute",
@@ -144,19 +156,14 @@ function Notch({ top }: { top: boolean }) {
   };
   return (
     <div style={wrapStyle}>
+      {/* Inner white circle that creates the concave cutout */}
       <div style={innerStyle} />
     </div>
   );
 }
 
 // ── Nav item ──────────────────────────────────────────────────────────────────
-interface ItemProps {
-  item: NavItem;
-  active: boolean;
-  onSelect: (path: string) => void;
-}
-
-function Item({ item, active, onSelect }: ItemProps) {
+function Item({ item, active, onSelect }: { item: NavItem; active: boolean; onSelect: (id: string) => void }) {
   const [hov, setHov] = useState(false);
   const Ico = item.icon;
 
@@ -164,7 +171,7 @@ function Item({ item, active, onSelect }: ItemProps) {
   if (item.special) {
     return (
       <div style={{ padding: `0 ${T.GAP}px`, marginTop: 4 }}>
-        <button onClick={() => onSelect(item.path)} style={{
+        <button onClick={() => onSelect(item.id)} style={{
           display: "flex", alignItems: "center", gap: 10,
           height: T.ITEM_H + 4,
           paddingLeft: T.LEFT_PAD, paddingRight: 14,
@@ -186,7 +193,7 @@ function Item({ item, active, onSelect }: ItemProps) {
     return (
       <div style={{ position: "relative" }}>
         <Notch top />
-        <button onClick={() => onSelect(item.path)} style={{
+        <button onClick={() => onSelect(item.id)} style={{
           display: "flex", alignItems: "center", gap: 10,
           height: T.ITEM_H,
           paddingLeft: T.LEFT_PAD + T.GAP,
@@ -216,7 +223,7 @@ function Item({ item, active, onSelect }: ItemProps) {
   return (
     <div style={{ padding: `0 ${T.GAP}px` }}>
       <button
-        onClick={() => onSelect(item.path)}
+        onClick={() => onSelect(item.id)}
         onMouseEnter={() => setHov(true)}
         onMouseLeave={() => setHov(false)}
         style={{
@@ -247,13 +254,7 @@ function Dot() {
 }
 
 // ── Section ───────────────────────────────────────────────────────────────────
-interface SectionProps {
-  section: NavSection;
-  activePath: string;
-  onSelect: (path: string) => void;
-}
-
-function Section({ section, activePath, onSelect }: SectionProps) {
+function Section({ section, activeId, onSelect }: { section: NavSection; activeId: string; onSelect: (id: string) => void }) {
   return (
     <div style={{ marginBottom: 4 }}>
       <p style={{
@@ -268,7 +269,7 @@ function Section({ section, activePath, onSelect }: SectionProps) {
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {section.items.map(item => (
-          <Item key={item.path} item={item} active={activePath === item.path} onSelect={onSelect} />
+          <Item key={item.id} item={item} active={activeId === item.id} onSelect={onSelect} />
         ))}
       </div>
     </div>
@@ -276,31 +277,7 @@ function Section({ section, activePath, onSelect }: SectionProps) {
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
-interface AppSidebarProps {
-  onClose?: () => void;
-}
-
-const AppSidebar = ({ onClose }: AppSidebarProps) => {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { userData } = useAuth();
-
-  const isDeo = userData?.role === "data_entry";
-  const allowed: string[] | undefined = userData?.allowedPages;
-
-  // DEO sees only items the principal has granted; empty sections drop out.
-  const sections = useMemo<NavSection[]>(() => {
-    if (!isDeo) return SECTIONS;
-    return SECTIONS
-      .map(s => ({ ...s, items: s.items.filter(it => allowed?.includes(it.path)) }))
-      .filter(s => s.items.length > 0);
-  }, [isDeo, allowed]);
-
-  const handleSelect = (path: string) => {
-    navigate(path);
-    onClose?.();
-  };
-
+function Sidebar({ activeId, onSelect, sections = SECTIONS }: { activeId: string; onSelect: (id: string) => void; sections?: NavSection[] }) {
   return (
     /* Outer wrapper — adds the gap around the sidebar card */
     <div style={{
@@ -346,12 +323,45 @@ const AppSidebar = ({ onClose }: AppSidebarProps) => {
         {/* Nav */}
         <nav style={{ flex: 1, paddingTop: 6, paddingBottom: 20, overflowY: "auto", scrollbarWidth: "none" }}>
           {sections.map(s => (
-            <Section key={s.id} section={s} activePath={location.pathname} onSelect={handleSelect} />
+            <Section key={s.id} section={s} activeId={activeId} onSelect={onSelect} />
           ))}
         </nav>
       </aside>
     </div>
   );
+}
+
+// ── Router-aware wrapper (default export for the app) ─────────────────────────
+interface AppSidebarProps {
+  onClose?: () => void;
+}
+
+const AppSidebar = ({ onClose }: AppSidebarProps) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { userData } = useAuth();
+
+  const activeId = PATH_TO_ID[location.pathname] ?? "";
+
+  const isDeo = userData?.role === "data_entry";
+  const allowed: string[] | undefined = userData?.allowedPages;
+
+  // DEO sees only items the principal has granted; empty sections drop out.
+  const sections = useMemo<NavSection[]>(() => {
+    if (!isDeo) return SECTIONS;
+    return SECTIONS
+      .map(s => ({ ...s, items: s.items.filter(it => allowed?.includes(ID_TO_PATH[it.id])) }))
+      .filter(s => s.items.length > 0);
+  }, [isDeo, allowed]);
+
+  const handleSelect = (id: string) => {
+    const path = ID_TO_PATH[id];
+    if (!path) return;
+    navigate(path);
+    onClose?.();
+  };
+
+  return <Sidebar activeId={activeId} onSelect={handleSelect} sections={sections} />;
 };
 
 export default AppSidebar;
