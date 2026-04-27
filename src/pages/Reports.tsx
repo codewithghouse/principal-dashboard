@@ -162,6 +162,51 @@ const Reports = () => {
     violet: { card: "linear-gradient(135deg,#EEE0FF 0%,#C9A8FF 55%,#A880FF 100%)", border: "rgba(123,63,244,.40)", nameColor: "#280C5C", countColor: "#3A1580", iconColor: "#280C5C" },
   } as const;
 
+  // Shared category-card palette so mobile + desktop render with the same vibe.
+  // Bright accent name color (with green darkened for legibility on pale green).
+  const categoryPalette: Record<string, { cardGrad: string; tileGrad: string; tileShadow: string; nameColor: string; decorColor: string; ringColor: string }> = {
+    blue: {
+      cardGrad: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+      tileGrad: `linear-gradient(135deg, ${B1}, ${B2})`,
+      tileShadow: "0 4px 14px rgba(0,85,255,0.28)",
+      nameColor: B1,
+      decorColor: B1,
+      ringColor: "rgba(0,85,255,0.42)",
+    },
+    green: {
+      cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+      tileGrad: `linear-gradient(135deg, ${GREEN}, #22EE66)`,
+      tileShadow: "0 4px 14px rgba(0,200,83,0.26)",
+      nameColor: GREEN_D,
+      decorColor: GREEN,
+      ringColor: "rgba(0,200,83,0.42)",
+    },
+    red: {
+      cardGrad: "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)",
+      tileGrad: `linear-gradient(135deg, ${RED}, #FF6688)`,
+      tileShadow: "0 4px 14px rgba(255,51,85,0.28)",
+      nameColor: RED,
+      decorColor: RED,
+      ringColor: "rgba(255,51,85,0.42)",
+    },
+    orange: {
+      cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+      tileGrad: `linear-gradient(135deg, ${GOLD}, #FFDD44)`,
+      tileShadow: "0 4px 14px rgba(255,170,0,0.28)",
+      nameColor: GOLD,
+      decorColor: GOLD,
+      ringColor: "rgba(255,170,0,0.42)",
+    },
+    violet: {
+      cardGrad: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+      tileGrad: `linear-gradient(135deg, ${VIOLET}, #A07CF8)`,
+      tileShadow: "0 4px 14px rgba(123,63,244,0.26)",
+      nameColor: VIOLET,
+      decorColor: VIOLET,
+      ringColor: "rgba(123,63,244,0.42)",
+    },
+  };
+
   const templateToneGrad = (tone: string) => {
     if (tone === "blue")   return { bg: "rgba(0,85,255,0.10)", border: "rgba(0,85,255,0.22)", color: B1 };
     if (tone === "green")  return { bg: GREEN_S, border: GREEN_B, color: GREEN };
@@ -170,6 +215,62 @@ const Reports = () => {
     if (tone === "violet") return { bg: VIOLET_S, border: VIOLET_B, color: VIOLET };
     if (tone === "gold")   return { bg: GOLD_S, border: GOLD_B, color: GOLD };
     return { bg: "rgba(0,85,255,0.10)", border: "rgba(0,85,255,0.22)", color: B1 };
+  };
+
+  // Dashboard-mobile card vibe per tone — pastel gradient bg + bold brand-gradient
+  // icon tile + tinted name color for legibility on the pastel.
+  const vibeFor = (tone: string) => {
+    switch (tone) {
+      case "blue":
+        return {
+          cardBg: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+          iconBg: `linear-gradient(135deg, ${B1}, ${B2})`,
+          iconShadow: "0 4px 14px rgba(0,85,255,0.28)",
+          accent: B1, nameColor: "#001055", subColor: T3,
+        };
+      case "green":
+        return {
+          cardBg: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+          iconBg: `linear-gradient(135deg, ${GREEN}, #22EE66)`,
+          iconShadow: "0 4px 14px rgba(0,200,83,0.26)",
+          accent: GREEN, nameColor: GREEN_D, subColor: GREEN_D,
+        };
+      case "red":
+        return {
+          cardBg: "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)",
+          iconBg: `linear-gradient(135deg, ${RED}, #FF6688)`,
+          iconShadow: "0 4px 14px rgba(255,51,85,0.28)",
+          accent: RED, nameColor: "#8A0A22", subColor: "#8A0A22",
+        };
+      case "orange":
+        return {
+          cardBg: "linear-gradient(135deg, #FBDDC4 0%, #FEF3EB 100%)",
+          iconBg: `linear-gradient(135deg, ${ORANGE}, #FFB044)`,
+          iconShadow: "0 4px 14px rgba(255,136,0,0.28)",
+          accent: ORANGE, nameColor: "#663300", subColor: "#663300",
+        };
+      case "violet":
+        return {
+          cardBg: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+          iconBg: `linear-gradient(135deg, ${VIOLET}, #A07CF8)`,
+          iconShadow: "0 4px 14px rgba(123,63,244,0.26)",
+          accent: VIOLET, nameColor: "#280C5C", subColor: "#280C5C",
+        };
+      case "gold":
+        return {
+          cardBg: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+          iconBg: `linear-gradient(135deg, ${GOLD}, #FFDD44)`,
+          iconShadow: "0 4px 14px rgba(255,170,0,0.28)",
+          accent: GOLD, nameColor: "#A86A00", subColor: "#A86A00",
+        };
+      default:
+        return {
+          cardBg: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
+          iconBg: `linear-gradient(135deg, ${B1}, ${B2})`,
+          iconShadow: "0 4px 14px rgba(0,85,255,0.28)",
+          accent: B1, nameColor: "#001055", subColor: T3,
+        };
+    }
   };
 
   const totalTemplates = 36;
@@ -235,34 +336,38 @@ const Reports = () => {
           </div>
         </div>
 
-        {/* Category cards */}
+        {/* Category cards — mirrors desktop vibe (eyebrow + bright accent name) */}
         <div className="grid grid-cols-2 gap-[10px] px-5 pt-[14px]">
           {reportCategories.map(cat => {
-            const t = toneStyles[cat.tone];
+            const p = categoryPalette[cat.tone];
             const active = activeCategory === cat.id;
             const isCustom = cat.id === "custom";
+            const Icon = cat.icon;
             return (
               <button key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
-                className={`${isCustom ? "col-span-2" : ""} rounded-[18px] p-[14px] relative overflow-hidden active:scale-[0.96] transition-transform text-left flex flex-col justify-between min-h-[96px]`}
+                className={`${isCustom ? "col-span-2" : ""} rounded-[20px] p-[14px] relative overflow-hidden active:scale-[0.96] transition-transform text-left flex flex-col min-h-[140px]`}
                 style={{
-                  background: t.card,
-                  border: active ? `2px solid #000820` : `0.5px solid ${t.border}`,
-                  boxShadow: active ? "0 0 0 3px rgba(0,0,0,0.08), 0 12px 28px rgba(0,0,0,0.1)" : "0 8px 22px rgba(0,0,0,0.06)",
+                  background: p.cardGrad,
+                  border: `0.5px solid ${active ? p.ringColor : "rgba(0,85,255,0.08)"}`,
+                  boxShadow: active
+                    ? `0 0 0 2px ${p.ringColor}, 0 6px 20px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.10)`
+                    : SH_LG,
                   transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
                 }}>
-                <div className="absolute -top-[18px] -right-[18px] w-[80px] h-[80px] rounded-full pointer-events-none"
-                  style={{ background: "radial-gradient(circle, rgba(255,255,255,0.65) 0%, transparent 70%)" }} />
-                <div className="w-8 h-8 rounded-[10px] flex items-center justify-center relative z-10 mb-2"
-                  style={{ background: "rgba(255,255,255,0.75)", border: "0.5px solid rgba(255,255,255,0.95)", boxShadow: "0 2px 6px rgba(0,0,0,0.05)" }}>
-                  <cat.icon className="w-4 h-4" style={{ color: t.iconColor }} strokeWidth={2.5} />
+                <div className="w-[44px] h-[44px] rounded-[12px] flex items-center justify-center mb-[10px] relative z-10"
+                  style={{ background: p.tileGrad, boxShadow: p.tileShadow }}>
+                  <Icon className="w-[22px] h-[22px] text-white" strokeWidth={2.3} />
                 </div>
-                <div className="relative z-10">
-                  <div className="text-[14px] font-bold leading-[1.1] mb-[2px]" style={{ color: t.nameColor, letterSpacing: "-0.2px" }}>
-                    {cat.label}{isCustom ? " · Build your own" : ""}
-                  </div>
-                  <div className="text-[10px] font-semibold" style={{ color: t.countColor }}>{cat.count}</div>
-                </div>
+                <span className="block text-[9px] font-bold uppercase tracking-[0.10em] mb-[4px] relative z-10" style={{ color: T4 }}>
+                  {isCustom ? "Custom" : "Category"}
+                </span>
+                <p className="text-[17px] font-bold leading-[1.1] mb-[3px] relative z-10" style={{ color: p.nameColor, letterSpacing: "-0.4px" }}>
+                  {cat.label}
+                </p>
+                <p className="text-[11px] font-semibold relative z-10" style={{ color: T3 }}>{cat.count}</p>
+                <Icon className="absolute bottom-[10px] right-[10px] w-12 h-12 pointer-events-none"
+                  style={{ color: p.decorColor, opacity: 0.18 }} strokeWidth={2} />
               </button>
             );
           })}
@@ -280,18 +385,26 @@ const Reports = () => {
         {/* Templates grid 2-col */}
         <div className="grid grid-cols-2 gap-[10px] px-5 pt-3">
           {templates.map((tpl, i) => {
-            const theme = templateToneGrad(tpl.tone);
+            const v = vibeFor(tpl.tone);
+            const Icon = tpl.icon;
             return (
               <button key={i}
                 onClick={() => setSelectedTemplate(tpl.title)}
-                className="bg-white rounded-[16px] p-[13px] active:scale-[0.97] transition-transform text-left relative overflow-hidden"
-                style={{ border: "0.5px solid rgba(0,85,255,0.08)", boxShadow: SH, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
-                <div className="w-7 h-7 rounded-[9px] flex items-center justify-center mb-2"
-                  style={{ background: theme.bg, border: `0.5px solid ${theme.border}` }}>
-                  <tpl.icon className="w-[13px] h-[13px]" style={{ color: theme.color }} strokeWidth={2.4} />
+                className="rounded-[18px] p-[14px] active:scale-[0.97] transition-transform text-left relative overflow-hidden min-h-[100px]"
+                style={{
+                  background: v.cardBg,
+                  border: "0.5px solid rgba(0,85,255,0.10)",
+                  boxShadow: SH,
+                  transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
+                }}>
+                <div className="w-[36px] h-[36px] rounded-[11px] flex items-center justify-center mb-[8px] relative z-10"
+                  style={{ background: v.iconBg, boxShadow: v.iconShadow }}>
+                  <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
                 </div>
-                <div className="text-[12px] font-bold leading-[1.2] mb-[3px]" style={{ color: T1, letterSpacing: "-0.1px" }}>{tpl.title}</div>
-                <div className="text-[9px] font-medium leading-[1.4]" style={{ color: T4 }}>{tpl.desc}</div>
+                <div className="text-[12px] font-bold leading-[1.2] mb-[3px] relative z-10" style={{ color: v.nameColor, letterSpacing: "-0.1px" }}>{tpl.title}</div>
+                <div className="text-[10px] font-semibold leading-[1.4] relative z-10" style={{ color: v.subColor }}>{tpl.desc}</div>
+                <Icon className="absolute bottom-[8px] right-[8px] w-9 h-9 pointer-events-none"
+                  style={{ color: v.accent, opacity: 0.18 }} strokeWidth={2} />
               </button>
             );
           })}
@@ -475,50 +588,7 @@ const Reports = () => {
       <div className="grid grid-cols-5 gap-4 mt-5">
         {reportCategories.map(cat => {
           const active = activeCategory === cat.id;
-          // Map category tone → dashboard palette
-          const palette: Record<string, { cardGrad: string; tileGrad: string; tileShadow: string; nameColor: string; decorColor: string; ringColor: string }> = {
-            blue: {
-              cardGrad: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
-              tileGrad: "linear-gradient(135deg, #0055FF, #1166FF)",
-              tileShadow: "0 4px 14px rgba(0,85,255,0.28)",
-              nameColor: "#0055FF",
-              decorColor: "#0055FF",
-              ringColor: "rgba(0,85,255,0.42)",
-            },
-            green: {
-              cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
-              tileGrad: "linear-gradient(135deg, #00C853, #22EE66)",
-              tileShadow: "0 4px 14px rgba(0,200,83,0.26)",
-              nameColor: "#007830",
-              decorColor: "#00C853",
-              ringColor: "rgba(0,200,83,0.42)",
-            },
-            red: {
-              cardGrad: "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)",
-              tileGrad: "linear-gradient(135deg, #FF3355, #FF6688)",
-              tileShadow: "0 4px 14px rgba(255,51,85,0.28)",
-              nameColor: "#FF3355",
-              decorColor: "#FF3355",
-              ringColor: "rgba(255,51,85,0.42)",
-            },
-            orange: {
-              cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
-              tileGrad: "linear-gradient(135deg, #FFAA00, #FFDD44)",
-              tileShadow: "0 4px 14px rgba(255,170,0,0.28)",
-              nameColor: "#FFAA00",
-              decorColor: "#FFAA00",
-              ringColor: "rgba(255,170,0,0.42)",
-            },
-            violet: {
-              cardGrad: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
-              tileGrad: "linear-gradient(135deg, #7B3FF4, #A07CF8)",
-              tileShadow: "0 4px 14px rgba(123,63,244,0.26)",
-              nameColor: "#7B3FF4",
-              decorColor: "#7B3FF4",
-              ringColor: "rgba(123,63,244,0.42)",
-            },
-          };
-          const p = palette[cat.tone];
+          const p = categoryPalette[cat.tone];
           return (
             <button
               key={cat.id}

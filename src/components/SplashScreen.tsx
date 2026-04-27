@@ -202,6 +202,14 @@ const splashStyles = `
   white-space: nowrap;
   line-height: 1;
 }
+/* Override the global Plus Jakarta Sans rule from index.css
+   (html, body, *, *::before, *::after) so the wordmark spans
+   actually pick up Mokoto. !important required because the
+   global rule applies directly to every element via *. */
+.edu-splash__wordmark,
+.edu-splash__wordmark span {
+  font-family: 'Mokoto', 'Audiowide', 'Arial Black', sans-serif !important;
+}
 .edu-splash__wordmark span {
   display: inline-block;
   opacity: 0;

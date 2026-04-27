@@ -495,16 +495,16 @@ const ClassesSections = () => {
         <>
           {/* Grade Summary Cards */}
           {gradesSummary.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {gradesSummary.map(g => {
                 const Icon = healthIcon(g.healthScore);
                 return (
-                  <div key={g.grade} className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-base font-black text-slate-900">Grade {g.grade}</h3>
-                      <Icon className={`w-5 h-5 ${healthColor(g.healthScore)}`} />
+                  <div key={g.grade} className="bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex items-center justify-between mb-2.5">
+                      <h3 className="text-sm font-black text-slate-900">Grade {g.grade}</h3>
+                      <Icon className={`w-4 h-4 ${healthColor(g.healthScore)}`} />
                     </div>
-                    <div className="space-y-2 text-xs">
+                    <div className="space-y-1.5 text-[11px]">
                       <div className="flex justify-between">
                         <span className="text-slate-400 font-medium">Sections</span>
                         <span className="font-black text-slate-900">{g.sections}</span>

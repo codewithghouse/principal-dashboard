@@ -163,15 +163,15 @@ const ClassesSectionsMobile = ({
                 const Icon = g.healthScore >= 75 ? CheckCircle : g.healthScore < 50 && g.healthScore > 0 ? XCircle : AlertCircle;
                 return (
                   <div key={g.grade}
-                    className="rounded-[22px] p-4 bg-white flex-shrink-0 relative overflow-hidden transition-transform active:scale-[0.96]"
-                    style={{ boxShadow: SHADOW_LG, border: "0.5px solid rgba(0,85,255,0.10)", minWidth: 170 }}>
-                    <div className="absolute -top-5 -right-4 w-20 h-20 rounded-full pointer-events-none"
+                    className="rounded-[18px] p-3 bg-white flex-shrink-0 relative overflow-hidden transition-transform active:scale-[0.96]"
+                    style={{ boxShadow: SHADOW_LG, border: "0.5px solid rgba(0,85,255,0.10)", minWidth: 152 }}>
+                    <div className="absolute -top-5 -right-4 w-16 h-16 rounded-full pointer-events-none"
                       style={{ background: `radial-gradient(circle, ${accent}1A 0%, transparent 70%)` }} />
-                    <div className="flex items-center justify-between mb-3 relative">
-                      <div className="text-[16px] font-bold tracking-[-0.3px]" style={{ color: T1 }}>Grade {g.grade}</div>
-                      <div className="w-7 h-7 rounded-[9px] flex items-center justify-center"
+                    <div className="flex items-center justify-between mb-2 relative">
+                      <div className="text-[14px] font-bold tracking-[-0.3px]" style={{ color: T1 }}>Grade {g.grade}</div>
+                      <div className="w-6 h-6 rounded-[8px] flex items-center justify-center"
                         style={{ background: `${accent}1F`, border: `0.5px solid ${accent}38` }}>
-                        <Icon className="w-[14px] h-[14px]" strokeWidth={2.4} style={{ color: accent }} />
+                        <Icon className="w-[12px] h-[12px]" strokeWidth={2.4} style={{ color: accent }} />
                       </div>
                     </div>
                     <div>
@@ -181,15 +181,15 @@ const ClassesSectionsMobile = ({
                         { label: "Avg Attendance", val: g.avgAttendance > 0 ? `${g.avgAttendance}%` : "—", color: g.avgAttendance >= 85 ? GREEN : g.avgAttendance >= 70 ? GOLD : g.avgAttendance > 0 ? RED : T4 },
                         { label: "Health Score", val: g.healthScore > 0 ? `${g.healthScore}/100` : "—", color: hf.color },
                       ].map((row, i, arr) => (
-                        <div key={row.label} className="flex items-center justify-between py-1"
+                        <div key={row.label} className="flex items-center justify-between py-[3px]"
                           style={i < arr.length - 1 ? { borderBottom: `0.5px solid ${SEP}` } : {}}>
                           <span className="text-[10px] font-semibold" style={{ color: T4 }}>{row.label}</span>
-                          <span className="text-[12px] font-bold" style={{ color: row.color }}>{row.val}</span>
+                          <span className="text-[11px] font-bold" style={{ color: row.color }}>{row.val}</span>
                         </div>
                       ))}
                     </div>
                     {/* Health bar */}
-                    <div className="h-1 rounded-[2px] mt-2.5 overflow-hidden" style={{ background: BG2 }}>
+                    <div className="h-1 rounded-[2px] mt-2 overflow-hidden" style={{ background: BG2 }}>
                       <div className="h-full rounded-[2px]" style={{ width: `${Math.max(0, Math.min(100, g.healthScore))}%`, background: hf.bar }} />
                     </div>
                   </div>
