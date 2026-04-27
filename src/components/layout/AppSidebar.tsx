@@ -280,31 +280,29 @@ function Section({ section, activeId, onSelect }: { section: NavSection; activeI
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 function Sidebar({ activeId, onSelect, sections = SECTIONS }: { activeId: string; onSelect: (id: string) => void; sections?: NavSection[] }) {
   return (
-    /* Outer wrapper — adds the gap around the sidebar card */
+    /* Outer wrapper — page-bg behind two floating cards */
     <div style={{
       padding: `${T.GAP}px 0 ${T.GAP}px ${T.GAP}px`,
       background: T.pageBg,
       flexShrink: 0,
       height: "100%",
       boxSizing: "border-box",
+      display: "flex", flexDirection: "column",
+      gap: 8,
     }}>
-      {/* The floating card */}
-      <aside style={{
+      {/* Logo card */}
+      <div style={{
         width: 240,
-        height: "100%",
         background: T.sidebar,
         borderRadius: T.RADIUS,
-        display: "flex", flexDirection: "column",
-        overflowY: "auto", overflowX: "hidden",
-        scrollbarWidth: "none",
+        flexShrink: 0,
+        boxShadow: "0 1px 2px rgba(28,7,112,0.04)",
       }}>
-        {/* Logo */}
         <div style={{
           display: "flex", alignItems: "center", gap: 10,
           height: 64,
           paddingLeft: T.LEFT_PAD + T.GAP,
           paddingRight: 16,
-          flexShrink: 0,
         }}>
           <div style={{
             width: 34, height: 34, borderRadius: 10,
@@ -318,9 +316,21 @@ function Sidebar({ activeId, onSelect, sections = SECTIONS }: { activeId: string
             <p style={{ margin: 0, fontSize: 11, color: T.textMuted, lineHeight: 1.3 }}>Admin Panel</p>
           </div>
         </div>
+      </div>
 
-        {/* Nav */}
-        <nav style={{ flex: 1, paddingTop: 6, paddingBottom: 20, overflowY: "auto", scrollbarWidth: "none" }}>
+      {/* Nav card */}
+      <aside style={{
+        width: 240,
+        flex: 1,
+        minHeight: 0,
+        background: T.sidebar,
+        borderRadius: T.RADIUS,
+        display: "flex", flexDirection: "column",
+        overflowY: "auto", overflowX: "hidden",
+        scrollbarWidth: "none",
+        boxShadow: "0 1px 2px rgba(28,7,112,0.04)",
+      }}>
+        <nav style={{ flex: 1, paddingTop: 6, paddingBottom: 20 }}>
           {sections.map(s => (
             <Section key={s.id} section={s} activeId={activeId} onSelect={onSelect} />
           ))}
