@@ -25,6 +25,18 @@ import {
 } from "./teacherScorer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
+/** Branch master record from `schools/{schoolId}/branches/{branchId}` subcollection. */
+export interface BranchDoc {
+  id: string;
+  branchId?: string;
+  name?: string;
+  schoolName?: string;
+  city?: string;
+  location?: string;
+  address?: string;
+  color?: string;
+}
+
 export interface PrincipalDoc {
   id: string;
   name?: string;
@@ -134,6 +146,10 @@ export interface LeaderboardInput {
   teacherAttendance: TeacherAttendanceDoc[];
   teachingAssignments: any[];
   classes?: any[];
+  /** Master list of branches from `schools/{schoolId}/branches` subcollection.
+   *  Source of truth — every branch here appears in the leaderboard,
+   *  even if no teachers/students have been assigned yet (composite=0). */
+  branches?: BranchDoc[];
 }
 
 export interface LeaderboardOutput {
@@ -365,6 +381,8 @@ function aggregateWindow(
   const branchComposite   = new Map<string, number>();
 
   const allBranchIds = new Set<string>([
+    // Master list — every branch from schools/{schoolId}/branches always included
+    ...(input.branches || []).map((b) => b.branchId || b.id).filter(Boolean) as string[],
     ...tAccByBranch.keys(),
     ...sAccByBranch.keys(),
     ...input.principals.map((p) => p.branchId || "_default"),
@@ -388,7 +406,9 @@ function aggregateWindow(
     if (tAvg !== null)        { sum += tAvg        * BRANCH_W.teacherAvg; totalW += BRANCH_W.teacherAvg; }
     if (sAvg !== null)        { sum += sAvg        * BRANCH_W.studentAvg; totalW += BRANCH_W.studentAvg; }
     if (safetyScore !== null) { sum += safetyScore * BRANCH_W.safety;     totalW += BRANCH_W.safety; }
-    if (totalW > 0) branchComposite.set(bid, sum / totalW);
+    // Always set composite — branches with no data get 0 so they still appear in
+    // the leaderboard (otherwise newly-created branches stay invisible).
+    branchComposite.set(bid, totalW > 0 ? sum / totalW : 0);
   });
 
   return { studentScores, teacherScores, branchTeacherAvg, branchStudentAvg, branchAtRiskCount, branchComposite };
@@ -396,16 +416,28 @@ function aggregateWindow(
 
 function branchMetaMap(input: LeaderboardInput): Map<string, { name: string; city: string }> {
   const m = new Map<string, { name: string; city: string }>();
+
+  // 1. Seed from canonical `branches` master list — highest priority for name/city
+  (input.branches || []).forEach((b) => {
+    const bid = b.branchId || b.id;
+    if (!bid) return;
+    m.set(bid, {
+      name: b.name || b.schoolName || bid,
+      city: b.city || b.location || b.address || "—",
+    });
+  });
+
+  // 2. Fall back to principal-attached metadata for any branch not in master list
   input.principals.forEach((p) => {
     const bid = p.branchId;
-    if (!bid) return;
-    if (!m.has(bid)) {
-      m.set(bid, {
-        name: p.branchName || bid,
-        city: p.branchCity || "—",
-      });
-    }
+    if (!bid || m.has(bid)) return;
+    m.set(bid, {
+      name: p.branchName || bid,
+      city: p.branchCity || "—",
+    });
   });
+
+  // 3. Final fallback — any branchId referenced by teachers/students gets a stub
   input.teachers.concat(input.students as any).forEach((d: any) => {
     const bid = d.branchId;
     if (!bid || m.has(bid)) return;

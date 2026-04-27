@@ -14,11 +14,11 @@ import { ChevronRight, ChevronDown, AlertTriangle, Filter, Loader2, Sparkles, Re
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
 import {
-  collection, query, where, onSnapshot, QueryConstraint,
+  collection, doc, query, where, onSnapshot, QueryConstraint,
 } from "firebase/firestore";
 import {
   buildLeaderboards, BranchRow, PrincipalRow, TeacherRow, StudentRow, LeaderboardOutput,
-  PrincipalDoc, StudentDoc,
+  PrincipalDoc, StudentDoc, BranchDoc,
 } from "@/lib/leaderboardData";
 import {
   TeacherDoc, ScoreDoc, AttendanceDoc, AssignmentDoc, TeacherAttendanceDoc,
@@ -646,6 +646,7 @@ const PrincipalLeaderboards: React.FC = () => {
   const [tAttendance, setTAttendance] = useState<TeacherAttendanceDoc[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [teachingAssignments, setTeachingAssignments] = useState<any[]>([]);
+  const [branchDocs, setBranchDocs] = useState<BranchDoc[]>([]);
 
   const [activeTab, setActiveTab] = useState<TabId>("branch");
 
@@ -655,7 +656,7 @@ const PrincipalLeaderboards: React.FC = () => {
     if (!schoolId) { setLoading(false); return; }
 
     let loadedCount = 0;
-    const total = 11;
+    const total = 12;
     const markLoaded = () => { loadedCount++; if (loadedCount >= total) setLoading(false); };
 
     const scoped = (col: string): QueryConstraint[] => [where("schoolId", "==", schoolId)];
@@ -673,6 +674,13 @@ const PrincipalLeaderboards: React.FC = () => {
       onSnapshot(q("teacher_attendance"),   (s) => { setTAttendance(s.docs.map((d) => d.data() as TeacherAttendanceDoc)); markLoaded(); }, () => markLoaded()),
       onSnapshot(q("classes"),              (s) => { setClasses(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); }, () => markLoaded()),
       onSnapshot(q("teaching_assignments"), (s) => { setTeachingAssignments(s.docs.map((d) => d.data() as any)); markLoaded(); }, () => markLoaded()),
+      // Master branches list — `schools/{schoolId}/branches` subcollection.
+      // Source of truth so every branch appears even if no teachers/students assigned yet.
+      onSnapshot(
+        collection(doc(db, "schools", schoolId), "branches"),
+        (s) => { setBranchDocs(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); },
+        () => markLoaded(),
+      ),
     ];
 
     return () => unsubs.forEach((u) => u());
@@ -693,8 +701,9 @@ const PrincipalLeaderboards: React.FC = () => {
       teacherAttendance: tAttendance,
       teachingAssignments,
       classes,
+      branches: branchDocs,
     });
-  }, [schoolId, branchId, myPrincipalId, teachers, students, principals, testScores, results, gradebook, attendance, assignments, tAttendance, teachingAssignments, classes]);
+  }, [schoolId, branchId, myPrincipalId, teachers, students, principals, testScores, results, gradebook, attendance, assignments, tAttendance, teachingAssignments, classes, branchDocs]);
 
   // Tab counts (live)
   const tabs = [
