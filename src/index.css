@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -63,22 +63,189 @@
 
   body {
     @apply bg-background text-foreground font-sans;
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", sans-serif;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    letter-spacing: -0.01em;
   }
 }
 
-/* ── Global Plus Jakarta Sans override (outside @layer to win cascade) ── */
+/* ── Global SF Pro Display override (outside @layer to win cascade) ── */
 html, body, *, *::before, *::after {
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", sans-serif !important;
+  font-weight: 400;
 }
 
-/* Overrides for inline font-family styles set on legacy components.
-   Inline styles normally win — `!important` here forces Plus Jakarta Sans. */
+/* Overrides for inline font-family styles set on legacy components. */
 [style*="DM Sans"],
 [style*="Inter"],
 [style*="Montserrat"],
+[style*="Plus Jakarta"],
 [style*="font-family"] {
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", sans-serif !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   APPLE-STYLE TYPOGRAPHY SCALE
+   Premium, minimal, consistent hierarchy.
+   Base weight is 400; specific roles bump to 500/600 only where required.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 1. Page Titles — h1 and large headings */
+h1,
+[class*="text-3xl"],
+[class*="text-4xl"],
+[class*="text-5xl"] {
+  font-size: 28px !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* 2. Section Titles — h2, h3, card headers */
+h2,
+[class*="text-2xl"],
+[class*="text-xl"] {
+  font-size: 20px !important;
+  font-weight: 500 !important;
+  line-height: 1.3 !important;
+  letter-spacing: -0.015em !important;
+}
+
+h3,
+[class*="text-lg"] {
+  font-size: 18px !important;
+  font-weight: 500 !important;
+  line-height: 1.35 !important;
+  letter-spacing: -0.01em !important;
+}
+
+/* 3. KPI Numbers — stat cards big numbers */
+.stat-card [class*="text-2xl"],
+.stat-card [class*="text-3xl"],
+.stat-card [class*="text-4xl"],
+[class*="kpi"][class*="number"],
+[data-kpi-number] {
+  font-size: 24px !important;
+  font-weight: 600 !important;
+  line-height: 1.15 !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* 4. Card Labels */
+[class*="card-label"],
+.stat-card [class*="text-sm"]:not([class*="text-xs"]) {
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  letter-spacing: -0.005em !important;
+}
+
+/* 5. Body Text — default paragraphs */
+p,
+body,
+[class*="text-base"] {
+  font-size: 15px !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  letter-spacing: -0.005em !important;
+}
+
+[class*="text-sm"] {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  line-height: 1.45 !important;
+  letter-spacing: -0.003em !important;
+}
+
+/* 6. Sidebar Items */
+[class*="sidebar"] a,
+[class*="sidebar"] button,
+[class*="sidebar"] li,
+nav a,
+nav button {
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.005em !important;
+}
+
+/* 7. Sidebar Section Labels — uppercase grouping headers */
+[class*="sidebar"] [class*="section-label"],
+[class*="sidebar"] [class*="group-label"],
+[class*="sidebar"] h4,
+[class*="sidebar"] h5,
+[class*="sidebar"] h6,
+[class*="sidebar"] [class*="uppercase"],
+nav [class*="uppercase"] {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+  line-height: 1.4 !important;
+}
+
+/* 8. Secondary text — muted, captions, helpers */
+small,
+[class*="text-xs"],
+[class*="text-muted"],
+[class*="caption"] {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  line-height: 1.4 !important;
+  letter-spacing: 0 !important;
+}
+
+/* Buttons — keep medium weight for clarity */
+button,
+[role="button"] {
+  font-weight: 500 !important;
+  letter-spacing: -0.005em !important;
+}
+
+/* Tables — tighten and unify */
+th {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+}
+td {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.003em !important;
+}
+
+/* Inputs */
+input,
+textarea,
+select {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.003em !important;
+}
+
+/* Strip stray bold weights — Apple dashboards stay restrained */
+[class*="font-bold"],
+[class*="font-extrabold"],
+[class*="font-black"],
+b,
+strong {
+  font-weight: 600 !important;
+}
+
+[class*="font-semibold"] {
+  font-weight: 500 !important;
+}
+
+[class*="font-medium"] {
+  font-weight: 500 !important;
+}
+
+[class*="font-normal"],
+[class*="font-light"] {
+  font-weight: 400 !important;
 }
 
 @layer components {
