@@ -248,6 +248,272 @@ strong {
   font-weight: 400 !important;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   APPLE-STYLE 8px SPACING SYSTEM
+   Allowed steps: 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 px
+   Goal: clean, balanced, premium rhythm. Snap stray values to grid.
+   Layout structure (grid templates, flex direction) is preserved.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. Card padding — normalize to 20px ──────────────────────── */
+.stat-card,
+.bg-white[class*="rounded-"],
+.bg-card[class*="rounded-"],
+[class*="bg-white"][class*="rounded-"],
+div[class*="shadow-sm"][class*="rounded-"] {
+  padding: 20px !important;
+}
+
+/* Compact cards (sidebar mini-tiles, inline chips) → 16px */
+.bg-white[class*="rounded-"][class*="p-3"],
+.bg-card[class*="rounded-"][class*="p-3"],
+.bg-white[class*="rounded-"][class*="p-2"],
+.bg-card[class*="rounded-"][class*="p-2"] {
+  padding: 16px !important;
+}
+
+/* Card header / body inner padding */
+[class*="card-header"],
+[class*="CardHeader"] {
+  padding: 20px 20px 12px 20px !important;
+}
+[class*="card-content"],
+[class*="CardContent"] {
+  padding: 12px 20px 20px 20px !important;
+}
+[class*="card-footer"],
+[class*="CardFooter"] {
+  padding: 12px 20px 20px 20px !important;
+}
+
+/* ── 2. Section spacing — 24–32px between major sections ──────── */
+main > div,
+main > section,
+[class*="page-"] > section,
+[class*="dashboard"] > section {
+  margin-bottom: 32px !important;
+}
+main > div:last-child,
+main > section:last-child {
+  margin-bottom: 0 !important;
+}
+
+section + section,
+[role="region"] + [role="region"] {
+  margin-top: 24px !important;
+}
+
+/* Outer page padding */
+main,
+[class*="page-container"],
+[class*="dashboard-container"] {
+  padding: 24px !important;
+}
+
+@media (min-width: 1024px) {
+  main,
+  [class*="page-container"],
+  [class*="dashboard-container"] {
+    padding: 32px !important;
+  }
+}
+
+/* ── 3. Inner spacing — 12–16px between text elements ─────────── */
+.stat-card > * + *,
+[class*="card-content"] > * + *,
+[class*="CardContent"] > * + * {
+  margin-top: 12px !important;
+}
+
+h1 + p, h1 + div,
+h2 + p, h2 + div,
+h3 + p, h3 + div {
+  margin-top: 8px !important;
+}
+
+p + p {
+  margin-top: 12px !important;
+}
+
+label + input,
+label + textarea,
+label + select,
+label + [role="combobox"] {
+  margin-top: 8px !important;
+}
+
+/* ── 4. Grid alignment — consistent gaps on 8px grid ──────────── */
+[class*="grid"][class*="gap-1"]  { gap: 8px  !important; }
+[class*="grid"][class*="gap-2"]  { gap: 12px !important; }
+[class*="grid"][class*="gap-3"]  { gap: 16px !important; }
+[class*="grid"][class*="gap-4"]  { gap: 20px !important; }
+[class*="grid"][class*="gap-5"]  { gap: 24px !important; }
+[class*="grid"][class*="gap-6"]  { gap: 24px !important; }
+[class*="grid"][class*="gap-8"]  { gap: 32px !important; }
+[class*="grid"][class*="gap-10"] { gap: 40px !important; }
+
+[class*="flex"][class*="gap-1"]  { gap: 8px  !important; }
+[class*="flex"][class*="gap-2"]  { gap: 12px !important; }
+[class*="flex"][class*="gap-3"]  { gap: 16px !important; }
+[class*="flex"][class*="gap-4"]  { gap: 20px !important; }
+[class*="flex"][class*="gap-5"]  { gap: 24px !important; }
+[class*="flex"][class*="gap-6"]  { gap: 24px !important; }
+[class*="flex"][class*="gap-8"]  { gap: 32px !important; }
+
+/* Equalize card heights inside a row so KPI grids align perfectly */
+[class*="grid-cols-"] > .stat-card,
+[class*="grid-cols-"] > .bg-white[class*="rounded-"],
+[class*="grid-cols-"] > .bg-card[class*="rounded-"],
+[class*="grid-cols-"] > [class*="bg-white"][class*="rounded-"] {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* ── 5. Line height — 1.4–1.6 for body readability ────────────── */
+p, li, td, span, div, label {
+  line-height: 1.5 !important;
+}
+small, [class*="text-xs"], [class*="caption"] {
+  line-height: 1.4 !important;
+}
+[class*="text-base"], [class*="text-sm"] {
+  line-height: 1.5 !important;
+}
+[class*="text-lg"], [class*="text-xl"] {
+  line-height: 1.45 !important;
+}
+h1, h2, h3, h4, h5, h6 {
+  line-height: 1.3 !important;
+}
+
+/* ── 6. Snap stray Tailwind spacing utilities to the 8px grid ── */
+/* Padding scale */
+[class*=" p-1"], [class^="p-1"]   { padding: 4px  !important; }
+[class*=" p-1.5"], [class^="p-1.5"] { padding: 8px  !important; }
+[class*=" p-2"], [class^="p-2"]   { padding: 8px  !important; }
+[class*=" p-3"], [class^="p-3"]   { padding: 12px !important; }
+[class*=" p-4"], [class^="p-4"]   { padding: 16px !important; }
+[class*=" p-5"], [class^="p-5"]   { padding: 20px !important; }
+[class*=" p-6"], [class^="p-6"]   { padding: 24px !important; }
+[class*=" p-7"], [class^="p-7"]   { padding: 24px !important; }
+[class*=" p-8"], [class^="p-8"]   { padding: 32px !important; }
+[class*=" p-10"], [class^="p-10"] { padding: 40px !important; }
+
+/* Horizontal padding */
+[class*=" px-1"], [class^="px-1"]   { padding-left: 4px !important;  padding-right: 4px !important; }
+[class*=" px-2"], [class^="px-2"]   { padding-left: 8px !important;  padding-right: 8px !important; }
+[class*=" px-3"], [class^="px-3"]   { padding-left: 12px !important; padding-right: 12px !important; }
+[class*=" px-4"], [class^="px-4"]   { padding-left: 16px !important; padding-right: 16px !important; }
+[class*=" px-5"], [class^="px-5"]   { padding-left: 20px !important; padding-right: 20px !important; }
+[class*=" px-6"], [class^="px-6"]   { padding-left: 24px !important; padding-right: 24px !important; }
+[class*=" px-8"], [class^="px-8"]   { padding-left: 32px !important; padding-right: 32px !important; }
+[class*=" px-10"], [class^="px-10"] { padding-left: 40px !important; padding-right: 40px !important; }
+
+/* Vertical padding */
+[class*=" py-1"], [class^="py-1"]   { padding-top: 4px !important;  padding-bottom: 4px !important; }
+[class*=" py-2"], [class^="py-2"]   { padding-top: 8px !important;  padding-bottom: 8px !important; }
+[class*=" py-3"], [class^="py-3"]   { padding-top: 12px !important; padding-bottom: 12px !important; }
+[class*=" py-4"], [class^="py-4"]   { padding-top: 16px !important; padding-bottom: 16px !important; }
+[class*=" py-5"], [class^="py-5"]   { padding-top: 20px !important; padding-bottom: 20px !important; }
+[class*=" py-6"], [class^="py-6"]   { padding-top: 24px !important; padding-bottom: 24px !important; }
+[class*=" py-8"], [class^="py-8"]   { padding-top: 32px !important; padding-bottom: 32px !important; }
+
+/* Margin scale (vertical only — horizontal margins often drive layout) */
+[class*=" mt-1"], [class^="mt-1"]   { margin-top: 4px  !important; }
+[class*=" mt-2"], [class^="mt-2"]   { margin-top: 8px  !important; }
+[class*=" mt-3"], [class^="mt-3"]   { margin-top: 12px !important; }
+[class*=" mt-4"], [class^="mt-4"]   { margin-top: 16px !important; }
+[class*=" mt-5"], [class^="mt-5"]   { margin-top: 20px !important; }
+[class*=" mt-6"], [class^="mt-6"]   { margin-top: 24px !important; }
+[class*=" mt-8"], [class^="mt-8"]   { margin-top: 32px !important; }
+[class*=" mt-10"], [class^="mt-10"] { margin-top: 40px !important; }
+
+[class*=" mb-1"], [class^="mb-1"]   { margin-bottom: 4px  !important; }
+[class*=" mb-2"], [class^="mb-2"]   { margin-bottom: 8px  !important; }
+[class*=" mb-3"], [class^="mb-3"]   { margin-bottom: 12px !important; }
+[class*=" mb-4"], [class^="mb-4"]   { margin-bottom: 16px !important; }
+[class*=" mb-5"], [class^="mb-5"]   { margin-bottom: 20px !important; }
+[class*=" mb-6"], [class^="mb-6"]   { margin-bottom: 24px !important; }
+[class*=" mb-8"], [class^="mb-8"]   { margin-bottom: 32px !important; }
+[class*=" mb-10"], [class^="mb-10"] { margin-bottom: 40px !important; }
+
+/* space-y utilities — vertical rhythm between siblings */
+[class*="space-y-1"]  > * + * { margin-top: 8px  !important; }
+[class*="space-y-2"]  > * + * { margin-top: 12px !important; }
+[class*="space-y-3"]  > * + * { margin-top: 16px !important; }
+[class*="space-y-4"]  > * + * { margin-top: 20px !important; }
+[class*="space-y-5"]  > * + * { margin-top: 24px !important; }
+[class*="space-y-6"]  > * + * { margin-top: 24px !important; }
+[class*="space-y-8"]  > * + * { margin-top: 32px !important; }
+[class*="space-y-10"] > * + * { margin-top: 40px !important; }
+
+[class*="space-x-1"] > * + * { margin-left: 8px  !important; }
+[class*="space-x-2"] > * + * { margin-left: 12px !important; }
+[class*="space-x-3"] > * + * { margin-left: 16px !important; }
+[class*="space-x-4"] > * + * { margin-left: 20px !important; }
+
+/* ── 7. Sidebar rhythm ──────────────────────────────────────── */
+[class*="sidebar"] {
+  padding: 20px 16px !important;
+}
+[class*="sidebar"] a,
+[class*="sidebar"] button,
+[class*="sidebar"] li {
+  padding: 8px 12px !important;
+}
+[class*="sidebar"] [class*="section-label"],
+[class*="sidebar"] [class*="group-label"],
+[class*="sidebar"] h4,
+[class*="sidebar"] h5,
+[class*="sidebar"] h6,
+[class*="sidebar"] [class*="uppercase"] {
+  margin: 24px 0 8px 0 !important;
+  padding: 0 12px !important;
+}
+[class*="sidebar"] a + a,
+[class*="sidebar"] button + button,
+[class*="sidebar"] li + li {
+  margin-top: 4px !important;
+}
+
+/* ── 8. Headers / toolbars ─────────────────────────────────── */
+header {
+  padding: 16px 24px !important;
+}
+
+/* ── 9. Form controls ──────────────────────────────────────── */
+input,
+textarea,
+select {
+  padding: 12px 16px !important;
+  line-height: 1.5 !important;
+}
+button {
+  padding: 8px 16px !important;
+}
+/* Compact icon-only buttons keep square padding */
+button[class*="h-8"],
+button[class*="h-9"],
+button[class*="w-8"],
+button[class*="w-9"] {
+  padding: 8px !important;
+}
+
+/* ── 10. Table rhythm ──────────────────────────────────────── */
+th, td {
+  padding: 12px 16px !important;
+}
+table {
+  border-spacing: 0 !important;
+}
+
+/* ── 11. Lists ─────────────────────────────────────────────── */
+ul:not([class*="sidebar"]) li + li,
+ol li + li {
+  margin-top: 8px !important;
+}
+
 @layer components {
   .stat-card {
     @apply bg-card rounded-lg border border-border p-5 flex flex-col gap-2;
