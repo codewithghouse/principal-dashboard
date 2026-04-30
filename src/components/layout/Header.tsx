@@ -1,4 +1,4 @@
-import { Bell, GraduationCap, LogOut, Menu } from "lucide-react";
+import { Bell, LogOut, Menu } from "lucide-react";
 import { useAuth } from "../../lib/AuthContext";
 
 interface HeaderProps {
