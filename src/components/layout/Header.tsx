@@ -20,9 +20,12 @@ const Header = ({ onMenuClick }: HeaderProps) => {
           <Menu className="w-5 h-5 text-muted-foreground" />
         </button>
 
-        <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shrink-0">
-          <GraduationCap className="w-5 h-5 text-primary-foreground" />
-        </div>
+        <img
+          src="/edullent-icon.png"
+          alt="Edullent"
+          className="w-9 h-9 rounded-lg object-contain shrink-0"
+          draggable={false}
+        />
         <div className="flex flex-col min-w-0">
           <span className="text-sm font-bold text-primary uppercase leading-tight truncate max-w-[120px] sm:max-w-none">
             {userData?.schoolName || "EDULLENT"}
