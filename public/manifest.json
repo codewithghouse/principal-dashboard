@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Edullent Principal",
-  "short_name": "Principal",
+  "name": "edullent-principal",
+  "short_name": "edullent-principal",
   "description": "Run your school from one screen — staff, students, fees, attendance and exam analytics in real time.",
   "theme_color": "#001040",
   "background_color": "#001040",
