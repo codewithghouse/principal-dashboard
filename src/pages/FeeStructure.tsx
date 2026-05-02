@@ -20,6 +20,14 @@ import { useIsMobile } from "@/hooks/use-mobile";
 interface FeeRow {
   className: string;
   amounts: Record<string, number>;   // term → amount (class-level default)
+  // Optional aggregate paid / pending at the class row level. Some
+  // schools upload a single class-summary sheet with Paid + Pending
+  // columns alongside term rates (e.g. ₹50K paid / ₹19.4K pending across
+  // the whole class). When these are present, the Owner /finance page
+  // shows the class card with the actual collection breakdown instead of
+  // the muted "rate only" placeholder.
+  paid?:    number;
+  pending?: number;
 }
 
 interface StudentFeeRow {
@@ -179,10 +187,28 @@ export default function FeeStructurePage() {
         let anyStudentRow = false;
         let anyClassRow   = false;
 
+        // Diagnostic — per-sheet report so a parser failure is never
+        // silent. Lets the user (or whoever's debugging from the
+        // console) see exactly which sheet had which headers and
+        // how many rows were extracted from it.
+        const perSheetReport: Array<{
+          sheet: string; rows: number; headers: string[];
+          studentHeader: string | null; classHeader: string | null;
+          paidHeader: string | null; pendingHeader: string | null;
+          extracted: number; mode: "student" | "class" | "skipped";
+          skipReason?: string;
+        }> = [];
+
         for (const sheetName of wb.SheetNames) {
           const ws   = wb.Sheets[sheetName];
           const rows = XLSX.utils.sheet_to_json(ws, { defval: "" }) as any[];
-          if (!rows.length) continue;
+          if (!rows.length) {
+            perSheetReport.push({ sheet: sheetName, rows: 0, headers: [],
+              studentHeader: null, classHeader: null, paidHeader: null,
+              pendingHeader: null, extracted: 0, mode: "skipped",
+              skipReason: "empty sheet" });
+            continue;
+          }
 
           const headers          = Object.keys(rows[0]).filter(h => h.trim() !== "");
           const classHeader      = headers.find(isClassHeader);
@@ -203,6 +229,7 @@ export default function FeeStructurePage() {
                Class comes from either:
                  - "Class" column in each row (if present)
                  - or the sheet name itself (multi-sheet pattern)        */
+            let extracted = 0;
             for (const r of rows) {
               const studentName = String(r[studentHeader] || "").trim();
               if (!studentName) continue;
@@ -226,23 +253,76 @@ export default function FeeStructurePage() {
                 parentName:   parentNameHeader ? String(r[parentNameHeader] || "").trim() : "",
               });
               anyStudentRow = true;
+              extracted++;
             }
+            perSheetReport.push({
+              sheet: sheetName, rows: rows.length, headers,
+              studentHeader, classHeader: classHeader ?? null,
+              paidHeader: paidHeader ?? null, pendingHeader: pendingHeader ?? null,
+              extracted, mode: "student",
+              ...(extracted === 0 ? { skipReason: "no rows had a Student Name value" } : {}),
+            });
           } else if (classHeader) {
-            /* Class-level legacy sheet */
+            /* Class-level sheet. Capture Paid / Pending if the row
+             * carries those columns — some uploads contain a class-summary
+             * Paid/Pending pair alongside term rates so Owner /finance can
+             * show actual collection status without per-student rows. */
+            let extracted = 0;
             for (const r of rows) {
               const className = String(r[classHeader] || "").trim();
               if (!className) continue;
               const amounts: Record<string, number> = {};
               sheetTerms.forEach(t => { amounts[t] = toNumber(r[t]); });
-              allClassRows.push({ className, amounts });
+              const paid    = paidHeader    ? toNumber(r[paidHeader])    : 0;
+              const pending = pendingHeader ? toNumber(r[pendingHeader]) : 0;
+              allClassRows.push({
+                className,
+                amounts,
+                ...(paid > 0    ? { paid }    : {}),
+                ...(pending > 0 ? { pending } : {}),
+              });
               anyClassRow = true;
+              extracted++;
             }
+            perSheetReport.push({
+              sheet: sheetName, rows: rows.length, headers,
+              studentHeader: null, classHeader,
+              paidHeader: paidHeader ?? null, pendingHeader: pendingHeader ?? null,
+              extracted, mode: "class",
+              ...(extracted === 0 ? { skipReason: "no rows had a Class value" } : {}),
+            });
+          } else {
+            /* Sheet has neither Student Name nor Class column. */
+            perSheetReport.push({
+              sheet: sheetName, rows: rows.length, headers,
+              studentHeader: null, classHeader: null,
+              paidHeader: paidHeader ?? null, pendingHeader: pendingHeader ?? null,
+              extracted: 0, mode: "skipped",
+              skipReason: `no Student Name / Class header (got: ${headers.join(", ")})`,
+            });
           }
-          /* Otherwise: skip — unrecognised sheet (e.g., "Instructions") */
         }
 
+        // Per-sheet diagnostic — inspect this in the browser console
+        // (F12) to see exactly what each sheet contributed. Tells you in
+        // one place if a sheet was skipped, why it was skipped, and how
+        // many students/classes flowed through.
+        console.info("[FeeStructure] Excel parse report", {
+          file:                 file.name,
+          totalSheets:          wb.SheetNames.length,
+          sheets:               perSheetReport,
+          totalStudentRows:     allStudentRows.length,
+          totalClassRows:       allClassRows.length,
+          termsDetected:        [...termTypeSet],
+          mode:                 anyStudentRow ? "student" : anyClassRow ? "class" : "none",
+        });
+
         if (!anyStudentRow && !anyClassRow) {
-          toast.error("No usable data. Each sheet should have a 'Student Name' or 'Class' column.");
+          // Surface the most helpful skip reason in the toast so the
+          // user can fix the Excel without opening DevTools.
+          const firstSkip = perSheetReport.find(r => r.skipReason);
+          const reason = firstSkip?.skipReason ?? "ensure each sheet has a 'Student Name' or 'Class' column";
+          toast.error(`No usable data — ${reason}. See console (F12) for full report.`);
           return;
         }
 
