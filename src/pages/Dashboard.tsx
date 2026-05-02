@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { tilt3D, tilt3DStyle } from "@/lib/use3DTilt";
 import DashboardMobile from "@/components/dashboard/DashboardMobile";
+import Recommendations from "@/components/Recommendations";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -582,8 +583,12 @@ const Dashboard = () => {
               {attendanceDelta >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
               {Math.abs(attendanceDelta)}% vs yesterday
             </p>
+          ) : attendanceToday !== null ? (
+            // Today HAS data, but yesterday doesn't — so we can't compute a
+            // delta. The previous "No data yet" copy contradicted the % above.
+            <p className="text-[11px] font-semibold" style={{ color: dT3 }}>No prior-day baseline</p>
           ) : (
-            <p className="text-[11px] font-semibold" style={{ color: dT3 }}>No data yet</p>
+            <p className="text-[11px] font-semibold" style={{ color: dT3 }}>No attendance marked today</p>
           )}
           <BarChart3 className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none" style={{ color: dGOLD, opacity: 0.22 }} strokeWidth={2} />
         </div>
@@ -1103,6 +1108,9 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+
+      {/* System-driven recommendations (was AI proxy, now deterministic — see ai/system/recommendations.ts) */}
+      <Recommendations />
 
     </div>
     </div>

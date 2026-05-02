@@ -168,7 +168,11 @@ const DashboardMobile = ({
         },
         {
           label: "Today's\nAttendance", value: displayAttendance,
-          sub: attDeltaNum !== null ? `${attDeltaNum >= 0 ? "+" : ""}${attDeltaNum}% vs yesterday` : "No data yet",
+          // When delta is null but today HAS data, "No data yet" contradicted
+          // the % shown above. Show an honest no-baseline message instead.
+          sub: attDeltaNum !== null
+            ? `${attDeltaNum >= 0 ? "+" : ""}${attDeltaNum}% vs yesterday`
+            : (displayAttendance && displayAttendance !== "--" ? "No prior-day baseline" : "No attendance marked today"),
           cardBg: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
           icon: CalendarCheck, iconBg: `linear-gradient(135deg, ${GOLD}, #FFDD44)`, iconShadow: "0 4px 14px rgba(255,170,0,0.28)",
           valColor: GOLD_D,

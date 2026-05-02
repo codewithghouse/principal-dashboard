@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ShieldAlert, Clock, AlertTriangle, AlertCircle, Plus, FileText, Calendar, X, Sparkles, ChevronRight, BookOpen } from "lucide-react";
+import DisciplineIntelligence from "@/components/DisciplineIntelligence";
 import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Label } from "recharts";
 import {
@@ -1809,6 +1810,9 @@ const Discipline = () => {
           </div>
         </>
       )}
+
+      {/* System-driven discipline analytics (was AI proxy, now deterministic — see ai/system/discipline-intelligence.ts) */}
+      <DisciplineIntelligence />
 
       {/* ===== LOG NEW INCIDENT MODAL ===== */}
       {showLogModal && (

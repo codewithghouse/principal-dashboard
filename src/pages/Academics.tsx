@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/chart";
 import SubjectAnalysis from "@/components/SubjectAnalysis";
 import AcademicsMobile from "@/components/dashboard/AcademicsMobile";
+import AcademicAnalytics from "@/components/AcademicAnalytics";
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { db } from "@/lib/firebase";
@@ -734,6 +735,9 @@ const Academics = () => {
         }}
       />
       )}
+
+      {/* System-driven analytics card (was AI proxy, now deterministic — see ai/system/academic-analytics.ts) */}
+      <AcademicAnalytics />
 
       {/* ── SCHEDULE REMEDIAL MODAL ───────────────────────────────────────────── */}
       {showScheduleModal && (

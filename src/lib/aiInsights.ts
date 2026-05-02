@@ -1,36 +1,32 @@
 /**
  * aiInsights.ts
- * Generates AI-powered root-cause + improvement plan for a classified student.
- * Results are cached in Firestore `student_ai_insights/{studentId}` for 24 hours
- * to keep AI costs low and deliver instant repeat-views.
  *
- * Backend: calls the deployed Firebase Cloud Function `parentAIProxy` (universal
- * AI proxy — authenticated users only). OpenAI key never leaves the server.
+ * Per-student insight engine for the Principal Dashboard.
+ *
+ * 2026-05-02 — converted from AI (parentAIProxy → OpenAI) to deterministic
+ * system computation. The OpenAI call had become the highest-volume per-action
+ * cost in the principal dashboard (one click per student = one $$ call); at
+ * scale (10k+ students per school × hundreds of schools) it ran into
+ * $30k–50k/month. The underlying "reasoning" was rule-based signal
+ * classification — work the deterministic engine in
+ * `ai/system/student-insight.ts` does just as well, and instantly.
+ *
+ * Same return shape (`AIInsight`) so StudentAIInsightsModal renders without
+ * a single UI code change. Cache layer kept (Firestore `student_ai_insights`)
+ * because down-stream features may rely on the persisted shape, and it lets
+ * us audit when a principal viewed a student's insight.
  */
 
 import { db } from "./firebase";
 import {
   doc, getDoc, setDoc, serverTimestamp, Timestamp,
 } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import type { ClassifiedStudent } from "./classifyStudent";
+import { computeStudentInsight, type StudentInsight } from "../ai/system/student-insight";
 
-// Cloud Functions region must match where parentAIProxy is deployed
-const FUNCTIONS_REGION = "us-central1";
-
-export interface AIInsight {
-  rootCauses: string[];
-  forTeacher: string[];
-  forParent: string[];
-  nextSteps: {
-    immediate: string;
-    shortTerm: string;
-    longTerm: string;
-  };
-  urgency: "critical" | "high" | "medium" | "low";
-  confidence: "high" | "medium" | "low";
-  summary: string;
-}
+// Re-export the canonical type. Older import sites used `AIInsight` from this
+// file; we keep the alias so they keep compiling.
+export type AIInsight = StudentInsight;
 
 export interface CachedInsight extends AIInsight {
   _cachedAt: Timestamp | null;
@@ -40,7 +36,8 @@ export interface CachedInsight extends AIInsight {
   _fromCache?: boolean;
 }
 
-// Cache TTL — 24h. Score/attendance changes overnight will trigger refresh.
+// Cache TTL — 24h. Score/attendance changes overnight will trigger refresh
+// on next view (force flag bypasses for principals who want the latest).
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function isCacheFresh(cachedAt: Timestamp | null | undefined): boolean {
@@ -50,72 +47,14 @@ function isCacheFresh(cachedAt: Timestamp | null | undefined): boolean {
 }
 
 /**
- * Build the analytical prompt for OpenAI. Tailored to Indian K-12 context,
- * returns STRICT JSON only (no prose).
- */
-function buildInstructions(): string {
-  return `You are an expert Indian K-12 school performance advisor helping a principal understand WHY a specific student is in their current performance tier and HOW to improve them.
-
-The student's data will be provided. Analyze deeply and return ONLY a JSON object with this exact shape:
-
-{
-  "rootCauses": [
-    "3-5 specific, evidence-based reasons — each one sentence",
-    "Tie each cause to data (scores/attendance/trend/gaps)",
-    "Avoid generic phrases like 'needs more effort'",
-    "Examples of GOOD causes: 'Attendance has dropped 12% in last 30 days — suggests home issue', 'Average below 50% but consistent — indicates foundational concept gaps, not effort'"
-  ],
-  "forTeacher": [
-    "3-5 concrete classroom actions the class teacher should take",
-    "Each action must be specific + time-bound (e.g. 'Run 15-min daily drill on fractions for 2 weeks')",
-    "Prioritize highest-impact actions first"
-  ],
-  "forParent": [
-    "3-4 specific things parents can do at home",
-    "Actionable + realistic for Indian middle-class parents (avoid tech-heavy tips)",
-    "Examples: 'Check homework 20 min/day', 'Schedule eye checkup if reading-related', 'Reduce screen time on school nights'"
-  ],
-  "nextSteps": {
-    "immediate": "What to do THIS WEEK (1 concrete action)",
-    "shortTerm": "What to do THIS MONTH (1 concrete action)",
-    "longTerm": "What to do THIS SEMESTER (1 concrete goal with measurable outcome)"
-  },
-  "urgency": "critical | high | medium | low",
-  "confidence": "high | medium | low",
-  "summary": "One-paragraph plain English summary (50-80 words) principal can share verbatim with parents or teacher"
-}
-
-Rules:
-- Output ONLY valid JSON — no markdown, no commentary
-- Be direct and specific — this will be shown to the principal for immediate action
-- If data is insufficient, set confidence: "low" and explain in rootCauses
-- Tone: professional, non-judgemental, action-oriented
-- Do not invent data — only reason from what's provided`;
-}
-
-function buildDataPayload(student: ClassifiedStudent) {
-  return {
-    studentName: student.studentName,
-    class: student.className || "unknown",
-    rollNumber: student.rollNo || "not assigned",
-    category: student.category,
-    averageScore: student.scores.length > 0 ? student.avgScore : null,
-    totalTestsRecorded: student.scores.length,
-    recentScores: student.scores.slice(-8), // last 8 only — keeps payload small
-    attendancePct: student.totalAttendance > 0 ? student.attendancePct : null,
-    totalAttendanceDays: student.totalAttendance,
-    presentDays: student.presentAttendance,
-    detectedSignals: student.reasons,
-  };
-}
-
-/**
- * Fetch + cache AI insight for a student. Returns cached result immediately if
- * fresh (within 24h). Otherwise calls the Vercel AI endpoint + writes cache.
+ * Fetch (or compute) the per-student insight.
  *
- * @param student   The classified student
- * @param schoolId  Tenant scope (written to cache doc for rules)
- * @param opts.force  Bypass cache (principal pressed "Regenerate")
+ * Flow:
+ *   1. Try the Firestore cache (24h TTL, school-scoped).
+ *   2. Cache miss / stale / force → run the system computation locally.
+ *   3. Best-effort persist to cache so downstream features can read it.
+ *
+ * Cost: $0. Latency: <10 ms cold + ~one Firestore read for cache check.
  */
 export async function getStudentInsight(
   student: ClassifiedStudent,
@@ -127,7 +66,7 @@ export async function getStudentInsight(
 
   const cacheRef = doc(db, "student_ai_insights", student.studentId);
 
-  // 1) Try cache
+  // 1) Try cache (best-effort — never block on permission errors)
   if (!opts.force) {
     try {
       const snap = await getDoc(cacheRef);
@@ -138,60 +77,25 @@ export async function getStudentInsight(
         }
       }
     } catch (err) {
-      // Non-fatal — fall through to AI call
-      console.warn("[aiInsights] cache read failed:", err);
+      // Non-fatal — proceed to compute
+      console.warn("[aiInsights] cache read failed (proceeding with compute):", err);
     }
   }
 
-  // 2) Call AI via deployed Firebase Cloud Function (parentAIProxy).
-  //    This works regardless of hosting (Firebase/Vercel) because it hits
-  //    Cloud Functions directly — OpenAI key stays server-side.
-  const fns = getFunctions(undefined, FUNCTIONS_REGION);
-  const call = httpsCallable<
-    { prompt: string; systemPrompt: string; jsonMode: boolean },
-    { content: string }
-  >(fns, "parentAIProxy");
+  // 2) Compute insight deterministically — pure function, no network, no AI
+  const computed = computeStudentInsight(student);
 
-  let parsed: AIInsight;
-  try {
-    const res = await call({
-      prompt: JSON.stringify(buildDataPayload(student)),
-      systemPrompt: buildInstructions(),
-      jsonMode: true,
-    });
-    const raw = res.data?.content;
-    if (!raw) throw new Error("AI returned empty content.");
-    parsed = typeof raw === "string" ? JSON.parse(raw) : (raw as AIInsight);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "AI call failed";
-    // Firebase functions errors have a `code` field — surface it for debugging
-    const code = (err as { code?: string })?.code;
-    throw new Error(code ? `[${code}] ${msg}` : msg);
-  }
-
-  // 3) Validate shape before caching
-  if (
-    !parsed ||
-    !Array.isArray(parsed.rootCauses) ||
-    !Array.isArray(parsed.forTeacher) ||
-    !Array.isArray(parsed.forParent) ||
-    !parsed.nextSteps ||
-    !parsed.summary
-  ) {
-    throw new Error("AI returned an incomplete response — please retry.");
-  }
-
-  // 4) Write cache (best-effort — don't fail the call if Firestore write fails)
+  // 3) Persist (best-effort — the computed insight is returned regardless)
   const cacheDoc: CachedInsight = {
-    ...parsed,
-    _cachedAt: null, // placeholder — Firestore stamps actual
+    ...computed,
+    _cachedAt: null,
     _studentId: student.studentId,
     _schoolId: schoolId,
     _category: student.category,
   };
   try {
     await setDoc(cacheRef, {
-      ...parsed,
+      ...computed,
       _cachedAt: serverTimestamp(),
       _studentId: student.studentId,
       _schoolId: schoolId,
@@ -199,7 +103,8 @@ export async function getStudentInsight(
       schoolId, // top-level for Firestore rules
     });
   } catch (err) {
-    console.warn("[aiInsights] cache write failed (result still returned):", err);
+    // Fine if write fails — user still sees the computed insight in this session.
+    console.warn("[aiInsights] cache write failed (insight still returned):", err);
   }
 
   return { ...cacheDoc, _fromCache: false };

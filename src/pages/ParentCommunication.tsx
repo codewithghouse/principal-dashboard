@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Loader2, MessageSquare, Search, Send, User, ChevronLeft, CheckCheck, Users, Mail, Smile, Plus, MoreVertical, Sparkles, Check, Paperclip, Phone, Video, Lock } from "lucide-react";
+import CommunicationIntelligence from "@/components/CommunicationIntelligence";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
@@ -1451,6 +1452,9 @@ const ParentCommunication = () => {
       </div>
 
       <span className="hidden">{GREEN_D}</span>
+
+      {/* System-driven communication insights (was AI proxy, now deterministic — see ai/system/communication-intelligence.ts) */}
+      <CommunicationIntelligence />
     </div>
   );
 };
