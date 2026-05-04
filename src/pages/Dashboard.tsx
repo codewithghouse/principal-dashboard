@@ -3,11 +3,11 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   Heart, Users, GraduationCap, CalendarCheck, AlertCircle,
   ArrowUp, ArrowDown, Star, ChevronRight,
-  TrendingUp, BarChart3, PieChart,
+  TrendingUp, BarChart3, PieChart, Building2, Clock, AlertTriangle,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, query, where, onSnapshot, getDocs, limit } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { tilt3D, tilt3DStyle } from "@/lib/use3DTilt";
@@ -62,9 +62,21 @@ const daysAgoStr = (n: number) => {
 };
 
 const relativeTime = (ts: any): string => {
-  const d = ts?.toDate ? ts.toDate() : ts ? new Date(ts) : null;
+  // Accept Firestore Timestamp class, plain `{seconds, nanoseconds}` shape,
+  // numeric millis, ISO string, or Date instance. Different writers produce
+  // different shapes — the previous version only handled Firestore class +
+  // raw Date, silently returning "" for the other variants.
+  let d: Date | null = null;
+  if (!ts) return "";
+  if (ts instanceof Date) d = ts;
+  else if (typeof ts?.toDate === "function") d = ts.toDate();
+  else if (typeof ts?.toMillis === "function") d = new Date(ts.toMillis());
+  else if (typeof ts === "number") d = new Date(ts);
+  else if (typeof ts === "string") d = new Date(ts);
+  else if (typeof ts?.seconds === "number") d = new Date(ts.seconds * 1000);
   if (!d || isNaN(d.getTime())) return "";
   const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
@@ -76,6 +88,46 @@ const heatColor = (avg: number | null) => {
   if (avg >= 75) return "bg-green-500";
   if (avg >= 55) return "bg-amber-400";
   return "bg-red-500";
+};
+
+/**
+ * Normalize a score doc (results / test_scores / gradebook_scores) into
+ * a 0–100 percentage. Returns null when the doc has no usable score —
+ * callers must treat null as "no data", NOT as zero. Defaulting missing
+ * scores to 0 silently poisons heatmaps and tier classifiers.
+ */
+const pctOfDoc = (d: any): number | null => {
+  const numOf = (v: any): number => {
+    if (v === null || v === undefined || v === "") return NaN;
+    const n = typeof v === "number" ? v : parseFloat(String(v));
+    return Number.isFinite(n) ? n : NaN;
+  };
+  const direct = numOf(d?.percentage);
+  if (Number.isFinite(direct)) return Math.max(0, Math.min(100, direct));
+  const raw = [d?.score, d?.marks, d?.obtainedMarks, d?.marksObtained]
+    .map(numOf).find(Number.isFinite);
+  const max = [d?.maxScore, d?.totalMarks, d?.maxMarks, d?.outOf]
+    .map(numOf).find(Number.isFinite);
+  if (Number.isFinite(raw) && Number.isFinite(max) && (max as number) > 0) {
+    return Math.max(0, Math.min(100, (raw as number) / (max as number) * 100));
+  }
+  if (Number.isFinite(raw) && (raw as number) >= 0 && (raw as number) <= 100) return raw as number;
+  return null;
+};
+
+/** Pick the first non-empty class label, preferring human-readable name.
+ *  Optional resolver maps an opaque `classId` to its human-readable name
+ *  via the classes master collection — without it, score docs that carry
+ *  only `classId` get dropped from the heatmap. */
+const classLabelOf = (d: any, classMap?: Map<string, string>): string | null => {
+  const name = d?.className || d?.class || d?.classLabel;
+  if (typeof name === "string" && name.trim()) return name.trim();
+  if (classMap && d?.classId) {
+    const resolved = classMap.get(String(d.classId));
+    if (resolved) return resolved;
+  }
+  // Don't render raw classIds (e.g., "abc123xyz") — confusing to the user.
+  return null;
 };
 
 const healthLabel = (idx: number | null) =>
@@ -101,6 +153,60 @@ const Dashboard = () => {
   const [healthIndex, setHealthIndex] = useState<number | null>(null);
   const [healthDelta, setHealthDelta] = useState<number | null>(null);
 
+  // Live time ticker for the toolbar — updates every minute. Same UX cue as
+  // the Owner dashboard so users always see "this is real-time".
+  const [now, setNow] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const branchLabel = (userData?.branchName || userData?.branch || userData?.branchTitle || "") as string;
+
+  // ── Mapping issue detector ────────────────────────────────────────────────
+  // The principal is scoped to a branchId, so every listener applies
+  // `where("branchId", "==", X)`. If writers elsewhere in the system forget
+  // to stamp `branchId` on documents (a known footgun across the codebase
+  // — see `branchid_inference_lag` memory), the dashboard renders a totally
+  // empty UI even though the school clearly has data. Detect that case by
+  // probing schoolId-only when branch-scoped reads come back empty, and
+  // surface an actionable amber banner instead of silent emptiness.
+  const [mappingIssue, setMappingIssue] = useState<
+    | { kind: "branch-missing"; sample: number; total: number }
+    | null
+  >(null);
+  useEffect(() => {
+    if (!userData?.schoolId || !userData?.branchId) return;
+    // Wait until both primary listeners have reported (non-null = first
+    // snapshot received). If either is still null we don't know yet.
+    if (studentCount === null || teacherCount === null) return;
+    if (studentCount > 0 || teacherCount > 0) {
+      setMappingIssue(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const probe = await getDocs(query(
+          collection(db, "enrollments"),
+          where("schoolId", "==", userData.schoolId),
+          limit(10),
+        ));
+        if (cancelled) return;
+        if (probe.empty) {
+          // Genuinely empty school — not a mapping issue, just no data yet.
+          setMappingIssue(null);
+          return;
+        }
+        const missing = probe.docs.filter(d => !d.data().branchId).length;
+        setMappingIssue({ kind: "branch-missing", sample: missing, total: probe.size });
+      } catch {
+        // Probe is best-effort. Fail silently — empty UI is no worse than
+        // before.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userData?.schoolId, userData?.branchId, studentCount, teacherCount]);
+
   // ── Sections ───────────────────────────────────────────────────────────────
   const [trendData,    setTrendData]    = useState<TrendPoint[]>([]);
   const [riskAlerts,   setRiskAlerts]   = useState<RiskAlert[]>([]);
@@ -114,9 +220,38 @@ const Dashboard = () => {
   const attRisksRef    = useRef<RiskAlert[]>([]);
   const incRisksRef    = useRef<RiskAlert[]>([]);
   const resRisksRef    = useRef<RiskAlert[]>([]);
-  const avgScoreRef    = useRef<number | null>(null);  // updated by results listener
-  const attTodayRef    = useRef<number | null>(null); // updated by attendance listener
-  const pendingIncRef  = useRef<number | null>(null); // updated by incidents listener
+  const avgScoreRef    = useRef<number | null>(null);  // updated by score recompute
+  const attTodayRef    = useRef<number | null>(null);  // strictly TODAY's rate (for stat card)
+  // Most-recent day with attendance data in the last 30 days. Used for the
+  // health index so that on Sundays / holidays / morning-before-mark-time,
+  // the hero doesn't sit at "Loading" forever just because today happens to
+  // have no records yet.
+  const attRecentRef   = useRef<number | null>(null);
+  const pendingIncRef  = useRef<number | null>(null);  // updated by incidents listener
+
+  // Score docs are co-canonical across THREE collections: schools using the
+  // legacy in-app flow write to `results`, schools using the Excel-ingest
+  // pipeline write to `test_scores` + `gradebook_scores`. Reading only one
+  // silently misses ~40% of records, which is exactly what the previous
+  // single-source listener did. Each listener writes to its own ref and
+  // calls `recomputeScoreView()` to merge → heatmap, low-score risks,
+  // class avg map (used by Top Teachers), and avgScoreRef (health index).
+  const resultsRef        = useRef<any[]>([]);
+  const testScoresRef     = useRef<any[]>([]);
+  const gradebookRef      = useRef<any[]>([]);
+  // Top teachers ranks teachers by the avg score across the classes they
+  // teach. teaching_assignments tells us teacher → classes; we then average
+  // across the merged scores keyed by class label.
+  const teachersRef             = useRef<any[]>([]);
+  const teachingAssignmentsRef  = useRef<any[]>([]);
+  const scoresByClassRef        = useRef<Map<string, { sum: number; count: number }>>(new Map());
+  // classes master list — resolves opaque `classId` references in
+  // teaching_assignments + score docs to a human-readable className. Without
+  // this, a teaching_assignment carrying only `classId: "abc123"` could
+  // never be joined to a score doc carrying only `className: "10B"` even
+  // though they refer to the same class. Silent join failure → permanently
+  // empty Top Teachers card.
+  const classIdToNameRef        = useRef<Map<string, string>>(new Map());
 
   // ── Derived helpers (stable refs, no stale closures) ──────────────────────
 
@@ -132,13 +267,185 @@ const Dashboard = () => {
   }, []);
 
   const computeHealthIndex = useCallback(() => {
-    const att = attTodayRef.current;
+    // Health index is a holistic indicator — it should reflect the school's
+    // recent state, not strictly today. Today's attendance can legitimately
+    // be missing (Sunday, holiday, before mark-time) without making the
+    // index unknowable. Fall back to the most-recent day with attendance.
+    const att = attTodayRef.current ?? attRecentRef.current;
     const score = avgScoreRef.current;
-    if (att === null || score === null) return;
+    // Need at least one of (attendance, score) to be meaningful; safety
+    // alone (which is mostly 100 for incident-free schools) would give a
+    // false-positive 100% health on a brand-new tenant with no data.
+    if (att === null && score === null) return;
+
+    const W = { att: 0.45, score: 0.35, safety: 0.20 };
+    let sum = 0, totalW = 0;
+    if (att   !== null) { sum += att   * W.att;    totalW += W.att; }
+    if (score !== null) { sum += score * W.score;  totalW += W.score; }
+    // Safety always contributes — incident-free is a real signal.
     const safety = Math.max(0, 100 - (pendingIncRef.current ?? 0) * 8);
-    const idx = Math.round((att * 0.45 + score * 0.35 + safety * 0.20) * 10) / 10;
-    setHealthIndex(idx);
+    sum += safety * W.safety; totalW += W.safety;
+
+    setHealthIndex(Math.round((sum / totalW) * 10) / 10);
   }, []);
+
+  /**
+   * Top 3 teachers ranked by the average score across the classes they
+   * actually teach (joined via teaching_assignments). Old logic sorted by
+   * `t.rating` which most teacher docs don't carry → arbitrary first-3.
+   */
+  const recomputeTopTeachers = useCallback(() => {
+    const teachers = teachersRef.current;
+    const tas      = teachingAssignmentsRef.current;
+    const byClass  = scoresByClassRef.current;
+    const classMap = classIdToNameRef.current;
+
+    if (teachers.length === 0) {
+      setTeacherRows([]);
+      return;
+    }
+
+    // teacher → set of class labels. teaching_assignments docs commonly
+    // carry only `classId` (no `className`), while score docs commonly
+    // carry only `className`. Without resolving classId → className via
+    // the master classes map, the join silently fails and Top Teachers
+    // stays permanently empty even when both teachers AND scores exist.
+    const teacherToClasses = new Map<string, Set<string>>();
+    tas.forEach((ta: any) => {
+      if (!ta?.teacherId) return;
+      if (ta.status && String(ta.status).toLowerCase() !== "active") return;
+      const direct = ta.className || ta.class || ta.classLabel;
+      const resolved = ta.classId ? classMap.get(String(ta.classId)) : null;
+      const cls = (typeof direct === "string" && direct.trim()) ? direct.trim() : resolved;
+      if (!cls) return;
+      if (!teacherToClasses.has(ta.teacherId)) teacherToClasses.set(ta.teacherId, new Set());
+      teacherToClasses.get(ta.teacherId)!.add(cls);
+    });
+
+    const ranked = teachers
+      .filter(t => t.name)
+      .map(t => {
+        const classes = teacherToClasses.get(t.id);
+        if (!classes || classes.size === 0) return null;
+        let sum = 0, count = 0;
+        classes.forEach(c => {
+          const agg = byClass.get(c);
+          if (agg && agg.count > 0) { sum += agg.sum; count += agg.count; }
+        });
+        if (count === 0) return null;
+        return { t, score: sum / count };
+      })
+      .filter((x): x is { t: any; score: number } => x !== null)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+
+    setTeacherRows(ranked.map(r => {
+      const t = r.t;
+      const subj = t.subject || (Array.isArray(t.subjects) ? t.subjects[0] : "") || "General";
+      // Display as a 0–10 rating (matches the Star UX) derived from
+      // class-avg %. e.g. 78% → 7.8.
+      return {
+        ini: getInitials(t.name),
+        name: t.name as string,
+        subject: subj as string,
+        rating: Math.round(r.score) / 10,
+        bg: getAvatarColor(t.name),
+      };
+    }));
+  }, []);
+
+  /**
+   * Re-derive heatmap, low-score risk alerts, scoresByClass index, and
+   * avgScoreRef from the union of `results` + `test_scores` + `gradebook_scores`.
+   * Skips docs with no usable percentage (no zero-default — see pctOfDoc).
+   */
+  const recomputeScoreView = useCallback(() => {
+    const allDocs = [
+      ...resultsRef.current,
+      ...testScoresRef.current,
+      ...gradebookRef.current,
+    ];
+
+    // Class heatmap + class avg index (for top teachers)
+    type ClassAgg = { sum: number; count: number; students: Set<string> };
+    const classMap: Record<string, ClassAgg> = {};
+    const idResolver = classIdToNameRef.current;
+    let totalSum = 0, totalCount = 0;
+    allDocs.forEach(d => {
+      const pct = pctOfDoc(d);
+      if (pct === null) return; // No data ≠ 0 — skip
+      const cls = classLabelOf(d, idResolver);
+      if (!cls) return;
+      if (!classMap[cls]) classMap[cls] = { sum: 0, count: 0, students: new Set() };
+      classMap[cls].sum   += pct;
+      classMap[cls].count += 1;
+      if (d.studentId) classMap[cls].students.add(String(d.studentId));
+      totalSum += pct; totalCount += 1;
+    });
+
+    const cells = Object.entries(classMap)
+      .map(([cls, v]) => ({
+        cls,
+        avg: v.count > 0 ? Math.round(v.sum / v.count) : null,
+        students: v.students.size,
+      }))
+      .sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
+      .slice(0, 12)
+      .map(c => ({ cls: c.cls, color: heatColor(c.avg), avg: c.avg, students: c.students }));
+    setHeatmapCells(cells);
+
+    // Update class index for Top Teachers ranking
+    const cMap = new Map<string, { sum: number; count: number }>();
+    Object.entries(classMap).forEach(([cls, v]) => {
+      cMap.set(cls, { sum: v.sum, count: v.count });
+    });
+    scoresByClassRef.current = cMap;
+
+    // Overall avg → health index
+    if (totalCount > 0) {
+      avgScoreRef.current = Math.round(totalSum / totalCount);
+      computeHealthIndex();
+    }
+
+    // Low-score student risk alerts (per-student avg < 50%)
+    const studentScores: Record<string, { name: string; cls: string; scores: number[] }> = {};
+    allDocs.forEach(d => {
+      if (!d.studentId) return;
+      const pct = pctOfDoc(d);
+      if (pct === null) return;
+      const sid = String(d.studentId);
+      if (!studentScores[sid]) {
+        // Resolve class label via the same idResolver used by the heatmap so
+        // a score doc carrying only `classId` still surfaces its class in
+        // the risk alert (e.g. "Syed Muqeeth – 10B" not "Syed Muqeeth – ").
+        const cls = classLabelOf(d, idResolver) || "";
+        studentScores[sid] = { name: d.studentName || "Student", cls, scores: [] };
+      }
+      studentScores[sid].scores.push(pct);
+    });
+    resRisksRef.current = Object.entries(studentScores)
+      .map(([id, s]) => ({
+        id, name: s.name, cls: s.cls,
+        avg: Math.round(s.scores.reduce((a, b) => a + b, 0) / s.scores.length),
+      }))
+      // require at least 2 scores so a single bad test doesn't flood the feed
+      .filter(s => studentScores[s.id].scores.length >= 2 && s.avg < 50)
+      .sort((a, b) => a.avg - b.avg)
+      .slice(0, 2)
+      .map(s => ({
+        id: `res_${s.id}`,
+        name: s.cls ? `${s.name} – ${s.cls}` : s.name,
+        detail: `Avg score ${s.avg}% – Below passing`,
+        level: s.avg < 35 ? "CRITICAL" as const : "WARNING" as const,
+        dot:   s.avg < 35 ? "#ef4444" : "#f59e0b",
+        badge: s.avg < 35 ? "bg-red-500" : "bg-amber-500",
+        rowBg: s.avg < 35 ? "bg-red-50/60" : "",
+      }));
+    mergeRisks();
+
+    // Re-rank Top Teachers (depends on the freshly-rebuilt class avg index)
+    recomputeTopTeachers();
+  }, [computeHealthIndex, mergeRisks, recomputeTopTeachers]);
 
   // ── Firestore listeners ───────────────────────────────────────────────────
   useEffect(() => {
@@ -151,35 +458,43 @@ const Dashboard = () => {
     const unsubs: (() => void)[] = [];
 
     // ── 1. Enrollments → total student count ──────────────────────────────
+    // Multi-class students get one enrollment row per class — dedup by
+    // studentId. If the field is missing on every doc we report 0 (the truth)
+    // rather than counting raw rows, which would silently double-count.
     unsubs.push(onSnapshot(
       query(collection(db, "enrollments"), ...C),
       snap => {
-        const unique = new Set(snap.docs.map(d => d.data().studentId));
-        setStudentCount(unique.size || snap.size);
+        const unique = new Set<string>();
+        snap.docs.forEach(d => {
+          const sid = d.data().studentId;
+          if (sid) unique.add(String(sid));
+        });
+        setStudentCount(unique.size);
       },
       () => setStudentCount(0),
     ));
 
-    // ── 2. Teachers → count + performance rows ─────────────────────────────
+    // ── 2. Teachers → count + (top-teacher rows recomputed elsewhere) ─────
+    // Treat missing `status` and missing `isActive` as Active by default —
+    // the previous mixed `status === "Active" || isActive !== false` check
+    // dropped any teacher with `status: undefined` even when isActive was
+    // true, then fell back to "all docs" when the active filter returned 0
+    // (silently inflating the count when one teacher had a stale status).
     unsubs.push(onSnapshot(
       query(collection(db, "teachers"), ...C),
       snap => {
         const docs = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
-        const active = docs.filter(t => t.status === "Active" || t.isActive !== false);
-        setTeacherCount(active.length || docs.length);
-
-        const rows = [...docs]
-          .filter(t => t.name)
-          .sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0))
-          .slice(0, 3)
-          .map(t => ({
-            ini: getInitials(t.name),
-            name: t.name as string,
-            subject: (t.subject || "General") as string,
-            rating: Math.round(Number(t.rating || 0) * 10) / 10,
-            bg: getAvatarColor(t.name),
-          }));
-        setTeacherRows(rows);
+        const active = docs.filter(t => {
+          if (t.isActive === false) return false;
+          if (typeof t.status === "string" &&
+              ["inactive", "deleted", "removed", "suspended"].includes(t.status.toLowerCase())) {
+            return false;
+          }
+          return true;
+        });
+        setTeacherCount(active.length);
+        teachersRef.current = active;
+        recomputeTopTeachers();
       },
       () => setTeacherCount(0),
     ));
@@ -242,6 +557,20 @@ const Dashboard = () => {
           }
         }
 
+        // Most-recent daily rate — drives the health index when today
+        // hasn't been marked yet. Walk i=0→29 (today first) and pick the
+        // first day with at least one record.
+        let recentRate: number | null = null;
+        for (let i = 0; i <= 29; i++) {
+          const d = daysAgoStr(i);
+          const e = byDate[d];
+          if (e && e.t > 0) {
+            recentRate = Math.round((e.p / e.t) * 100);
+            break;
+          }
+        }
+        attRecentRef.current = recentRate;
+
         // Attendance-based risk: students < 70% in last 30 days (min 5 records)
         const studentMap: Record<string, { name: string; cls: string; p: number; t: number }> = {};
         records.forEach(r => {
@@ -276,96 +605,118 @@ const Dashboard = () => {
       query(collection(db, "incidents"), ...C),
       snap => {
         const docs = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
-        const pending = docs.filter(d =>
-          !d.status || d.status === "open" || d.status === "pending",
-        );
+        // Status field is case-inconsistent across writers — some flows
+        // store "Open" / "Pending" capitalized, others lowercase. Normalize
+        // before comparing so we don't silently miss capitalized variants.
+        const isOpen = (s: any) => {
+          if (typeof s !== "string") return false;
+          const norm = s.toLowerCase();
+          return norm === "open" || norm === "pending";
+        };
+        const isUrgent = (s: any) => {
+          if (typeof s !== "string") return false;
+          const norm = s.toLowerCase();
+          return norm === "critical" || norm === "high";
+        };
+        // Strict pending: only docs whose writer explicitly set an open status.
+        // Treating missing-status as pending caused legacy resolved incidents
+        // (where the resolve writer forgot to stamp `status`) to inflate the
+        // counter forever. If a doc has no status field, we leave it out — the
+        // resolve flow now sets status, so anything legacy is a no-op.
+        const pending = docs.filter(d => isOpen(d.status));
         pendingIncRef.current = pending.length;
         setPendingIncidents(pending.length);
 
         incRisksRef.current = docs
-          .filter(d => d.severity === "critical" || d.severity === "high")
-          .sort((a, b) => toDateStr(b.date || b.createdAt).localeCompare(toDateStr(a.date || a.createdAt)))
+          // Only show CRITICAL/HIGH that are still open. A resolved critical
+          // incident shouldn't sit in today's risk feed.
+          .filter(d => isUrgent(d.severity) && isOpen(d.status))
+          // Sort by recency. Different incident writers stamp different
+          // timestamp fields (`date` from in-app form, `createdAt` from
+          // serverTimestamp helpers, `timestamp` from older flows). Try all
+          // three so the freshest critical incident always sits on top.
+          .sort((a, b) => toDateStr(b.date || b.createdAt || b.timestamp)
+            .localeCompare(toDateStr(a.date || a.createdAt || a.timestamp)))
           .slice(0, 2)
-          .map(d => ({
-            id: `inc_${d.id}`,
-            name: d.student?.name || d.studentName || d.title || "Incident",
-            detail: d.title || d.incidentType || d.type || "Discipline issue",
-            level: d.severity === "critical" ? "CRITICAL" as const : "WARNING" as const,
-            dot:   d.severity === "critical" ? "#ef4444" : "#f59e0b",
-            badge: d.severity === "critical" ? "bg-red-500" : "bg-amber-500",
-            rowBg: d.severity === "critical" ? "bg-red-50/60" : "",
-          }));
+          .map(d => {
+            const isCritical = String(d.severity || "").toLowerCase() === "critical";
+            return {
+              id: `inc_${d.id}`,
+              name: d.student?.name || d.studentName || d.title || "Incident",
+              detail: d.title || d.incidentType || d.type || "Discipline issue",
+              level: isCritical ? "CRITICAL" as const : "WARNING" as const,
+              dot:   isCritical ? "#ef4444" : "#f59e0b",
+              badge: isCritical ? "bg-red-500" : "bg-amber-500",
+              rowBg: isCritical ? "bg-red-50/60" : "",
+            };
+          });
         mergeRisks();
         computeHealthIndex();
       },
       () => setPendingIncidents(0),
     ));
 
-    // ── 5. Results → class heatmap + low-performance risk alerts ──────────
+    // ── 5. Score sources (3 collections, co-canonical) ─────────────────────
+    // Schools using the in-app flow write to `results`. Schools using the
+    // Excel-ingest pipeline write to `test_scores` and/or `gradebook_scores`.
+    // Reading only one source silently misses ~40% of records → empty
+    // heatmap, no low-score alerts, no health-index score component.
+    // Each listener updates its ref + calls `recomputeScoreView()` which
+    // merges all three into the UI projections (heatmap, risks, top teachers).
     unsubs.push(onSnapshot(
       query(collection(db, "results"), ...C),
       snap => {
-        const docs = snap.docs.map(d => d.data());
+        resultsRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+        recomputeScoreView();
+      },
+      () => {},
+    ));
+    unsubs.push(onSnapshot(
+      query(collection(db, "test_scores"), ...C),
+      snap => {
+        testScoresRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+        recomputeScoreView();
+      },
+      () => {},
+    ));
+    unsubs.push(onSnapshot(
+      query(collection(db, "gradebook_scores"), ...C),
+      snap => {
+        gradebookRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+        recomputeScoreView();
+      },
+      () => {},
+    ));
 
-        // Class heatmap
-        const classMap: Record<string, { sum: number; count: number; students: Set<string> }> = {};
-        let totalSum = 0, totalCount = 0;
-        docs.forEach(d => {
-          const cls = (d.className || d.classId || "Unknown") as string;
-          const score = Number(d.score ?? d.percentage ?? 0);
-          if (!classMap[cls]) classMap[cls] = { sum: 0, count: 0, students: new Set() };
-          classMap[cls].sum   += score;
-          classMap[cls].count += 1;
-          if (d.studentId) classMap[cls].students.add(d.studentId as string);
-          totalSum   += score;
-          totalCount += 1;
+    // ── 5b. Teaching assignments → teacher → classes mapping for Top Teachers
+    unsubs.push(onSnapshot(
+      query(collection(db, "teaching_assignments"), ...C),
+      snap => {
+        teachingAssignmentsRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+        recomputeTopTeachers();
+      },
+      () => {},
+    ));
+
+    // ── 5c. Classes master list → classId resolver for joins ──────────────
+    // Lets us join teaching_assignments (which often only carry classId)
+    // with score docs (which often only carry className). Without this, the
+    // Top Teachers card silently stays empty even when both sides have
+    // data — a classic identity-mismatch silent bug.
+    unsubs.push(onSnapshot(
+      query(collection(db, "classes"), ...C),
+      snap => {
+        const m = new Map<string, string>();
+        snap.docs.forEach(d => {
+          const data = d.data() as any;
+          const name = data.name || data.className || data.label;
+          if (typeof name === "string" && name.trim()) m.set(d.id, name.trim());
         });
-        const cells = Object.entries(classMap)
-          .map(([cls, v]) => ({
-            cls,
-            avg: v.count > 0 ? Math.round(v.sum / v.count) : null,
-            students: v.students.size,
-          }))
-          // Best performers first — drives the rank badges in the UI
-          .sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
-          .slice(0, 12) // cap at 12 cells for heatmap layout
-          .map(c => ({ cls: c.cls, color: heatColor(c.avg), avg: c.avg, students: c.students }));
-        setHeatmapCells(cells);
-
-        // Overall avg for health index
-        if (totalCount > 0) {
-          avgScoreRef.current = Math.round(totalSum / totalCount);
-          computeHealthIndex();
-        }
-
-        // Low-score student risk alerts (avg < 50%)
-        const studentScores: Record<string, { name: string; cls: string; scores: number[] }> = {};
-        docs.forEach(d => {
-          if (!d.studentId) return;
-          if (!studentScores[d.studentId])
-            studentScores[d.studentId] = { name: d.studentName || "Student", cls: d.className || "", scores: [] };
-          studentScores[d.studentId].scores.push(Number(d.score ?? d.percentage ?? 0));
-        });
-        resRisksRef.current = Object.entries(studentScores)
-          .map(([id, s]) => ({
-            id,
-            name: s.name,
-            cls: s.cls,
-            avg: s.scores.length > 0 ? Math.round(s.scores.reduce((a, b) => a + b, 0) / s.scores.length) : 0,
-          }))
-          .filter(s => s.avg < 50)
-          .sort((a, b) => a.avg - b.avg)
-          .slice(0, 2)
-          .map(s => ({
-            id: `res_${s.id}`,
-            name: s.cls ? `${s.name} – ${s.cls}` : s.name,
-            detail: `Avg score ${s.avg}% – Below passing`,
-            level: s.avg < 35 ? "CRITICAL" as const : "WARNING" as const,
-            dot:   s.avg < 35 ? "#ef4444" : "#f59e0b",
-            badge: s.avg < 35 ? "bg-red-500" : "bg-amber-500",
-            rowBg: s.avg < 35 ? "bg-red-50/60" : "",
-          }));
-        mergeRisks();
+        classIdToNameRef.current = m;
+        // Both downstream consumers may already have data — re-run them
+        // so they pick up the now-resolvable class labels.
+        recomputeScoreView();
+        recomputeTopTeachers();
       },
       () => {},
     ));
@@ -375,19 +726,38 @@ const Dashboard = () => {
       query(collection(db, "communications"), ...C),
       snap => {
         const docs = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+        // Writers in this codebase use `read: false`, but `communications`
+        // documents from older flows (and parent-initiated threads) may use
+        // `unread: true` or a status string. Accept all known signals so we
+        // don't silently miss urgent items.
         const urgent = docs
-          .filter(d => d.unread === true || d.status === "pending" || d.status === "unread")
+          .filter(d =>
+            d.unread === true ||
+            d.read === false ||
+            d.status === "pending" ||
+            d.status === "unread",
+          )
           .sort((a, b) => {
-            const at = a.createdAt?.toMillis?.() ?? 0;
-            const bt = b.createdAt?.toMillis?.() ?? 0;
-            return bt - at;
+            // Different writers use different timestamp fields — try both
+            // canonical names before falling back to `date` strings.
+            const tsOf = (x: any): number => {
+              const fromTs = x?.createdAt?.toMillis?.() ?? x?.timestamp?.toMillis?.();
+              if (Number.isFinite(fromTs)) return fromTs as number;
+              if (typeof x?.createdAt === "number") return x.createdAt;
+              if (typeof x?.timestamp === "number") return x.timestamp;
+              const t = new Date(x?.date || 0).getTime();
+              return Number.isFinite(t) ? t : 0;
+            };
+            return tsOf(b) - tsOf(a);
           })
           .slice(0, 4)
           .map(d => ({
             id: d.id as string,
             title: (d.title || d.subject || d.category || "Message") as string,
             from:  (d.senderName || d.from || d.senderType || "Parent") as string,
-            time:  relativeTime(d.createdAt),
+            // Match the same multi-field timestamp resolution as the sort
+            // above — older threads use `timestamp`, newer ones `createdAt`.
+            time:  relativeTime(d.createdAt || d.timestamp || d.date),
             border: d.priority === "high" || d.type === "complaint"
               ? "border-l-red-500"
               : "border-l-amber-400",
@@ -398,7 +768,11 @@ const Dashboard = () => {
     ));
 
     return () => unsubs.forEach(u => u());
-  }, [userData?.schoolId, userData?.branchId, mergeRisks, computeHealthIndex]);
+  }, [
+    userData?.schoolId, userData?.branchId,
+    mergeRisks, computeHealthIndex,
+    recomputeScoreView, recomputeTopTeachers,
+  ]);
 
   // ── Derived display values ─────────────────────────────────────────────────
 
@@ -431,6 +805,8 @@ const Dashboard = () => {
           teacherRows={teacherRows}
           heatmapCells={heatmapCells}
           urgentComms={urgentComms}
+          branchLabel={branchLabel}
+          mappingIssue={mappingIssue}
         />
       </div>
     );
@@ -457,7 +833,6 @@ const Dashboard = () => {
   const dSH_LG = "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.12), 0 18px 44px rgba(0,85,255,.15)";
 
   const healthLabelText = healthLabel(healthIndex);
-  const healthTier = healthIndex === null ? dT3 : healthIndex >= 80 ? dGREEN : healthIndex >= 65 ? dGOLD : dRED;
 
   return (
     <div className="min-h-screen animate-in fade-in duration-500"
@@ -465,16 +840,66 @@ const Dashboard = () => {
     <div className="pb-10 w-full px-2">
 
       {/* ── Toolbar ───────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-4 pt-2 pb-5">
+      <div className="flex items-center gap-4 pt-2 pb-5 flex-wrap">
         <div className="w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0"
           style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 6px 18px rgba(0,85,255,0.28)" }}>
           <Heart className="w-[22px] h-[22px] text-white" strokeWidth={2.4} />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <div className="text-[24px] font-bold leading-none" style={{ color: dT1, letterSpacing: "-0.6px" }}>Principal Dashboard</div>
           <div className="text-[12px] mt-1" style={{ color: dT3 }}>Real-time school intelligence overview</div>
         </div>
+        {/* Branch + live time chips — give the user a constant
+            visual confirmation of which scope they're viewing. */}
+        <div className="flex items-center gap-2 shrink-0">
+          {branchLabel && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold"
+              style={{ background: "rgba(0,85,255,0.08)", color: dB1, border: "0.5px solid rgba(0,85,255,0.18)" }}>
+              <Building2 className="w-[13px] h-[13px]" strokeWidth={2.4} />
+              {branchLabel}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold"
+            style={{ background: "rgba(0,200,83,0.08)", color: dGREEN_D, border: "0.5px solid rgba(0,200,83,0.18)" }}>
+            <Clock className="w-[13px] h-[13px]" strokeWidth={2.4} />
+            {now.toLocaleString("en-IN", {
+              weekday: "short", day: "numeric", month: "short",
+              hour: "numeric", minute: "2-digit",
+            })}
+          </span>
+        </div>
       </div>
+
+      {/* ── Mapping Issue Banner ──────────────────────────────────────────────
+           Shown when the branch-scoped queries return 0 docs but the school
+           clearly has data. Almost always means writers didn't stamp
+           `branchId` on enrollments / teachers / etc., so the principal sees
+           a ghost-empty dashboard. Actionable amber instead of silent emptiness. */}
+      {mappingIssue && (
+        <div className="mb-5 rounded-[16px] p-4 flex items-start gap-3"
+          style={{
+            background: "linear-gradient(135deg, rgba(255,170,0,0.08) 0%, rgba(255,170,0,0.04) 100%)",
+            border: "0.5px solid rgba(255,170,0,0.32)",
+            boxShadow: "0 4px 14px rgba(255,170,0,0.10)",
+          }}>
+          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0"
+            style={{ background: "rgba(255,170,0,0.14)", border: "0.5px solid rgba(255,170,0,0.30)" }}>
+            <AlertTriangle className="w-[18px] h-[18px]" style={{ color: "#A85D00" }} strokeWidth={2.4} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-bold leading-snug" style={{ color: "#7A4500" }}>
+              No data linked to {branchLabel || "this branch"} yet
+            </p>
+            <p className="text-[11.5px] mt-1 leading-relaxed" style={{ color: "#8A5500" }}>
+              Found {mappingIssue.total} school-level enrollment record{mappingIssue.total === 1 ? "" : "s"} but{" "}
+              <strong style={{ color: "#7A4500", fontWeight: 700 }}>
+                {mappingIssue.sample} {mappingIssue.sample === 1 ? "lacks" : "lack"} a <code style={{ background: "rgba(255,170,0,0.18)", padding: "1px 5px", borderRadius: 4, fontFamily: "ui-monospace, monospace" }}>branchId</code>
+              </strong>{" "}
+              field. Ask your DEO to re-upload Excel data with the branch column filled, or run the migration tool from Settings → Data → Migration Engine.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Academic Health Hero ──────────────────────────────────────────────── */}
       <div onClick={() => navigate("/student-intelligence")}
@@ -1000,7 +1425,16 @@ const Dashboard = () => {
             </div>
             <div className="p-5">
               {teacherRows.length === 0 ? (
-                <p className="text-[13px] font-bold text-center py-6" style={{ color: dT4 }}>No teachers added yet</p>
+                // Distinguish "no teachers in directory" from "teachers exist
+                // but their classes have no graded scores yet" — the latter
+                // is the more common case once the dashboard is live, and
+                // saying "no teachers added" misleads the user into thinking
+                // their roster is empty.
+                <p className="text-[13px] font-bold text-center py-6" style={{ color: dT4 }}>
+                  {teacherCount && teacherCount > 0
+                    ? "Score data needed to rank teachers"
+                    : "No teachers added yet"}
+                </p>
               ) : (
                 <div className="space-y-3">
                   {teacherRows.map(t => (
@@ -1099,7 +1533,14 @@ const Dashboard = () => {
             School is operating at <strong style={{ color: "#fff", fontWeight: 700 }}>{displayHealth}/100 health</strong>
             {healthLabelText !== "Loading" && <> · <strong style={{ color: "#fff", fontWeight: 700 }}>{healthLabelText}</strong> tier</>}.
             {riskAlerts.length > 0 && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{riskAlerts.length} student{riskAlerts.length === 1 ? "" : "s"}</strong> flagged for immediate attention.</>}
-            {attendanceToday !== null && <> Today's attendance at <strong style={{ color: "#fff", fontWeight: 700 }}>{attendanceToday}%</strong>{attendanceDelta !== null ? ` (${attendanceDelta >= 0 ? "+" : ""}${attendanceDelta}% vs yesterday)` : ""}.</>}
+            {/* Prefer today's attendance, but fall back to most-recent so
+                the card stays informative on Sundays / mark-pending mornings
+                instead of dropping the whole sentence. */}
+            {attendanceToday !== null
+              ? <> Today's attendance at <strong style={{ color: "#fff", fontWeight: 700 }}>{attendanceToday}%</strong>{attendanceDelta !== null ? ` (${attendanceDelta >= 0 ? "+" : ""}${attendanceDelta}% vs yesterday)` : ""}.</>
+              : attRecentRef.current !== null
+                ? <> Recent attendance at <strong style={{ color: "#fff", fontWeight: 700 }}>{attRecentRef.current}%</strong> — today not yet marked.</>
+                : null}
             {" "}Review risk alerts and urgent communications to maintain momentum.
           </p>
           <div className="flex items-center gap-2 mt-4 pt-3 relative z-10" style={{ borderTop: "0.5px solid rgba(255,255,255,0.12)" }}>

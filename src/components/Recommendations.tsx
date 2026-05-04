@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Lightbulb, Target, BookOpen, UserCheck, Loader2, Sparkles, Activity } from "lucide-react";
 import { AIController } from "@/ai/controller/ai-controller";
 import { db } from "@/lib/firebase";
-import { collection, query, getDocs, limit, where } from "firebase/firestore";
+import { collection, query, getDocs, where } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 
 interface RecommendationData {
@@ -10,6 +10,31 @@ interface RecommendationData {
   teacher_effectiveness: { teacher: string; effectiveness_score: number; evaluation: string }[];
   matched_templates: { type: string; trigger: string }[];
 }
+
+/**
+ * Normalize a score doc to a 0–100 percentage. Returns `null` when the doc
+ * has no usable score — caller MUST treat null as "no data" (skip), not as
+ * zero. Defaulting missing scores to 0 silently inflates the at-risk count
+ * and tanks every subject average.
+ */
+const pctOfDoc = (d: any): number | null => {
+  const numOf = (v: any): number => {
+    if (v === null || v === undefined || v === "") return NaN;
+    const n = typeof v === "number" ? v : parseFloat(String(v));
+    return Number.isFinite(n) ? n : NaN;
+  };
+  const direct = numOf(d?.percentage);
+  if (Number.isFinite(direct)) return Math.max(0, Math.min(100, direct));
+  const raw = [d?.score, d?.marks, d?.obtainedMarks, d?.marksObtained]
+    .map(numOf).find(Number.isFinite);
+  const max = [d?.maxScore, d?.totalMarks, d?.maxMarks, d?.outOf]
+    .map(numOf).find(Number.isFinite);
+  if (Number.isFinite(raw) && Number.isFinite(max) && (max as number) > 0) {
+    return Math.max(0, Math.min(100, (raw as number) / (max as number) * 100));
+  }
+  if (Number.isFinite(raw) && (raw as number) >= 0 && (raw as number) <= 100) return raw as number;
+  return null;
+};
 
 const Recommendations = () => {
   const { userData } = useAuth();
@@ -27,10 +52,24 @@ const Recommendations = () => {
         const constraints: any[] = [where("schoolId", "==", schoolId)];
         if (branchId) constraints.push(where("branchId", "==", branchId));
 
-        const snap = await getDocs(query(collection(db, "results"), ...constraints, limit(500)));
-        const dataExists = !snap.empty;
+        // Read from ALL three score collections — the previous version
+        // only read `results`, which silently missed schools using the
+        // Excel-ingest pipeline (test_scores + gradebook_scores). Drop the
+        // 500-row cap too: the cap silently truncated larger schools and
+        // gave them recommendations based on whichever 500 docs Firestore
+        // returned (effectively random-order without an `orderBy`).
+        const [resultsSnap, testSnap, gradebookSnap] = await Promise.all([
+          getDocs(query(collection(db, "results"),          ...constraints)),
+          getDocs(query(collection(db, "test_scores"),      ...constraints)),
+          getDocs(query(collection(db, "gradebook_scores"), ...constraints)),
+        ]);
+        const results = [
+          ...resultsSnap.docs.map(d => d.data() as any),
+          ...testSnap.docs.map(d => d.data() as any),
+          ...gradebookSnap.docs.map(d => d.data() as any),
+        ];
 
-        if (!dataExists) {
+        if (results.length === 0) {
           const result = await AIController.getRecommendations(null);
           if (result.status === "no_data") setPlaceholderMessage(result.message);
           else setPlaceholderMessage(result.message || "No data available.");
@@ -38,33 +77,48 @@ const Recommendations = () => {
           return;
         }
 
-        const results = snap.docs.map(d => d.data() as any);
-
-        // Aggregate subject performance
+        // Aggregate subject performance — keyed by ID where available so two
+        // teachers named "Sara" don't collapse into one row.
         const subjMap: Record<string, number[]> = {};
-        const teacherMap: Record<string, { subject: string; scores: number[] }> = {};
+        const teacherMap: Record<string, { id: string; displayName: string; subject: string; scores: number[] }> = {};
         const studentScores: Record<string, number[]> = {};
-        let primaryGrade = "";
+        const gradeCounts: Record<string, number> = {};
 
         results.forEach(r => {
-          const subject = r.subject || r.subjectName || "General";
-          const score = parseFloat(r.percentage ?? r.score) || 0;
-          if (!subjMap[subject]) subjMap[subject] = [];
-          subjMap[subject].push(score);
+          const pct = pctOfDoc(r);
+          if (pct === null) return; // no usable score → skip, don't 0-default
 
-          const teacherKey = r.teacherName || r.teacherId;
-          if (teacherKey) {
-            if (!teacherMap[teacherKey]) teacherMap[teacherKey] = { subject, scores: [] };
-            teacherMap[teacherKey].scores.push(score);
+          const subject = r.subject || r.subjectName || "General";
+          if (!subjMap[subject]) subjMap[subject] = [];
+          subjMap[subject].push(pct);
+
+          // Teacher key prefers ID (stable) over name (collidable).
+          const tId = r.teacherId || r.teacherEmail || r.teacherName;
+          if (tId) {
+            const key = String(tId);
+            if (!teacherMap[key]) {
+              teacherMap[key] = {
+                id: key,
+                displayName: r.teacherName || r.teacherEmail || key,
+                subject,
+                scores: [],
+              };
+            }
+            teacherMap[key].scores.push(pct);
           }
 
           const sid = r.studentId || r.studentEmail;
           if (sid) {
-            if (!studentScores[sid]) studentScores[sid] = [];
-            studentScores[sid].push(score);
+            const skey = String(sid);
+            if (!studentScores[skey]) studentScores[skey] = [];
+            studentScores[skey].push(pct);
           }
 
-          if (!primaryGrade && (r.grade || r.className)) primaryGrade = String(r.grade || r.className);
+          // Pick the most-frequent grade as "primary" rather than the first
+          // one we happened to encounter. For multi-grade branches the first
+          // doc's grade was arbitrary noise.
+          const grade = r.grade || r.className;
+          if (grade) gradeCounts[String(grade)] = (gradeCounts[String(grade)] || 0) + 1;
         });
 
         const subject_performance = Object.entries(subjMap).map(([subject, scores]) => {
@@ -77,19 +131,26 @@ const Recommendations = () => {
           return { subject, average_score: Math.round(avg), trend };
         });
 
-        const teacher_stats = Object.entries(teacherMap).map(([teacher, v]) => ({
-          teacher,
+        const teacher_stats = Object.values(teacherMap).map(v => ({
+          teacher: v.displayName,
           subject: v.subject,
           class_average: Math.round(v.scores.reduce((a, b) => a + b, 0) / v.scores.length),
         }));
 
+        // Require at least 2 scores before counting a student as at-risk —
+        // a single bad test shouldn't permanently brand them. Combined with
+        // the no-zero-default fix above, this gives a defensible at-risk count.
         const risk_students = Object.values(studentScores).filter(scores => {
+          if (scores.length < 2) return false;
           const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
           return avg < 50;
         }).length;
 
+        const primaryGrade = Object.entries(gradeCounts)
+          .sort((a, b) => b[1] - a[1])[0]?.[0] || "All";
+
         const aiInput = {
-          grade: primaryGrade || "All",
+          grade: primaryGrade,
           subject_performance,
           teacher_stats,
           risk_students,

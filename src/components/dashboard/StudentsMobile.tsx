@@ -1,10 +1,11 @@
 import {
-  Sparkles, Search, AlertTriangle, Plus, Upload, Archive,
-  MapPin, GraduationCap, Loader2, ChevronLeft, ChevronRight,
-  User as UserIcon, Download, MessageSquare, MoreHorizontal,
+  Sparkles, Search, AlertTriangle, Plus, Upload,
+  MapPin, GraduationCap, Loader2,
+  User as UserIcon, Download, MessageSquare, Trash2,
   CheckCircle,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import StudentsPagination from "@/components/dashboard/StudentsPagination";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const B1 = "#0055FF";
@@ -77,8 +78,8 @@ export interface StudentsMobileProps {
   onAddClick: () => void;
   onExportClick: () => void;
   onBulkClick: () => void;
-  onArchiveClick: () => void;
   onProfileClick: (s: StudentRow) => void;
+  onDeleteClick: (s: StudentRow) => void;
 
   defaultBranchId?: string;
 
@@ -94,14 +95,12 @@ const StudentsMobile = ({
   searchTerm, setSearchTerm,
   atRiskFilter, atRiskCount, toggleAtRisk,
   filteredCount, paginated, currentPage, totalPages, itemsPerPage, setCurrentPage,
-  onAddClick, onExportClick, onBulkClick, onArchiveClick, onProfileClick,
+  onAddClick, onExportClick, onBulkClick, onProfileClick, onDeleteClick,
   defaultBranchId,
   activeCount, avgAttendance, teachersCount, gradesCount,
 }: StudentsMobileProps) => {
   const navigate = useNavigate();
 
-  const pageStart = filteredCount === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
-  const pageEnd = Math.min(currentPage * itemsPerPage, filteredCount);
 
   // Fallbacks if parent didn't pass aggregate props — derive from paginated (current page only).
   const activeFallback = paginated.filter(s => (s.status || "Active") === "Active").length;
@@ -136,7 +135,7 @@ const StudentsMobile = ({
           </div>
           <div className="flex flex-col items-center px-[14px] py-2 rounded-[16px] flex-shrink-0"
             style={{ background: "rgba(0,85,255,0.08)", border: "0.5px solid rgba(0,85,255,0.18)" }}>
-            <div className="text-[8px] font-bold uppercase tracking-[0.10em] mb-[2px]" style={{ color: T4 }}>Total Scholars</div>
+            <div className="text-[8px] font-bold uppercase tracking-[0.10em] mb-[2px]" style={{ color: T4 }}>Total Students</div>
             <div className="text-[22px] font-bold leading-none tracking-[-0.5px]" style={{ color: B1 }}>
               {loading ? "—" : studentsTotal}
             </div>
@@ -198,21 +197,13 @@ const StudentsMobile = ({
             <Upload className="w-3 h-3" strokeWidth={2.5} />
             BULK UPLOAD
           </button>
-
-          <button
-            onClick={onArchiveClick}
-            className="h-10 px-[14px] rounded-[13px] flex items-center justify-center gap-1.5 text-[11px] font-bold tracking-[0.04em] whitespace-nowrap flex-shrink-0 transition-transform active:scale-95"
-            style={{ background: "rgba(255,136,0,0.10)", color: "#884400", border: "0.5px solid rgba(255,136,0,0.22)" }}>
-            <Archive className="w-3 h-3" strokeWidth={2.5} />
-            ARCHIVE
-          </button>
         </div>
 
         {/* ── Stats Strip ── */}
         <div className="mt-3.5 flex rounded-[20px] overflow-hidden bg-white"
           style={{ boxShadow: SHADOW_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
           {[
-            { val: loading ? "—" : studentsTotal, label: "Scholars", color: B1 },
+            { val: loading ? "—" : studentsTotal, label: "Students", color: B1 },
             { val: loading ? "—" : aActive, label: "Active", color: "#007830" },
             { val: loading ? "—" : atRiskCount, label: "At Risk", color: RED },
             { val: loading || aAvg === null || typeof aAvg === "undefined" ? "—" : `${aAvg}%`, label: "Avg Attend.", color: "#884400" },
@@ -227,7 +218,7 @@ const StudentsMobile = ({
 
         {/* ── Section label ── */}
         <div className="pt-4 pb-1 flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.10em]" style={{ color: T4 }}>
-          Scholar Details
+          Student Details
           <div className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
         </div>
       </div>
@@ -245,7 +236,7 @@ const StudentsMobile = ({
           style={{ boxShadow: SHADOW_SM, border: "0.5px solid rgba(0,85,255,0.10)" }}>
           <UserIcon className="w-10 h-10 mx-auto mb-3" style={{ color: "rgba(0,85,255,0.20)" }} strokeWidth={1.8} />
           <p className="text-[12px] font-bold uppercase tracking-[0.12em]" style={{ color: T3 }}>
-            {searchTerm || atRiskFilter ? "No matching scholars" : "No scholars enrolled"}
+            {searchTerm || atRiskFilter ? "No matching students" : "No students enrolled"}
           </p>
           {(searchTerm || atRiskFilter) && (
             <p className="text-[11px] mt-2" style={{ color: T4 }}>
@@ -258,7 +249,10 @@ const StudentsMobile = ({
           const email = s.email || s.studentEmail || "";
           const isActive = (s.status || "Active") === "Active";
           const attValid = s.attendance !== "—" && s.attPct !== null;
-          const attGood = s.attPct !== null && s.attPct >= 75;
+          // 70% — matches Dashboard + Students.tsx AT_RISK_PCT (single source
+          // of truth across pages so a student isn't "good" here and "at-risk"
+          // on the dashboard).
+          const attGood = s.attPct !== null && s.attPct >= 70;
 
           return (
             <div key={s.id} className="mx-5 mt-3 rounded-[24px] bg-white overflow-hidden relative transition-transform active:scale-[0.99]"
@@ -356,11 +350,11 @@ const StudentsMobile = ({
                   <MessageSquare className="w-[15px] h-[15px]" style={{ color: "rgba(0,85,255,0.7)" }} strokeWidth={2.2} />
                 </button>
                 <button
-                  onClick={() => onProfileClick(s)}
-                  aria-label={`More options for ${s.name}`}
+                  onClick={() => onDeleteClick(s)}
+                  aria-label={`Delete ${s.name}`}
                   className="w-11 h-11 rounded-[14px] flex items-center justify-center bg-white flex-shrink-0 transition-transform active:scale-90"
-                  style={{ border: "0.5px solid rgba(0,85,255,0.16)", boxShadow: SHADOW_SM }}>
-                  <MoreHorizontal className="w-[15px] h-[15px]" style={{ color: "rgba(0,85,255,0.7)" }} strokeWidth={2.2} />
+                  style={{ border: "0.5px solid rgba(244,63,94,0.22)", boxShadow: SHADOW_SM }}>
+                  <Trash2 className="w-[15px] h-[15px]" style={{ color: "#e11d48" }} strokeWidth={2.2} />
                 </button>
               </div>
             </div>
@@ -369,33 +363,20 @@ const StudentsMobile = ({
       )}
 
       {/* ── Pagination ── */}
-      {!loading && filteredCount > itemsPerPage && (
-        <div className="mx-5 mt-3 px-[18px] py-3 rounded-[18px] bg-white flex items-center justify-between gap-2"
-          style={{ boxShadow: SHADOW_SM, border: "0.5px solid rgba(0,85,255,0.10)" }}>
-          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: T4 }}>
-            {pageStart}–{pageEnd} of {filteredCount}
-          </p>
-          <div className="flex items-center gap-1.5">
-            <button
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              className="p-1.5 rounded-lg disabled:opacity-30 transition-transform active:scale-95"
-              style={{ border: "0.5px solid rgba(0,85,255,0.12)", background: BG2 }}
-              aria-label="Previous page">
-              <ChevronLeft className="w-[14px] h-[14px]" style={{ color: T2 }} />
-            </button>
-            <span className="text-[11px] font-bold px-2" style={{ color: T1 }}>
-              {currentPage} / {totalPages}
-            </span>
-            <button
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              className="p-1.5 rounded-lg disabled:opacity-30 transition-transform active:scale-95"
-              style={{ border: "0.5px solid rgba(0,85,255,0.12)", background: BG2 }}
-              aria-label="Next page">
-              <ChevronRight className="w-[14px] h-[14px]" style={{ color: T2 }} />
-            </button>
-          </div>
+      {/* Render whenever there's data — single-page case still shows the
+          "Showing X–Y of Z" footer so users see the total at a glance.
+          Mobile variant skips the per-page selector by design (limited screen
+          real estate); page numbers wrap nicely with the smart sliding window. */}
+      {!loading && filteredCount > 0 && (
+        <div className="mx-5 mt-3">
+          <StudentsPagination
+            totalItems={filteredCount}
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+            pageSize={itemsPerPage}
+            variant="mobile"
+            windowSize={3}
+          />
         </div>
       )}
 
@@ -413,7 +394,7 @@ const StudentsMobile = ({
           </div>
           <div className="grid grid-cols-3 gap-[1px] rounded-[16px] overflow-hidden relative z-10" style={{ background: "rgba(255,255,255,0.12)" }}>
             {[
-              { val: studentsTotal, label: "Scholars" },
+              { val: studentsTotal, label: "Students" },
               { val: aTeachers, label: "Teachers" },
               { val: aGrades, label: "Grades" },
             ].map(({ val, label }) => (

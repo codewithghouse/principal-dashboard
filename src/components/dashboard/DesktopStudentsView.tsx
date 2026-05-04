@@ -1,10 +1,11 @@
 import {
-  Sparkles, Search, AlertTriangle, Plus, Upload, Archive,
-  MapPin, GraduationCap, Loader2, ChevronLeft, ChevronRight,
-  User as UserIcon, Download, MessageSquare, MoreHorizontal,
-  CheckCircle, X,
+  Sparkles, Search, AlertTriangle, Plus, Upload,
+  MapPin, GraduationCap, Loader2, ChevronDown,
+  User as UserIcon, Download, MessageSquare, Trash2,
+  CheckCircle, X, LayoutGrid, List, Star,
 } from "lucide-react";
 import { tilt3D, tilt3DProfile, tilt3DStyle } from "@/lib/use3DTilt";
+import StudentsPagination from "@/components/dashboard/StudentsPagination";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const B1 = "#0055FF";
@@ -59,12 +60,18 @@ interface DesktopStudentsViewProps {
   setCurrentPage: (p: number | ((prev: number) => number)) => void;
   totalPages: number;
   itemsPerPage: number;
+  pageSize: number;
+  setPageSize: (n: number) => void;
+  /** Match Teachers page UX — toggles between class-grouped card layout
+   *  and a compact flat table. Defaults to "grid" if parent doesn't pass. */
+  viewMode?: "grid" | "list";
+  setViewMode?: (m: "grid" | "list") => void;
   onAdd: () => void;
   onExport: () => void;
   onBulk: () => void;
-  onArchive: () => void;
   onProfileClick: (s: any) => void;
   onMessageClick: (s: any) => void;
+  onDeleteClick: (s: any) => void;
   defaultBranchId?: string;
 }
 
@@ -74,8 +81,10 @@ const DesktopStudentsView = ({
   atRiskFilter, atRiskCount, setAtRiskFilter,
   classFilter, setClassFilter, classOptions,
   currentPage, setCurrentPage, totalPages, itemsPerPage,
-  onAdd, onExport, onBulk, onArchive,
-  onProfileClick, onMessageClick,
+  pageSize, setPageSize,
+  viewMode = "grid", setViewMode,
+  onAdd, onExport, onBulk,
+  onProfileClick, onMessageClick, onDeleteClick,
   defaultBranchId,
 }: DesktopStudentsViewProps) => {
   const activeCount = studentsData.filter((s: any) => (s.status || "Active") === "Active").length;
@@ -91,9 +100,6 @@ const DesktopStudentsView = ({
   const gradesCount = new Set(
     studentsData.map((s: any) => s.gradeDisplay).filter(Boolean)
   ).size;
-
-  const pageStart = filtered.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
-  const pageEnd = Math.min(currentPage * itemsPerPage, filtered.length);
 
   const groupedByClass = paginated.reduce<Record<string, any[]>>((acc, s) => {
     const key = s.gradeDisplay || "—";
@@ -149,7 +155,7 @@ const DesktopStudentsView = ({
           }}
         >
           <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: T4, marginBottom: 3 }}>
-            Total Scholars
+            Total Students
           </div>
           <div style={{ fontSize: 28, fontWeight: 700, color: B1, letterSpacing: "-0.6px", lineHeight: 1 }}>
             {loading ? "—" : studentsData.length}
@@ -188,13 +194,24 @@ const DesktopStudentsView = ({
           />
         </div>
 
-        <div style={{ position: "relative" }}>
+        {/* Class filter — native <select> with custom chrome on top.
+            Padding tuned so the GraduationCap icon (left) and ChevronDown
+            (right) never overlap the option text, even for "All Classes"
+            which is the longest default label. minWidth keeps the chip
+            stable across the screen widths instead of shrinking awkwardly
+            when only short class names like "10A" are selected. */}
+        <div style={{ position: "relative", display: "inline-block", flexShrink: 0 }}>
           <select
             value={classFilter}
             onChange={(e) => { setClassFilter(e.target.value); setCurrentPage(1); }}
             style={{
               height: 44,
-              padding: "0 38px 0 36px",
+              minWidth: 178,
+              // L: 16 icon-pos + 16 icon-w + 14 gap = 46 · R: 14 chev-pos + 16 chev-w + 12 gap = 42.
+              // GraduationCap visually flares wider than its 16px box (the
+              // cap brim extends), so we use a generous 14px gap to ensure
+              // the cap never overlaps the "A" of "ALL CLASSES".
+              padding: "0 42px 0 46px",
               borderRadius: 14,
               fontSize: 11,
               fontWeight: 700,
@@ -209,25 +226,70 @@ const DesktopStudentsView = ({
               appearance: "none",
               WebkitAppearance: "none",
               MozAppearance: "none",
+              // Keep label on a single line — long custom class labels
+              // (e.g. "Class 11 Science") were wrapping inside the chip.
+              whiteSpace: "nowrap",
+              textOverflow: "ellipsis",
+              overflow: "hidden",
+              // Native option text inherits the select's color in most
+              // browsers but Firefox falls back to system color — force
+              // dark text inside the dropdown menu so the open list is
+              // legible on the active blue background.
+              ...(classFilter !== "ALL" ? { textShadow: "0 1px 0 rgba(0,0,0,0.06)" } : null),
             }}
           >
-            <option value="ALL">All Classes</option>
+            <option value="ALL" style={{ color: "#001040", background: "#fff" }}>
+              All Classes
+            </option>
             {classOptions.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c} style={{ color: "#001040", background: "#fff" }}>
+                {c}
+              </option>
             ))}
           </select>
-          <GraduationCap
-            size={14}
-            strokeWidth={2.4}
-            color={classFilter !== "ALL" ? "#fff" : B1}
-            style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
-          />
-          <ChevronRight
-            size={13}
-            strokeWidth={2.6}
-            color={classFilter !== "ALL" ? "#fff" : B1}
-            style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%) rotate(90deg)", pointerEvents: "none" }}
-          />
+          {/* Leading icon — wrapped in a non-interactive span so click
+              propagates to the underlying select. */}
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: 16,
+              top: "50%",
+              transform: "translateY(-50%)",
+              pointerEvents: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              lineHeight: 0,
+            }}
+          >
+            <GraduationCap
+              size={16}
+              strokeWidth={2.4}
+              color={classFilter !== "ALL" ? "#fff" : B1}
+            />
+          </span>
+          {/* Native-looking ChevronDown (was a hacky rotated ChevronRight). */}
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              right: 14,
+              top: "50%",
+              transform: "translateY(-50%)",
+              pointerEvents: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              lineHeight: 0,
+            }}
+          >
+            <ChevronDown
+              size={16}
+              strokeWidth={2.6}
+              color={classFilter !== "ALL" ? "#fff" : B1}
+            />
+          </span>
         </div>
 
         <button
@@ -250,11 +312,78 @@ const DesktopStudentsView = ({
             color: atRiskFilter ? "#fff" : RED,
             border: `0.5px solid ${atRiskFilter ? RED : "rgba(255,51,85,0.22)"}`,
             transition: "transform .15s",
+            flexShrink: 0,
+            whiteSpace: "nowrap",
           }}
         >
-          <AlertTriangle size={13} strokeWidth={2.5} />
+          <AlertTriangle size={15} strokeWidth={2.5} />
           AT RISK{atRiskCount > 0 ? ` ${atRiskCount}` : ""}
         </button>
+
+        {/* Grid / List view toggle — same pill style as Teachers page so the
+            two pages feel like one product. Renders only when parent wires
+            up `setViewMode` (otherwise we silently default to grid).
+            Polished pass: stronger inactive contrast (T2 over T4 — was
+            barely visible), slightly larger icons (16px to match Teachers'
+            w-4 spec), gentle hover lift, soft shadow on the active button
+            so the selection state actually pops. */}
+        {setViewMode && (
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: 4,
+              borderRadius: 13,
+              background: "#fff",
+              border: "0.5px solid rgba(0,85,255,0.14)",
+              boxShadow: SHADOW_SM,
+              height: 44,
+              flexShrink: 0,
+            }}
+          >
+            {([
+              { mode: "grid" as const, Icon: LayoutGrid, label: "Grid view" },
+              { mode: "list" as const, Icon: List,       label: "List view" },
+            ]).map(({ mode, Icon, label }) => {
+              const active = viewMode === mode;
+              return (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  aria-label={label}
+                  aria-pressed={active}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    background: active ? GRAD_PRIMARY : "transparent",
+                    color: active ? "#fff" : T2,
+                    border: "none",
+                    boxShadow: active
+                      ? "0 3px 10px rgba(0,85,255,0.32), inset 0 0 0 0.5px rgba(255,255,255,0.18)"
+                      : "none",
+                    transition: "background 140ms ease, transform 140ms ease, box-shadow 140ms ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "scale(1.06)";
+                    if (!active) e.currentTarget.style.background = "rgba(0,85,255,0.06)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "scale(1)";
+                    if (!active) e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  <Icon size={18} strokeWidth={2.4} />
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {(searchTerm || classFilter !== "ALL" || atRiskFilter) && (
           <button
@@ -282,6 +411,8 @@ const DesktopStudentsView = ({
               color: T2,
               border: "0.5px solid rgba(0,85,255,0.16)",
               boxShadow: SHADOW_SM,
+              flexShrink: 0,
+              whiteSpace: "nowrap",
             }}
           >
             <X size={13} strokeWidth={2.6} />
@@ -311,6 +442,8 @@ const DesktopStudentsView = ({
             position: "relative",
             overflow: "hidden",
             fontFamily: "inherit",
+            flexShrink: 0,
+            whiteSpace: "nowrap",
           }}
         >
           <span
@@ -322,7 +455,7 @@ const DesktopStudentsView = ({
             }}
           />
           <Plus size={14} strokeWidth={2.5} style={{ position: "relative", zIndex: 1 }} />
-          <span style={{ position: "relative", zIndex: 1 }}>ADD SCHOLAR</span>
+          <span style={{ position: "relative", zIndex: 1 }}>ADD STUDENT</span>
         </button>
 
         <button
@@ -345,6 +478,8 @@ const DesktopStudentsView = ({
             boxShadow: SHADOW_SM,
             cursor: "pointer",
             fontFamily: "inherit",
+            flexShrink: 0,
+            whiteSpace: "nowrap",
           }}
         >
           <Download size={13} strokeWidth={2.5} />
@@ -370,35 +505,12 @@ const DesktopStudentsView = ({
             border: "0.5px solid rgba(0,200,83,0.22)",
             cursor: "pointer",
             fontFamily: "inherit",
+            flexShrink: 0,
+            whiteSpace: "nowrap",
           }}
         >
           <Upload size={13} strokeWidth={2.5} />
           BULK UPLOAD
-        </button>
-
-        <button
-          onClick={onArchive}
-          style={{
-            height: 44,
-            padding: "0 18px",
-            borderRadius: 14,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-            background: "rgba(255,136,0,0.10)",
-            color: "#884400",
-            border: "0.5px solid rgba(255,136,0,0.22)",
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
-        >
-          <Archive size={13} strokeWidth={2.5} />
-          ARCHIVE
         </button>
       </div>
 
@@ -419,7 +531,7 @@ const DesktopStudentsView = ({
       >
         <div data-glow style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: 0, transition: "opacity 0.3s" }} />
         {[
-          { val: loading ? "—" : studentsData.length, label: "Scholars", color: B1 },
+          { val: loading ? "—" : studentsData.length, label: "Students", color: B1 },
           { val: loading ? "—" : activeCount, label: "Active", color: "#007830" },
           { val: loading ? "—" : atRiskCount, label: "At Risk", color: RED },
           {
@@ -465,7 +577,7 @@ const DesktopStudentsView = ({
           marginBottom: 12,
         }}
       >
-        Scholar Details
+        Student Details
         <div style={{ flex: 1, height: "0.5px", background: "rgba(0,85,255,0.12)" }} />
       </div>
 
@@ -491,7 +603,7 @@ const DesktopStudentsView = ({
         >
           <UserIcon size={48} color="rgba(0,85,255,0.22)" strokeWidth={1.8} style={{ margin: "0 auto 12px" }} />
           <p style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5070B0", margin: 0 }}>
-            {searchTerm || atRiskFilter ? "No matching scholars" : "No scholars enrolled"}
+            {searchTerm || atRiskFilter ? "No matching students" : "No students enrolled"}
           </p>
           {(searchTerm || atRiskFilter) && (
             <p style={{ fontSize: 12, color: T4, marginTop: 8 }}>
@@ -499,7 +611,180 @@ const DesktopStudentsView = ({
             </p>
           )}
         </div>
+      ) : viewMode === "list" ? (
+        /* ── LIST VIEW ───────────────────────────────────────────────────
+           Compact flat table, modeled after the Teachers list view so the
+           two pages share a visual vocabulary. Class grouping is dropped in
+           list mode — the Class column is sortable-feeling visually but
+           not interactive (kept simple; users have the class FILTER above
+           if they want to slice). Same hover/click semantics as the cards. */
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: 20,
+            overflow: "hidden",
+            boxShadow: SHADOW_LG,
+            border: "0.5px solid rgba(0,85,255,0.10)",
+          }}
+        >
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: 14, minWidth: 760, borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: BG, borderBottom: "0.5px solid rgba(0,85,255,0.10)" }}>
+                  {[
+                    { label: "Student",    align: "left"   as const },
+                    { label: "Class",      align: "left"   as const },
+                    { label: "Faculty",    align: "left"   as const },
+                    { label: "Attendance", align: "center" as const },
+                    { label: "Status",     align: "center" as const },
+                    { label: "Actions",    align: "right"  as const },
+                  ].map(({ label, align }) => (
+                    <th key={label}
+                      style={{
+                        padding: "12px 20px",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: "0.10em",
+                        textTransform: "uppercase",
+                        color: T4,
+                        textAlign: align,
+                      }}>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.map((s: any) => {
+                  const email      = s.email || s.studentEmail || "";
+                  const isActive   = (s.status || "Active") === "Active";
+                  const attValid   = s.attendance !== "—" && s.attPct !== null;
+                  const attGood    = s.attPct !== null && s.attPct >= 70;
+                  const av         = avGrad(email || s.name || s.id);
+                  const initials   = (s.initials || s.name || "S").slice(0, 2).toUpperCase();
+                  return (
+                    <tr key={s.id}
+                      onClick={() => onProfileClick(s)}
+                      style={{
+                        cursor: "pointer",
+                        borderBottom: "0.5px solid rgba(0,85,255,0.07)",
+                        transition: "background 120ms",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "#F8FAFF"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      {/* Student — avatar + name + email */}
+                      <td style={{ padding: "14px 20px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <div style={{
+                            width: 40, height: 40, borderRadius: 12,
+                            background: av,
+                            color: "#fff", fontSize: 12, fontWeight: 700,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            flexShrink: 0,
+                            boxShadow: "0 2px 8px rgba(0,85,255,0.18)",
+                          }}>
+                            {initials}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: 13, fontWeight: 700, color: T1, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {s.name}
+                            </p>
+                            <p style={{ fontSize: 11, fontWeight: 500, color: T4, margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {email || "—"}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      {/* Class */}
+                      <td style={{ padding: "14px 20px" }}>
+                        <span style={{
+                          display: "inline-flex", alignItems: "center",
+                          padding: "4px 12px", borderRadius: 999,
+                          fontSize: 11, fontWeight: 700,
+                          background: "rgba(0,85,255,0.10)",
+                          color: B1,
+                          border: "0.5px solid rgba(0,85,255,0.20)",
+                        }}>
+                          {s.gradeDisplay || "—"}
+                        </span>
+                      </td>
+                      {/* Faculty */}
+                      <td style={{ padding: "14px 20px", fontSize: 12, fontWeight: 600, color: "#5070B0" }}>
+                        {s.faculty || "—"}
+                      </td>
+                      {/* Attendance — same color/empty semantics as grid */}
+                      <td style={{ padding: "14px 20px", textAlign: "center" }}>
+                        {attValid ? (
+                          <span style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            padding: "4px 12px", borderRadius: 999,
+                            fontSize: 12, fontWeight: 700,
+                            background: attGood ? "rgba(0,200,83,0.10)" : "rgba(255,51,85,0.10)",
+                            color: attGood ? GREEN : RED,
+                            border: `0.5px solid ${attGood ? "rgba(0,200,83,0.22)" : "rgba(255,51,85,0.22)"}`,
+                          }}>
+                            <Star size={11} style={{ color: attGood ? GREEN : RED, fill: attGood ? GREEN : RED }} />
+                            {s.attendance}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 12, color: T4, fontWeight: 600 }}>—</span>
+                        )}
+                      </td>
+                      {/* Status */}
+                      <td style={{ padding: "14px 20px", textAlign: "center" }}>
+                        <span style={{
+                          display: "inline-flex", alignItems: "center", gap: 6,
+                          padding: "4px 12px", borderRadius: 999,
+                          fontSize: 10, fontWeight: 700,
+                          letterSpacing: "0.08em", textTransform: "uppercase",
+                          background: isActive ? "rgba(0,200,83,0.10)" : "rgba(153,170,204,0.14)",
+                          color: isActive ? "#007830" : T4,
+                          border: `0.5px solid ${isActive ? "rgba(0,200,83,0.22)" : "rgba(153,170,204,0.22)"}`,
+                        }}>
+                          <span style={{
+                            width: 6, height: 6, borderRadius: 999,
+                            background: isActive ? GREEN : T4,
+                          }} />
+                          {s.status || "Active"}
+                        </span>
+                      </td>
+                      {/* Actions — Profile · Message · Delete */}
+                      <td style={{ padding: "14px 20px" }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 4 }}>
+                          {[
+                            { onClick: () => onProfileClick(s),  Icon: UserIcon,        title: "Open profile", color: B1 },
+                            { onClick: () => onMessageClick(s), Icon: MessageSquare,    title: "Message parent", color: "#5070B0" },
+                            { onClick: () => onDeleteClick(s),  Icon: Trash2,           title: "Delete student", color: "#e11d48" },
+                          ].map(({ onClick, Icon, title, color }, i) => (
+                            <button key={i}
+                              onClick={onClick}
+                              title={title}
+                              aria-label={title}
+                              style={{
+                                width: 32, height: 32, borderRadius: 10,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                background: "transparent",
+                                color, border: "none", cursor: "pointer",
+                                transition: "background 120ms",
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "#F0F5FF"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                            >
+                              <Icon size={14} strokeWidth={2.2} />
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* ── GRID VIEW (default) — class-grouped 2-column cards ─────────── */
         <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
           {groupOrder.map((cls) => (
             <div key={cls}>
@@ -540,7 +825,7 @@ const DesktopStudentsView = ({
                     color: T4,
                   }}
                 >
-                  {groupedByClass[cls].length} {groupedByClass[cls].length === 1 ? "Scholar" : "Scholars"}
+                  {groupedByClass[cls].length} {groupedByClass[cls].length === 1 ? "Student" : "Students"}
                 </span>
                 <div style={{ flex: 1, height: "0.5px", background: "rgba(0,85,255,0.10)" }} />
               </div>
@@ -549,7 +834,10 @@ const DesktopStudentsView = ({
             const email = s.email || s.studentEmail || "";
             const isActive = (s.status || "Active") === "Active";
             const attValid = s.attendance !== "—" && s.attPct !== null;
-            const attGood = s.attPct !== null && s.attPct >= 75;
+            // 70% — matches Dashboard's at-risk classifier and the parent
+            // Students.tsx AT_RISK_PCT constant. Same number everywhere
+            // prevents the "good on this page, at-risk on the next" disconnect.
+            const attGood = s.attPct !== null && s.attPct >= 70;
 
             return (
               <div
@@ -859,9 +1147,13 @@ const DesktopStudentsView = ({
                   >
                     <MessageSquare size={15} color="rgba(0,85,255,0.7)" strokeWidth={2.2} />
                   </button>
+                  {/* Delete — red-tinted on hover so destructive intent is
+                      clear. Uses a soft default state so the row chrome
+                      doesn't scream "DANGER" at rest. Group hover gives the
+                      affordance. */}
                   <button
-                    onClick={() => onProfileClick(s)}
-                    aria-label={`More options for ${s.name}`}
+                    onClick={() => onDeleteClick(s)}
+                    aria-label={`Delete ${s.name}`}
                     style={{
                       width: 44,
                       height: 44,
@@ -874,9 +1166,18 @@ const DesktopStudentsView = ({
                       boxShadow: SHADOW_SM,
                       cursor: "pointer",
                       flexShrink: 0,
+                      transition: "background 120ms, border-color 120ms",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "rgba(244,63,94,0.08)";
+                      e.currentTarget.style.borderColor = "rgba(244,63,94,0.32)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "#fff";
+                      e.currentTarget.style.borderColor = "rgba(0,85,255,0.16)";
                     }}
                   >
-                    <MoreHorizontal size={15} color="rgba(0,85,255,0.7)" strokeWidth={2.2} />
+                    <Trash2 size={15} color="#e11d48" strokeWidth={2.2} />
                   </button>
                 </div>
               </div>
@@ -889,91 +1190,17 @@ const DesktopStudentsView = ({
       )}
 
       {/* ── Pagination ── */}
+      {/* Always render once a list exists — even when there's only one page,
+          the footer ("Showing X–Y of Z") + page-size selector stay useful. */}
       {!loading && filtered.length > 0 && (
-        <div
-          style={{
-            marginTop: 14,
-            padding: "14px 22px",
-            borderRadius: 18,
-            background: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            boxShadow: SHADOW_SM,
-            border: "0.5px solid rgba(0,85,255,0.10)",
-          }}
-        >
-          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T4, margin: 0 }}>
-            Showing {pageStart}–{pageEnd} of {filtered.length} {filtered.length === 1 ? "Student" : "Students"}
-          </p>
-          {totalPages > 1 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <button
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              style={{
-                padding: 8,
-                borderRadius: 10,
-                border: "0.5px solid rgba(0,85,255,0.12)",
-                background: BG2,
-                cursor: currentPage === 1 ? "not-allowed" : "pointer",
-                opacity: currentPage === 1 ? 0.3 : 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={15} color={T2} />
-            </button>
-            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-              const page = currentPage <= 4 ? i + 1 : currentPage - 3 + i;
-              if (page > totalPages) return null;
-              const active = currentPage === page;
-              return (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 11,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: active ? "#fff" : T4,
-                    background: active ? GRAD_PRIMARY : "#fff",
-                    border: active ? "0.5px solid transparent" : "0.5px solid rgba(0,85,255,0.12)",
-                    boxShadow: active ? SHADOW_BTN : "none",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {page}
-                </button>
-              );
-            })}
-            <button
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              style={{
-                padding: 8,
-                borderRadius: 10,
-                border: "0.5px solid rgba(0,85,255,0.12)",
-                background: BG2,
-                cursor: currentPage === totalPages ? "not-allowed" : "pointer",
-                opacity: currentPage === totalPages ? 0.3 : 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              aria-label="Next page"
-            >
-              <ChevronRight size={15} color={T2} />
-            </button>
-          </div>
-          )}
-        </div>
+        <StudentsPagination
+          totalItems={filtered.length}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          variant="desktop"
+        />
       )}
 
       {/* ── Enrollment Registry dark card ── */}
@@ -1031,7 +1258,7 @@ const DesktopStudentsView = ({
             }}
           >
             {[
-              { val: studentsData.length, label: "Scholars" },
+              { val: studentsData.length, label: "Students" },
               { val: teachersCount, label: "Teachers" },
               { val: gradesCount, label: "Grades" },
             ].map(({ val, label }) => (

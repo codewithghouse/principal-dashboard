@@ -65,7 +65,7 @@ export const tilt3D = {
   },
 };
 
-// ── Profile variant: slightly stronger pop for Students scholar grid ──
+// ── Profile variant: slightly stronger pop for Students grid ──
 export const tilt3DProfile = {
   onMouseEnter: (e: React.MouseEvent<TiltEl>) => {
     const el = e.currentTarget as HTMLElement;

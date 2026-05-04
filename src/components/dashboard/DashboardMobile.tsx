@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Users, GraduationCap, CalendarCheck, AlertCircle, ChevronRight,
   ShieldCheck, Star, CheckCircle2, TrendingUp, TrendingDown,
-  BarChart3, PieChart,
+  BarChart3, PieChart, AlertTriangle,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -36,6 +36,12 @@ export interface DashboardMobileProps {
   teacherRows: TeacherRow[];
   heatmapCells: HeatCell[];
   urgentComms: UrgentComm[];
+  /** Branch display name for the toolbar pill (optional). */
+  branchLabel?: string;
+  /** Surfaced when the principal's branch-scoped queries return 0 docs but
+   *  the school-level probe finds enrollment records lacking `branchId`.
+   *  See Dashboard.tsx mapping-issue detector for details. */
+  mappingIssue?: { kind: "branch-missing"; sample: number; total: number } | null;
 }
 
 // ── Bright-blue theme tokens ──
@@ -87,8 +93,35 @@ const DashboardMobile = ({
   displayHealth, healthIndex, healthDelta,
   displayStudents, displayTeachers, displayAttendance, attendanceDelta, displayIncidents, pendingIncidents,
   trendData, riskAlerts, teacherRows, heatmapCells, urgentComms,
+  branchLabel, mappingIssue,
 }: DashboardMobileProps) => {
   const navigate = useNavigate();
+
+  // Branch-mapping banner (mirrors desktop). Rendered above the hero on
+  // every tab so the user sees the warning regardless of which view they
+  // landed on. Tapping the banner does nothing — actionable copy points to
+  // Settings → Migration Engine.
+  const MappingBanner = mappingIssue ? (
+    <div className="mx-5 mt-3 rounded-[18px] p-3.5 flex items-start gap-2.5"
+      style={{
+        background: "linear-gradient(135deg, rgba(255,170,0,0.10) 0%, rgba(255,170,0,0.04) 100%)",
+        border: "0.5px solid rgba(255,170,0,0.32)",
+        boxShadow: "0 4px 14px rgba(255,170,0,0.10)",
+      }}>
+      <div className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0"
+        style={{ background: "rgba(255,170,0,0.14)", border: "0.5px solid rgba(255,170,0,0.30)" }}>
+        <AlertTriangle className="w-4 h-4" style={{ color: "#A85D00" }} strokeWidth={2.4} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] font-bold leading-snug" style={{ color: "#7A4500" }}>
+          No data linked to {branchLabel || "this branch"} yet
+        </p>
+        <p className="text-[11px] mt-1 leading-snug" style={{ color: "#8A5500" }}>
+          {mappingIssue.sample} of {mappingIssue.total} school records are missing a <span style={{ fontFamily: "ui-monospace, monospace", background: "rgba(255,170,0,0.18)", padding: "0 4px", borderRadius: 3 }}>branchId</span>. Open Settings → Migration to fix.
+        </p>
+      </div>
+    </div>
+  ) : null;
 
   // ── Derived ──
   const heroFill = healthIndex !== null ? Math.min(100, Math.max(0, healthIndex)) : 0;
@@ -408,7 +441,13 @@ const DashboardMobile = ({
               style={{ background: "rgba(0,85,255,0.08)", border: "0.5px solid rgba(0,85,255,0.14)" }}>
               <GraduationCap className="w-5 h-5" style={{ color: "rgba(0,85,255,0.5)" }} strokeWidth={2.2} />
             </div>
-            <div className="text-[12px] font-medium" style={{ color: T4 }}>No teachers yet</div>
+            {/* Same distinction as desktop — "no teachers added" misleads
+                when teachers exist but have no graded scores yet. */}
+            <div className="text-[12px] font-medium text-center px-3" style={{ color: T4 }}>
+              {typeof displayTeachers === "number" && displayTeachers > 0
+                ? "Score data needed to rank teachers"
+                : "No teachers yet"}
+            </div>
           </div>
         ) : (
           teacherRows.map((t, i, arr) => {
@@ -554,6 +593,7 @@ const DashboardMobile = ({
     <div
       className="animate-in fade-in duration-500 -mx-3 -mt-3"
       style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif", background: BG, minHeight: "100vh" }}>
+      {MappingBanner}
       {Hero}
       {StatGrid}
       {RiskAlerts}
