@@ -5,6 +5,7 @@ import { AIController } from "@/ai/controller/ai-controller";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
+import { pctOfDoc } from "@/lib/scoreUtils";
 
 interface AnalyticsData {
   performance_trend?: string;
@@ -28,11 +29,50 @@ const AcademicAnalytics = () => {
 
     const fetchAnalytics = async () => {
       try {
-        const constraints: any[] = [where("schoolId", "==", schoolId)];
-        if (branchId) constraints.push(where("branchId", "==", branchId));
+        // P0: schoolId-only server-side; branchId in-memory (memory:
+        // branchid_inference_lag — server-side branchId filter would
+        // silently hide fresh writes during the trigger backfill window).
+        const inBranch = (raw: any): boolean =>
+          !branchId || !raw?.branchId || raw.branchId === branchId;
 
-        const snap = await getDocs(query(collection(db, "results"), ...constraints));
-        if (snap.empty) {
+        // Multi-source fetch — `results` alone misses bulk-upload schools
+        // that write to `test_scores` or `gradebook_scores` (~40% data loss).
+        const [resSnap, tsSnap, gbSnap] = await Promise.all([
+          getDocs(query(collection(db, "results"),          where("schoolId", "==", schoolId))).catch(err => { console.warn("[AcademicAnalytics] results fetch failed:", err); return null; }),
+          getDocs(query(collection(db, "test_scores"),      where("schoolId", "==", schoolId))).catch(err => { console.warn("[AcademicAnalytics] test_scores fetch failed:", err); return null; }),
+          getDocs(query(collection(db, "gradebook_scores"), where("schoolId", "==", schoolId))).catch(err => { console.warn("[AcademicAnalytics] gradebook_scores fetch failed:", err); return null; }),
+        ]);
+
+        const rawDocs = [
+          ...(resSnap?.docs.map(d => d.data()) ?? []),
+          ...(tsSnap?.docs.map(d => d.data())  ?? []),
+          ...(gbSnap?.docs.map(d => d.data())  ?? []),
+        ].filter(inBranch);
+
+        // Cross-collection dedup + null-safe pct extraction. Drops missing-
+        // score docs entirely (was: `parseFloat(r.score) || 0` defaulted to
+        // 0, inflating the "<40" bucket and dragging averages down).
+        const fpSeen = new Set<string>();
+        const rawResults: { _pct: number; subject: string; timestamp: any; }[] = [];
+        rawDocs.forEach(r => {
+          const pct = pctOfDoc(r);
+          if (pct === null) return;
+          const subject = String(r.subject ?? r.subjectName ?? "Unspecified");
+          const ts = r.timestamp ?? r.createdAt ?? r.date;
+          const dateK = (() => {
+            if (!ts) return "";
+            if (typeof ts === "string") return ts.slice(0, 10);
+            if (ts?.toDate) return ts.toDate().toISOString().slice(0, 10);
+            return "";
+          })();
+          const studentKey = String(r.studentId || r.studentEmail || "").toLowerCase();
+          const fp = `${studentKey}|${subject.toLowerCase()}|${dateK}|${Math.round(pct * 10)}`;
+          if (fpSeen.has(fp)) return;
+          fpSeen.add(fp);
+          rawResults.push({ _pct: pct, subject, timestamp: ts });
+        });
+
+        if (rawResults.length === 0) {
            setDistributionData([]);
            setMonthlyTrendData([]);
            setPlaceholderMessage("No academic records found for this institution.");
@@ -40,9 +80,7 @@ const AcademicAnalytics = () => {
            return;
         }
 
-        const rawResults = snap.docs.map(d => d.data());
-
-        // 1. Calculate Score Distribution Mapping
+        // 1. Calculate Score Distribution Mapping — only from real scores
         const ranges = [
            { range: "90-100", count: 0, min: 90, max: 100 },
            { range: "75-89", count: 0, min: 75, max: 89 },
@@ -52,44 +90,49 @@ const AcademicAnalytics = () => {
         ];
 
         rawResults.forEach(r => {
-           const score = parseFloat(r.score) || 0;
+           const score = r._pct;
            const range = ranges.find(rg => score >= rg.min && score <= rg.max);
            if (range) range.count++;
         });
         setDistributionData(ranges.map(({ range, count }) => ({ range, count })));
 
-        // 2. Calculate Monthly Average Trend
-        const monthlyScores: Record<string, { total: number, count: number }> = {};
+        // 2. Monthly Average Trend — bucket key includes YEAR so
+        // Jan 2024 and Jan 2025 don't collapse into the same "Jan" bucket.
+        const monthlyScores: Record<string, { total: number; count: number; year: number; monthIdx: number; label: string }> = {};
         rawResults.forEach(r => {
            if (!r.timestamp) return;
-           const date = r.timestamp.toDate();
-           const month = date.toLocaleString('default', { month: 'short' });
-           if (!monthlyScores[month]) monthlyScores[month] = { total: 0, count: 0 };
-           monthlyScores[month].total += (parseFloat(r.score) || 0);
-           monthlyScores[month].count++;
+           const date = r.timestamp?.toDate ? r.timestamp.toDate() : new Date(r.timestamp);
+           if (Number.isNaN(date.getTime())) return;
+           const monthShort = date.toLocaleString('default', { month: 'short' });
+           const year = date.getFullYear();
+           const key = `${year}-${String(date.getMonth()).padStart(2, "0")}`;
+           if (!monthlyScores[key]) monthlyScores[key] = { total: 0, count: 0, year, monthIdx: date.getMonth(), label: `${monthShort} ${String(year).slice(2)}` };
+           monthlyScores[key].total += r._pct;
+           monthlyScores[key].count++;
         });
 
-        const sortedMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const trendData = Object.entries(monthlyScores)
-           .sort((a, b) => sortedMonths.indexOf(a[0]) - sortedMonths.indexOf(b[0]))
-           .map(([month, stats]) => ({
-              month,
-              avg: parseFloat((stats.total / stats.count).toFixed(1))
+        const trendData = Object.values(monthlyScores)
+           .sort((a, b) => a.year !== b.year ? a.year - b.year : a.monthIdx - b.monthIdx)
+           .map(s => ({
+              // Label includes 2-digit year so the user can distinguish
+              // multi-year data points on the chart.
+              month: s.label,
+              avg: parseFloat((s.total / s.count).toFixed(1)),
            }))
-           .slice(-5); // Show last 5 months
+           .slice(-5); // Show last 5 month-buckets
         setMonthlyTrendData(trendData);
 
-        // 3. Prepare AI Dataset
+        // 3. Prepare AI Dataset — same null-safe percentages
         const academicDataset = {
            total_records: rawResults.length,
-           average_performance: (rawResults.reduce((acc, r) => acc + (parseFloat(r.score) || 0), 0) / rawResults.length).toFixed(1),
-           subjects: Array.from(new Set(rawResults.map(r => r.subject || "General"))).map(sub => {
-              const subResults = rawResults.filter(r => (r.subject || "General") === sub);
-              const avg = subResults.reduce((acc, r) => acc + (parseFloat(r.score) || 0), 0) / subResults.length;
+           average_performance: (rawResults.reduce((acc, r) => acc + r._pct, 0) / rawResults.length).toFixed(1),
+           subjects: Array.from(new Set(rawResults.map(r => r.subject))).map(sub => {
+              const subResults = rawResults.filter(r => r.subject === sub);
+              const avg = subResults.reduce((acc, r) => acc + r._pct, 0) / subResults.length;
               return {
                  name: sub,
                  average_score: Math.round(avg),
-                 pass_rate: Math.round((subResults.filter(r => parseFloat(r.score) > 40).length / subResults.length) * 100)
+                 pass_rate: Math.round((subResults.filter(r => r._pct > 40).length / subResults.length) * 100)
               };
            }),
            monthly_average: trendData.map(t => t.avg)

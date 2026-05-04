@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import ClassPerformance from "@/components/ClassPerformance";
 import ClassesSectionsMobile from "@/components/dashboard/ClassesSectionsMobile";
+import StudentsPagination from "@/components/dashboard/StudentsPagination";
 import { db } from "@/lib/firebase";
 import {
   collection, query, where, onSnapshot,
@@ -14,8 +15,11 @@ import {
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
+import { pctOfDoc, isPresent, ymdLocal, daysAgoStr, ATTENDANCE_WINDOW_DAYS } from "@/lib/scoreUtils";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
+
+type ClassStatus = "Good" | "Average" | "Weak" | "No Data";
 
 interface ClassRow {
   id: string;
@@ -28,50 +32,79 @@ interface ClassRow {
   schoolId: string;
   branchId: string;
   room?: string;
+  // status is a plain `string` (not the ClassStatus union) so this type is
+  // assignment-compatible with ClassRowMobile when the mobile component
+  // hands a row back through its callbacks. Internally `classStatus()`
+  // returns the narrow ClassStatus, which is a subtype of string.
   status: string;
   studentCount: number;
-  avgMarks: string;
-  avgMarksNum: number;
+  avgMarks: string;          // display string ("78%" or "—")
+  avgMarksNum: number | null; // null when no score data (per memory: bug_pattern_score_zero_no_data)
   attendance: string;
-  attendanceNum: number;
-  healthScore: number;
+  attendanceNum: number | null;
+  healthScore: number | null;
   weakSubject: string;
+  // Optional so this type stays assignment-compatible with ClassRowMobile
+  // (the mobile component's interface marks these optional). Compute() always
+  // populates them, but we don't enforce it at the type level for the boundary.
+  hasScoreData?: boolean;
+  hasAttendanceData?: boolean;
 }
 
 interface GradeSummary {
   grade: string;
   sections: number;
   students: number;
-  avgAttendance: number;
-  healthScore: number;
+  avgAttendance: number | null;
+  healthScore: number | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-const classStatus = (marks: number, att: number): string => {
-  if (marks >= 70 && att >= 85) return "Good";
-  if (marks < 45 || att < 70)  return "Weak";
+// Status accepts null for no-data — never fabricates "Weak" from missing
+// signals (memory: bug_pattern_score_zero_no_data warned that 0% defaults
+// were silently classifying classes with no exams as Weak/Red forever).
+const classStatus = (marks: number | null, att: number | null): ClassStatus => {
+  if (marks === null && att === null) return "No Data";
+  if (marks !== null && marks >= 70 && att !== null && att >= 85) return "Good";
+  if ((marks !== null && marks < 45) || (att !== null && att < 70)) return "Weak";
   return "Average";
 };
 
+const toDateStr = (d: any): string => {
+  if (!d) return "";
+  if (typeof d === "string") return d.slice(0, 10);
+  if (d?.toDate) return ymdLocal(d.toDate());
+  if (d instanceof Date) return ymdLocal(d);
+  return "";
+};
+
 const statusIcon = (s: string) =>
-  s === "Good" ? CheckCircle : s === "Weak" ? XCircle : AlertCircle;
+  s === "Good" ? CheckCircle : s === "Weak" ? XCircle : s === "No Data" ? AlertCircle : AlertCircle;
 
 const statusColor = (s: string) =>
-  s === "Good" ? "text-green-600" : s === "Weak" ? "text-rose-600" : "text-amber-500";
+  s === "Good" ? "text-green-600" :
+  s === "Weak" ? "text-rose-600" :
+  s === "No Data" ? "text-slate-400" :
+  "text-amber-500";
 
 const statusBadge = (s: string) =>
   s === "Good"
     ? "bg-green-50 text-green-700 border-green-100"
     : s === "Weak"
     ? "bg-rose-50 text-rose-700 border-rose-100"
+    : s === "No Data"
+    ? "bg-slate-50 text-slate-500 border-slate-100"
     : "bg-amber-50 text-amber-700 border-amber-100";
 
-const healthIcon = (h: number) =>
-  h >= 75 ? CheckCircle : h < 50 ? XCircle : AlertCircle;
+const healthIcon = (h: number | null) =>
+  h === null ? AlertCircle : h >= 75 ? CheckCircle : h < 50 ? XCircle : AlertCircle;
 
-const healthColor = (h: number) =>
-  h >= 75 ? "text-green-600" : h < 50 ? "text-rose-600" : "text-amber-500";
+const healthColor = (h: number | null) =>
+  h === null ? "text-slate-400" :
+  h >= 75 ? "text-green-600" :
+  h < 50 ? "text-rose-600" :
+  "text-amber-500";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -106,59 +139,132 @@ const ClassesSections = () => {
   const [inviteStudentForm, setInviteStudentForm] = useState({ name: "", email: "" });
   const [inviting,         setInviting]         = useState(false);
 
+  // ── Section table pagination ────────────────────────────────────────────────
+  // Big schools (50+ classes) would otherwise render every row at once,
+  // dropping framerate on initial load. Defaults to 10 per page; user can
+  // bump to 25/50/100 via the size selector.
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize]       = useState(10);
+  // Reset to page 1 when the underlying classes set changes (avoids landing
+  // on an empty page if classes shrank, e.g., after a delete).
+  useEffect(() => { setCurrentPage(1); }, [classes.length, pageSize]);
+
   // Cross-listener refs
   const classesRef     = useRef<any[]>([]);
   const enrollRef      = useRef<any[]>([]);
   const attRef         = useRef<any[]>([]);
   const resultsRef     = useRef<any[]>([]);
+  // Memory: Owner Dashboard alternate data sources — `test_scores` and
+  // `gradebook_scores` are CO-CANONICAL with `results`. Reading only one
+  // misses ~40% of records (bulk-upload schools live in the other two).
+  const testScoresRef  = useRef<any[]>([]);
+  const gradebookRef   = useRef<any[]>([]);
 
   // ── Compute derived class rows from latest refs ────────────────────────────
   const compute = () => {
-    const rows: ClassRow[] = classesRef.current.map(c => {
-      // Student count from enrollments
-      const enrolled = enrollRef.current.filter(e => e.classId === c.id);
-      const studentCount = enrolled.length;
+    // Per-render constants (avoid recomputing per-class)
+    const branchId = userData?.branchId;
+    // P0: client-side branch filter (server-side would silently drop fresh
+    // writes whose branchId hasn't been backfilled by the trigger yet —
+    // memory: branchid_inference_lag).
+    const inBranch = (raw: any): boolean =>
+      !branchId || !raw?.branchId || raw.branchId === branchId;
 
-      // Attendance for this class
-      const attRecs = attRef.current.filter(r => r.classId === c.id);
-      let attendanceNum = 0;
-      if (attRecs.length > 0) {
-        const present = attRecs.filter(r => r.status === "present" || r.status === "late").length;
-        attendanceNum = Math.round((present / attRecs.length) * 100);
-      }
+    const attCutoff = daysAgoStr(ATTENDANCE_WINDOW_DAYS);
 
-      // Results for this class — avg marks + weak subject
-      const resRecs = resultsRef.current.filter(r => r.classId === c.id);
-      let avgMarksNum = 0;
+    // Pre-merge all 3 score sources ONCE so we can dedup cross-collection.
+    const allScoreDocs = [
+      ...resultsRef.current,
+      ...testScoresRef.current,
+      ...gradebookRef.current,
+    ];
+
+    // Class-key match: prefer classId; fall back to className when classId
+    // missing on the record (legacy bulk imports). For class-roster context
+    // we want all matching rows, not unique-students.
+    const matchesClass = (raw: any, classId: string, className: string): boolean => {
+      if (!raw) return false;
+      if (raw.classId && raw.classId === classId) return true;
+      if (!raw.classId && raw.className && className && String(raw.className).trim() === className.trim()) return true;
+      return false;
+    };
+
+    const rows: ClassRow[] = classesRef.current
+      .filter(inBranch)
+      .map(c => {
+      const className = c.name || `${c.grade}${c.section || ""}`;
+
+      // Student count from enrollments — dedup by studentId (memory:
+      // bug_pattern_enrollment_row_dedup — a student in 2 sub-rows of same
+      // class shouldn't count twice).
+      const enrolled = enrollRef.current.filter(e => inBranch(e) && matchesClass(e, c.id, className));
+      const uniqueStudentIds = new Set(
+        enrolled.map(e => (e.studentId || (e.studentEmail || "").toLowerCase()) || "").filter(Boolean),
+      );
+      const studentCount = uniqueStudentIds.size;
+
+      // Attendance — windowed to last 60d, late-counts-as-present helper.
+      const attRecs = attRef.current.filter(r => {
+        if (!inBranch(r) || !matchesClass(r, c.id, className)) return false;
+        const d = toDateStr(r.date);
+        return !d || d >= attCutoff; // missing date → keep (better than drop)
+      });
+      const attendanceNum = attRecs.length > 0
+        ? Math.round((attRecs.filter(isPresent).length / attRecs.length) * 100)
+        : null;
+      const hasAttendanceData = attRecs.length > 0;
+
+      // Multi-source academic merge with content fingerprint dedup so the
+      // same exam recorded in `results` AND `test_scores` (some schools
+      // mirror) doesn't double-count.
+      const classScoreDocs = allScoreDocs.filter(r => inBranch(r) && matchesClass(r, c.id, className));
+      const fpSeen = new Set<string>();
+      const validPcts: number[] = [];
+      const subAccum: Record<string, { sum: number; count: number }> = {};
+      classScoreDocs.forEach(d => {
+        const pct = pctOfDoc(d);
+        if (pct === null) return;
+        const subj = String(d.subject ?? d.subjectName ?? "").toLowerCase();
+        const dateK = toDateStr(d.timestamp ?? d.createdAt ?? d.date);
+        const fp = `${subj}|${dateK}|${Math.round(pct * 10)}`;
+        if (fpSeen.has(fp)) return;
+        fpSeen.add(fp);
+        validPcts.push(pct);
+        const subName = String(d.subject ?? d.subjectName ?? "").trim();
+        if (subName) {
+          if (!subAccum[subName]) subAccum[subName] = { sum: 0, count: 0 };
+          subAccum[subName].sum += pct;
+          subAccum[subName].count++;
+        }
+      });
+      const avgMarksNum = validPcts.length > 0
+        ? Math.round(validPcts.reduce((a, b) => a + b, 0) / validPcts.length)
+        : null;
+      const hasScoreData = validPcts.length > 0;
+
+      // Weak subject only when we have real data
       let weakSubject = "—";
-
-      if (resRecs.length > 0) {
-        const totalScore = resRecs.reduce((a, r) => a + Number(r.percentage ?? r.score ?? 0), 0);
-        avgMarksNum = Math.round(totalScore / resRecs.length);
-
-        // Group by subject → find weakest
-        const subMap: Record<string, { sum: number; count: number }> = {};
-        resRecs.forEach(r => {
-          const sub = r.subject || r.subjectName || "";
-          if (!sub) return;
-          if (!subMap[sub]) subMap[sub] = { sum: 0, count: 0 };
-          subMap[sub].sum += Number(r.percentage ?? r.score ?? 0);
-          subMap[sub].count++;
-        });
-        const subs = Object.entries(subMap)
+      if (hasScoreData) {
+        const ranked = Object.entries(subAccum)
           .map(([sub, v]) => ({ sub, avg: Math.round(v.sum / v.count) }))
           .sort((a, b) => a.avg - b.avg);
-        if (subs.length > 0 && subs[0].avg < 60) weakSubject = subs[0].sub;
+        if (ranked.length > 0 && ranked[0].avg < 60) weakSubject = ranked[0].sub;
       }
 
+      // Status + health honor null → "No Data" instead of fabricating "Weak"
       const status = classStatus(avgMarksNum, attendanceNum);
-      const healthScore = attRecs.length > 0 || resRecs.length > 0
-        ? Math.round((avgMarksNum * 0.5 + attendanceNum * 0.5))
-        : 0;
+      const healthScore = (() => {
+        if (!hasScoreData && !hasAttendanceData) return null;
+        if (hasScoreData && hasAttendanceData) {
+          return Math.round(avgMarksNum! * 0.5 + attendanceNum! * 0.5);
+        }
+        // Single signal — use it directly rather than averaging with 0
+        return hasScoreData ? avgMarksNum! : attendanceNum!;
+      })();
 
       return {
         id: c.id,
-        name: c.name || `${c.grade}${c.section || ""}`,
+        name: className,
         grade: c.grade || "",
         section: c.section || "",
         subject: c.subject || "",
@@ -169,36 +275,44 @@ const ClassesSections = () => {
         room: c.room || "",
         status,
         studentCount,
-        avgMarks: avgMarksNum > 0 ? `${avgMarksNum}%` : "—",
+        avgMarks: avgMarksNum !== null ? `${avgMarksNum}%` : "—",
         avgMarksNum,
-        attendance: attendanceNum > 0 ? `${attendanceNum}%` : "—",
+        attendance: attendanceNum !== null ? `${attendanceNum}%` : "—",
         attendanceNum,
         healthScore,
         weakSubject,
+        hasScoreData,
+        hasAttendanceData,
       };
     });
 
-    // Sort: by grade then section
+    // Sort: numeric grade first, then section. Pure-string grades ("XII")
+    // sort lexically among themselves AFTER numeric ones.
     rows.sort((a, b) => {
-      const ga = Number(a.grade) || a.grade;
-      const gb = Number(b.grade) || b.grade;
-      if (ga < gb) return -1;
-      if (ga > gb) return 1;
+      const na = Number(a.grade), nb = Number(b.grade);
+      const aIsNum = !isNaN(na), bIsNum = !isNaN(nb);
+      if (aIsNum && bIsNum && na !== nb) return na - nb;
+      if (aIsNum && !bIsNum) return -1;
+      if (!aIsNum && bIsNum) return 1;
+      if (a.grade !== b.grade) return a.grade.localeCompare(b.grade);
       return a.section.localeCompare(b.section);
     });
 
     setClasses(rows);
 
-    // Build grade summary
-    const gradeMap: Record<string, { sections: number; students: number; attSum: number; healthSum: number; count: number }> = {};
+    // Grade summary — average ONLY across classes WITH data so that
+    // unstarted classes don't drag the grade-level average down.
+    const gradeMap: Record<string, {
+      sections: number; students: number;
+      attVals: number[]; healthVals: number[];
+    }> = {};
     rows.forEach(r => {
-      const g = r.grade || "Other";
-      if (!gradeMap[g]) gradeMap[g] = { sections: 0, students: 0, attSum: 0, healthSum: 0, count: 0 };
+      const g = r.grade || "Ungraded";
+      if (!gradeMap[g]) gradeMap[g] = { sections: 0, students: 0, attVals: [], healthVals: [] };
       gradeMap[g].sections++;
       gradeMap[g].students += r.studentCount;
-      gradeMap[g].attSum   += r.attendanceNum;
-      gradeMap[g].healthSum += r.healthScore;
-      gradeMap[g].count++;
+      if (r.attendanceNum !== null) gradeMap[g].attVals.push(r.attendanceNum);
+      if (r.healthScore !== null)   gradeMap[g].healthVals.push(r.healthScore);
     });
 
     const summary: GradeSummary[] = Object.entries(gradeMap)
@@ -206,8 +320,12 @@ const ClassesSections = () => {
         grade,
         sections: v.sections,
         students: v.students,
-        avgAttendance: v.count > 0 ? Math.round(v.attSum / v.count) : 0,
-        healthScore:   v.count > 0 ? Math.round(v.healthSum / v.count) : 0,
+        avgAttendance: v.attVals.length > 0
+          ? Math.round(v.attVals.reduce((a, b) => a + b, 0) / v.attVals.length)
+          : null,
+        healthScore: v.healthVals.length > 0
+          ? Math.round(v.healthVals.reduce((a, b) => a + b, 0) / v.healthVals.length)
+          : null,
       }))
       .sort((a, b) => {
         const na = Number(a.grade), nb = Number(b.grade);
@@ -219,40 +337,87 @@ const ClassesSections = () => {
   };
 
   // ── Firestore listeners ──────────────────────────────────────────────────────
+  // P0: scope by schoolId ONLY server-side. branchId is filtered in compute()
+  // via inBranch() because the enforceBranchId_* trigger backfills missing
+  // branchId with ~1-2s lag → a server-side `where("branchId", ...)` would
+  // silently hide fresh writes (memory: branchid_inference_lag).
+  // Also: do NOT require branchId — multi-school principals or principals
+  // without explicit branchId must still see their school's classes.
+  const computeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const schoolId = userData?.schoolId;
-    const branchId = userData?.branchId;
-    if (!schoolId || !branchId) { setLoading(false); return; }
+    if (!schoolId) { setLoading(false); return; }
 
     setLoading(true);
-    const C = [where("schoolId", "==", schoolId), where("branchId", "==", branchId)];
+    const C = [where("schoolId", "==", schoolId)];
     const unsubs: (() => void)[] = [];
 
-    unsubs.push(onSnapshot(query(collection(db, "classes"),     ...C), snap => { classesRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })); compute(); }, () => {}));
-    unsubs.push(onSnapshot(query(collection(db, "enrollments"), ...C), snap => { enrollRef.current  = snap.docs.map(d => d.data()); compute(); }, () => {}));
-    unsubs.push(onSnapshot(query(collection(db, "attendance"),  ...C), snap => { attRef.current     = snap.docs.map(d => d.data()); compute(); }, () => {}));
-    unsubs.push(onSnapshot(query(collection(db, "results"),     ...C), snap => { resultsRef.current = snap.docs.map(d => d.data()); compute(); }, () => {}));
-    unsubs.push(onSnapshot(query(collection(db, "teachers"),    ...C), snap => { setTeachers(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, () => {}));
+    // Debounce: 7 listeners share one timer so compute() runs once after the
+    // initial burst (prevents redundant re-renders and flicker on first load).
+    const scheduleCompute = () => {
+      if (computeTimerRef.current) clearTimeout(computeTimerRef.current);
+      computeTimerRef.current = setTimeout(compute, 80);
+    };
 
-    return () => unsubs.forEach(u => u());
+    // Real error handlers — empty `() => {}` swallowed permission denials
+    // silently. Now logs to console for debugging without blocking other
+    // listeners from producing useful output.
+    const errLog = (label: string) => (err: Error) => {
+      console.warn(`[ClassesSections] ${label} listener failed:`, err);
+    };
+
+    unsubs.push(onSnapshot(query(collection(db, "classes"),          ...C), snap => { classesRef.current    = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, errLog("classes")));
+    unsubs.push(onSnapshot(query(collection(db, "enrollments"),      ...C), snap => { enrollRef.current     = snap.docs.map(d => d.data()); scheduleCompute(); }, errLog("enrollments")));
+    unsubs.push(onSnapshot(query(collection(db, "attendance"),       ...C), snap => { attRef.current        = snap.docs.map(d => d.data()); scheduleCompute(); }, errLog("attendance")));
+    // 3 score sources merged + content-fingerprint deduped in compute().
+    unsubs.push(onSnapshot(query(collection(db, "results"),          ...C), snap => { resultsRef.current    = snap.docs.map(d => d.data()); scheduleCompute(); }, errLog("results")));
+    unsubs.push(onSnapshot(query(collection(db, "test_scores"),      ...C), snap => { testScoresRef.current = snap.docs.map(d => d.data()); scheduleCompute(); }, errLog("test_scores")));
+    unsubs.push(onSnapshot(query(collection(db, "gradebook_scores"), ...C), snap => { gradebookRef.current  = snap.docs.map(d => d.data()); scheduleCompute(); }, errLog("gradebook_scores")));
+    unsubs.push(onSnapshot(query(collection(db, "teachers"),         ...C), snap => { setTeachers(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, errLog("teachers")));
+
+    // Safety net: if NO listener fires within 5s (rules deny / index missing),
+    // unblock the spinner so the user sees the empty state rather than spinning.
+    const safetyTimer = setTimeout(() => setLoading(false), 5000);
+
+    return () => {
+      if (computeTimerRef.current) clearTimeout(computeTimerRef.current);
+      clearTimeout(safetyTimer);
+      unsubs.forEach(u => u());
+    };
   }, [userData?.schoolId, userData?.branchId]);
 
   // ── Add class ────────────────────────────────────────────────────────────────
   const handleAddClass = async () => {
-    if (!newClass.name.trim() || !newClass.grade.trim()) {
+    const name = newClass.name.trim();
+    const grade = newClass.grade.trim();
+    if (!name || !grade) {
       return toast.error("Class name and grade are required.");
     }
     const schoolId = userData?.schoolId;
-    const branchId = userData?.branchId;
-    if (!schoolId || !branchId) return toast.error("School context missing.");
+    // branchId is optional now (some principals don't have it set explicitly)
+    const branchId = userData?.branchId || null;
+    if (!schoolId) return toast.error("School context missing.");
+
+    // Duplicate check — prevent two "10A" classes silently coexisting.
+    const existsSame = classes.some(c =>
+      c.name.toLowerCase() === name.toLowerCase()
+      && (c.grade || "").toLowerCase() === grade.toLowerCase()
+    );
+    if (existsSame) {
+      return toast.error(`A class named "${name}" already exists for grade ${grade}.`);
+    }
 
     const selectedTeacher = teachers.find(t => t.id === newClassTeacherId);
 
     setSaving(true);
     try {
-      const classRef = await addDoc(collection(db, "classes"), {
-        name:        newClass.name.trim(),
-        grade:       newClass.grade.trim(),
+      // Atomic: class + (optional) teaching_assignment in one writeBatch so
+      // a failed assignment never leaves an orphan class.
+      const batch = writeBatch(db);
+      const classRef = doc(collection(db, "classes"));
+      batch.set(classRef, {
+        name,
+        grade,
         section:     newClass.section.trim(),
         subject:     newClass.subject.trim(),
         teacherId:   selectedTeacher?.id   || "",
@@ -264,9 +429,12 @@ const ClassesSections = () => {
       });
 
       if (selectedTeacher) {
-        await addDoc(collection(db, "teaching_assignments"), {
+        const taRef = doc(collection(db, "teaching_assignments"));
+        batch.set(taRef, {
           teacherId:   selectedTeacher.id,
+          teacherName: selectedTeacher.name || "",
           classId:     classRef.id,
+          className:   name,
           subjectName: newClass.subject.trim(),
           schoolId,
           branchId,
@@ -275,11 +443,14 @@ const ClassesSections = () => {
         });
       }
 
-      toast.success(`Class "${newClass.name}" created!${selectedTeacher ? ` Assigned to ${selectedTeacher.name}.` : ""}`);
+      await batch.commit();
+
+      toast.success(`Class "${name}" created!${selectedTeacher ? ` Assigned to ${selectedTeacher.name}.` : ""}`);
       setAddModal(false);
       setNewClass({ name: "", grade: "", section: "", subject: "" });
       setNewClassTeacherId("");
-    } catch {
+    } catch (err) {
+      console.error("[ClassesSections] add class failed:", err);
       toast.error("Could not create class.");
     } finally {
       setSaving(false);
@@ -287,38 +458,100 @@ const ClassesSections = () => {
   };
 
   // ── Assign teacher to existing class ────────────────────────────────────────
+  // P0 fixes:
+  //  1. Single atomic writeBatch — prior 3-step sequential write could leave
+  //     class with new teacher but orphaned old teaching_assignment.
+  //  2. Mark prior active teaching_assignments for this class as "inactive"
+  //     before adding the new one (prevents duplicate active rows from
+  //     accumulating with every teacher change — memory: stale denormalized
+  //     state pattern).
+  //  3. Enrollments query is schoolId-scoped (was unscoped — cross-tenant
+  //     leak risk per memory: bug_pattern_unscoped_collection_reads).
   const handleAssignTeacher = async () => {
     if (!assigningClass || !assignTeacherId) return toast.error("Please select a teacher.");
     const teacher = teachers.find(t => t.id === assignTeacherId);
     if (!teacher) return;
+    const schoolId = assigningClass.schoolId || userData?.schoolId;
+    if (!schoolId) {
+      return toast.error("School context missing — please re-login.");
+    }
+    const branchId = assigningClass.branchId || userData?.branchId || null;
 
     setAssigning(true);
     try {
-      // 1. Update class doc
-      await updateDoc(doc(db, "classes", assigningClass.id), {
-        teacherId:   teacher.id,
-        teacherName: teacher.name || "",
+      // Pre-fetch everything we need to write so we can batch atomically.
+      const [oldTaSnap, enrollSnap] = await Promise.all([
+        getDocs(query(
+          collection(db, "teaching_assignments"),
+          where("schoolId", "==", schoolId),
+          where("classId", "==", assigningClass.id),
+          where("status", "==", "active"),
+        )),
+        getDocs(query(
+          collection(db, "enrollments"),
+          where("schoolId", "==", schoolId),
+          where("classId", "==", assigningClass.id),
+        )),
+      ]);
+
+      // Build the full ordered op list as plain data, then commit in 450-op
+      // chunks. Capturing the latest batch ref is safer than closures over
+      // a re-bound `batch` variable.
+      type Op =
+        | { kind: "set"; ref: any; data: any }
+        | { kind: "update"; ref: any; data: any };
+      const ops: Op[] = [];
+
+      // 1. Class doc update
+      ops.push({
+        kind: "update",
+        ref: doc(db, "classes", assigningClass.id),
+        data: { teacherId: teacher.id, teacherName: teacher.name || "" },
       });
 
-      // 2. Upsert teaching_assignment
-      await addDoc(collection(db, "teaching_assignments"), {
-        teacherId:   teacher.id,
-        classId:     assigningClass.id,
-        subjectName: assigningClass.subject || "",
-        schoolId:    assigningClass.schoolId,
-        branchId:    assigningClass.branchId,
-        status:      "active",
-        createdAt:   serverTimestamp(),
+      // 2. Deactivate any prior active teaching_assignments for this class
+      //    so duplicate active rows don't accumulate over time.
+      oldTaSnap.docs.forEach(d => {
+        ops.push({
+          kind: "update",
+          ref: d.ref,
+          data: { status: "inactive", deactivatedAt: serverTimestamp() },
+        });
       });
 
-      // 3. Update all enrollments for this class
-      const enrollSnap = await getDocs(
-        query(collection(db, "enrollments"), where("classId", "==", assigningClass.id))
-      );
-      if (!enrollSnap.empty) {
+      // 3. New active teaching_assignment
+      ops.push({
+        kind: "set",
+        ref: doc(collection(db, "teaching_assignments")),
+        data: {
+          teacherId:   teacher.id,
+          teacherName: teacher.name || "",
+          classId:     assigningClass.id,
+          className:   assigningClass.name,
+          subjectName: assigningClass.subject || "",
+          schoolId,
+          branchId,
+          status:      "active",
+          createdAt:   serverTimestamp(),
+        },
+      });
+
+      // 4. Update all enrollments with new teacher fields
+      enrollSnap.docs.forEach(d => {
+        ops.push({
+          kind: "update",
+          ref: d.ref,
+          data: { teacherId: teacher.id, teacherName: teacher.name || "" },
+        });
+      });
+
+      const CHUNK = 450;
+      for (let i = 0; i < ops.length; i += CHUNK) {
+        const slice = ops.slice(i, i + CHUNK);
         const batch = writeBatch(db);
-        enrollSnap.docs.forEach(d => {
-          batch.update(d.ref, { teacherId: teacher.id, teacherName: teacher.name || "" });
+        slice.forEach(op => {
+          if (op.kind === "set") batch.set(op.ref, op.data);
+          else batch.update(op.ref, op.data);
         });
         await batch.commit();
       }
@@ -327,7 +560,8 @@ const ClassesSections = () => {
       setAssignModal(false);
       setAssigningClass(null);
       setAssignTeacherId("");
-    } catch {
+    } catch (err) {
+      console.error("[ClassesSections] assign teacher failed:", err);
       toast.error("Failed to assign teacher. Try again.");
     } finally {
       setAssigning(false);
@@ -369,24 +603,34 @@ const ClassesSections = () => {
     setEnrolling(true);
     try {
       const toAdd = schoolStudents.filter(s => selectedSids.includes(s.id));
-      for (const s of toAdd) {
-        await addDoc(collection(db, "enrollments"), {
-          studentId:    s.id,
-          studentEmail: (s.email || "").toLowerCase(),
-          studentName:  s.name || "",
-          classId:      studentModalClass.id,
-          className:    studentModalClass.name,
-          teacherId:    studentModalClass.teacherId   || "",
-          teacherName:  studentModalClass.teacherName || "",
-          schoolId:     studentModalClass.schoolId,
-          branchId:     studentModalClass.branchId,
-          createdAt:    serverTimestamp(),
+      // Single writeBatch instead of N sequential round-trips. Chunk at 450
+      // ops to stay under Firestore's 500-op cap (handles huge bulk imports).
+      const CHUNK = 450;
+      for (let i = 0; i < toAdd.length; i += CHUNK) {
+        const slice = toAdd.slice(i, i + CHUNK);
+        const batch = writeBatch(db);
+        slice.forEach(s => {
+          const ref = doc(collection(db, "enrollments"));
+          batch.set(ref, {
+            studentId:    s.id,
+            studentEmail: (s.email || "").toLowerCase(),
+            studentName:  s.name || "",
+            classId:      studentModalClass.id,
+            className:    studentModalClass.name,
+            teacherId:    studentModalClass.teacherId   || "",
+            teacherName:  studentModalClass.teacherName || "",
+            schoolId:     studentModalClass.schoolId,
+            branchId:     studentModalClass.branchId,
+            createdAt:    serverTimestamp(),
+          });
         });
+        await batch.commit();
       }
       toast.success(`${toAdd.length} student${toAdd.length > 1 ? "s" : ""} added to ${studentModalClass.name}!`);
       setStudentModal(false);
       setSelectedSids([]);
-    } catch {
+    } catch (err) {
+      console.error("[ClassesSections] add existing students failed:", err);
       toast.error("Failed to add students. Try again.");
     }
     setEnrolling(false);
@@ -400,43 +644,83 @@ const ClassesSections = () => {
     const email = inviteStudentForm.email.toLowerCase().trim();
     const name  = inviteStudentForm.name.trim();
     const cls   = studentModalClass;
+    // Basic email-shape validation — catches obvious typos before we hit
+    // the email API and waste a request.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Please enter a valid email address.");
+      setInviting(false);
+      return;
+    }
     try {
-      const studentDocRef = await addDoc(collection(db, "students"), {
-        name, email, studentId: email,
-        classId:     cls.id,   className:   cls.name,
+      // Atomic: students + enrollments in a single writeBatch. Prior code
+      // wrote sequentially — if the enrollment failed after the student
+      // doc was created, the student would orphan with no class assignment.
+      const studentRef = doc(collection(db, "students"));
+      const enrollmentRef = doc(collection(db, "enrollments"));
+      const batch = writeBatch(db);
+      batch.set(studentRef, {
+        name,
+        email,
+        // studentId mirrors the doc ID so the student doc is self-consistent
+        // when read by collections that key off `studentId` rather than `id`.
+        studentId:   studentRef.id,
+        classId:     cls.id,
+        className:   cls.name,
         teacherId:   cls.teacherId   || "",
         teacherName: cls.teacherName || "",
         schoolId:    cls.schoolId,
         branchId:    cls.branchId,
-        status:      "Active",      createdAt:   serverTimestamp(),
+        status:      "Active",
+        createdAt:   serverTimestamp(),
       });
-      // Use the auto-generated student doc ID — parent-dashboard reads
-      // enrollments by `studentData.id` (the doc ID), so storing email here
-      // hides the class from the student.
-      await addDoc(collection(db, "enrollments"), {
-        studentId:    studentDocRef.id,
+      batch.set(enrollmentRef, {
+        studentId:    studentRef.id,
         studentEmail: email,
         studentName:  name,
-        classId:      cls.id,   className:   cls.name,
+        classId:      cls.id,
+        className:    cls.name,
         teacherId:    cls.teacherId   || "",
         teacherName:  cls.teacherName || "",
         schoolId:     cls.schoolId,
         branchId:     cls.branchId,
         createdAt:    serverTimestamp(),
       });
-      fetch("/api/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: email,
-          subject: `You've been enrolled — ${cls.name}`,
-          html: `<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;border:1px solid #eee;border-radius:12px;"><h2 style="color:#1e3a8a;margin-bottom:8px;">Welcome, ${name}!</h2><p style="color:#555;">You have been enrolled in <strong>${cls.name}</strong>${cls.teacherName ? ` — Teacher: <strong>${cls.teacherName}</strong>` : ""}.</p><div style="margin:28px 0;text-align:center;"><a href="https://parent-dashboard-ten.vercel.app/" style="background:#1e3a8a;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">Go to Student Portal</a></div><p style="color:#aaa;font-size:12px;text-align:center;">Use your email (${email}) to sign in.</p></div>`,
-        }),
-      }).catch(() => {});
-      toast.success(`${name} enrolled & invitation sent!`);
+      await batch.commit();
+
+      // P0-D pattern (per RiskIntervention fix): actually CHECK the email
+      // response. Previously `.catch(() => {})` swallowed 4xx/5xx and the
+      // toast lied "invitation sent" on failure. Now report email failures
+      // as a separate warning so the principal can re-send.
+      let emailFailed = false;
+      try {
+        const res = await fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: email,
+            subject: `You've been enrolled — ${cls.name}`,
+            html: `<div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;border:1px solid #eee;border-radius:12px;"><h2 style="color:#1e3a8a;margin-bottom:8px;">Welcome, ${name}!</h2><p style="color:#555;">You have been enrolled in <strong>${cls.name}</strong>${cls.teacherName ? ` — Teacher: <strong>${cls.teacherName}</strong>` : ""}.</p><div style="margin:28px 0;text-align:center;"><a href="https://parent-dashboard-ten.vercel.app/" style="background:#1e3a8a;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">Go to Student Portal</a></div><p style="color:#aaa;font-size:12px;text-align:center;">Use your email (${email}) to sign in.</p></div>`,
+          }),
+        });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          console.error("[ClassesSections] invite email API failed:", res.status, errBody);
+          emailFailed = true;
+        }
+      } catch (mailErr) {
+        console.error("[ClassesSections] invite email network failed:", mailErr);
+        emailFailed = true;
+      }
+
+      if (emailFailed) {
+        toast.warning(`${name} enrolled, but invitation email failed. Re-send manually.`);
+      } else {
+        toast.success(`${name} enrolled & invitation sent!`);
+      }
       setInviteStudentForm({ name: "", email: "" });
       setStudentModal(false);
-    } catch {
+    } catch (err) {
+      console.error("[ClassesSections] invite student failed:", err);
       toast.error("Failed to enroll student. Try again.");
     }
     setInviting(false);
@@ -469,6 +753,10 @@ const ClassesSections = () => {
           }}
           onOpenStudents={cls => openStudentModal(cls)}
           onViewSection={cls => setSelectedSection(cls)}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
         />
       ) : (
       <>
@@ -515,14 +803,19 @@ const ClassesSections = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400 font-medium">Avg Attendance</span>
-                        <span className={`font-black ${g.avgAttendance >= 85 ? "text-green-600" : g.avgAttendance >= 70 ? "text-amber-500" : "text-rose-600"}`}>
-                          {g.avgAttendance > 0 ? `${g.avgAttendance}%` : "—"}
+                        <span className={`font-black ${
+                          g.avgAttendance === null ? "text-slate-300"
+                          : g.avgAttendance >= 85 ? "text-green-600"
+                          : g.avgAttendance >= 70 ? "text-amber-500"
+                          : "text-rose-600"
+                        }`}>
+                          {g.avgAttendance !== null ? `${g.avgAttendance}%` : "—"}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400 font-medium">Health Score</span>
                         <span className={`font-black ${healthColor(g.healthScore)}`}>
-                          {g.healthScore > 0 ? `${g.healthScore}/100` : "—"}
+                          {g.healthScore !== null ? `${g.healthScore}/100` : "—"}
                         </span>
                       </div>
                     </div>
@@ -563,7 +856,9 @@ const ClassesSections = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {classes.map(cls => {
+                    {classes
+                      .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                      .map(cls => {
                       const Icon = statusIcon(cls.status);
                       return (
                         <tr key={cls.id} className="hover:bg-slate-50/30 transition-colors group">
@@ -571,8 +866,10 @@ const ClassesSections = () => {
                           <td className="px-6 py-5">
                             <div className="flex items-center gap-3">
                               <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs font-black shrink-0 shadow-sm ${
-                                cls.status === "Good" ? "bg-green-500" :
-                                cls.status === "Weak" ? "bg-rose-500" : "bg-amber-500"
+                                cls.status === "Good"    ? "bg-green-500" :
+                                cls.status === "Weak"    ? "bg-rose-500" :
+                                cls.status === "No Data" ? "bg-slate-400" :
+                                "bg-amber-500"
                               }`}>
                                 {cls.name.slice(0, 3)}
                               </div>
@@ -616,23 +913,25 @@ const ClassesSections = () => {
                             </div>
                           </td>
 
-                          {/* Avg Marks */}
+                          {/* Avg Marks — null = "—" gray (no data), never red */}
                           <td className="px-6 py-5 text-center">
                             <span className={`font-black text-base ${
-                              cls.avgMarksNum >= 70 ? "text-green-600" :
-                              cls.avgMarksNum >= 50 ? "text-amber-500" :
-                              cls.avgMarksNum > 0   ? "text-rose-600" : "text-slate-300"
+                              cls.avgMarksNum === null   ? "text-slate-300" :
+                              cls.avgMarksNum >= 70      ? "text-green-600" :
+                              cls.avgMarksNum >= 50      ? "text-amber-500" :
+                              "text-rose-600"
                             }`}>
                               {cls.avgMarks}
                             </span>
                           </td>
 
-                          {/* Attendance */}
+                          {/* Attendance — same null-safe logic */}
                           <td className="px-6 py-5 text-center">
                             <span className={`font-black text-base ${
-                              cls.attendanceNum >= 85 ? "text-green-600" :
-                              cls.attendanceNum >= 70 ? "text-amber-500" :
-                              cls.attendanceNum > 0   ? "text-rose-600" : "text-slate-300"
+                              cls.attendanceNum === null ? "text-slate-300" :
+                              cls.attendanceNum >= 85    ? "text-green-600" :
+                              cls.attendanceNum >= 70    ? "text-amber-500" :
+                              "text-rose-600"
                             }`}>
                               {cls.attendance}
                             </span>
@@ -676,6 +975,20 @@ const ClassesSections = () => {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {/* Pagination footer — only renders when classes exist */}
+            {classes.length > 0 && (
+              <div className="px-6 py-4 border-t border-slate-100">
+                <StudentsPagination
+                  totalItems={classes.length}
+                  currentPage={currentPage}
+                  setCurrentPage={setCurrentPage}
+                  pageSize={pageSize}
+                  setPageSize={setPageSize}
+                  variant="desktop"
+                  itemNoun={{ one: "class", other: "classes" }}
+                />
               </div>
             )}
           </div>

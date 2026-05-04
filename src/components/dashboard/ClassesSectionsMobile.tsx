@@ -2,8 +2,12 @@ import {
   Plus, Loader2, BookOpen, MoreHorizontal, Users as UsersIcon,
   ArrowRight, AlertCircle, CheckCircle, XCircle,
 } from "lucide-react";
+import StudentsPagination from "./StudentsPagination";
 
 // ── Types (mirrors ClassesSections.tsx) ───────────────────────────────────────
+// Numeric metrics are nullable: null = "no data tracked", distinct from a
+// real value of 0. Memory: bug_pattern_score_zero_no_data warns that fall-
+// back-to-zero silently classifies missing-data classes as Weak/Red.
 export interface ClassRowMobile {
   id: string;
   name: string;
@@ -18,19 +22,21 @@ export interface ClassRowMobile {
   status: string;
   studentCount: number;
   avgMarks: string;
-  avgMarksNum: number;
+  avgMarksNum: number | null;
   attendance: string;
-  attendanceNum: number;
-  healthScore: number;
+  attendanceNum: number | null;
+  healthScore: number | null;
   weakSubject: string;
+  hasScoreData?: boolean;
+  hasAttendanceData?: boolean;
 }
 
 export interface GradeSummaryMobile {
   grade: string;
   sections: number;
   students: number;
-  avgAttendance: number;
-  healthScore: number;
+  avgAttendance: number | null;
+  healthScore: number | null;
 }
 
 export interface ClassesSectionsMobileProps {
@@ -41,6 +47,12 @@ export interface ClassesSectionsMobileProps {
   onChangeTeacher: (cls: ClassRowMobile) => void;
   onOpenStudents: (cls: ClassRowMobile) => void;
   onViewSection: (cls: ClassRowMobile) => void;
+  // Pagination is owned by the parent (ClassesSections.tsx) so the page
+  // index survives prop refreshes from Firestore listeners.
+  currentPage: number;
+  setCurrentPage: (p: number | ((prev: number) => number)) => void;
+  pageSize: number;
+  setPageSize: (n: number) => void;
 }
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -76,7 +88,8 @@ const teacherInitials = (name?: string) => {
   return parts.map(p => p[0] || "").join("").toUpperCase() || "—";
 };
 
-// Section status → visual theme
+// Section status → visual theme. "No Data" gets a neutral gray theme so a
+// brand-new class with no exams/attendance doesn't get painted as "Weak".
 const themeForStatus = (status: string) => {
   if (status === "Good") return {
     stripe: `linear-gradient(180deg, ${GREEN}, #66EE88)`,
@@ -94,6 +107,14 @@ const themeForStatus = (status: string) => {
     label: "Weak",
     Icon: XCircle,
   };
+  if (status === "No Data") return {
+    stripe: `linear-gradient(180deg, ${T4}, #BFC8DC)`,
+    chipGrad: `linear-gradient(135deg, ${T4}, #BFC8DC)`,
+    chipShadow: "0 3px 10px rgba(153,170,204,0.28)",
+    badgeBg: "rgba(153,170,204,0.10)", badgeBdr: "rgba(153,170,204,0.30)", badgeText: T3,
+    label: "No Data",
+    Icon: AlertCircle,
+  };
   return {
     stripe: "linear-gradient(180deg, #FF8800, #FFCC22)",
     chipGrad: "linear-gradient(135deg, #FF8800, #FFCC22)",
@@ -104,7 +125,11 @@ const themeForStatus = (status: string) => {
   };
 };
 
-const healthFill = (h: number) => {
+const healthFill = (h: number | null) => {
+  // null → striped gray bar (no data) instead of solid red. Memory:
+  // bug_pattern_score_zero_no_data — fall-back-to-zero used to make
+  // unstarted classes look like the worst-performing.
+  if (h === null) return { color: T4, bar: "repeating-linear-gradient(45deg, rgba(0,85,255,0.04) 0 4px, rgba(0,85,255,0.10) 4px 8px)" };
   if (h >= 75) return { color: GREEN, bar: `linear-gradient(90deg, ${GREEN}, #66EE88)` };
   if (h >= 50) return { color: GOLD, bar: `linear-gradient(90deg, ${GOLD}, #FFDD44)` };
   if (h > 0) return { color: ORANGE, bar: `linear-gradient(90deg, ${ORANGE}, #FFCC22)` };
@@ -114,6 +139,7 @@ const healthFill = (h: number) => {
 const ClassesSectionsMobile = ({
   loading, classes, gradesSummary,
   onAddClass, onChangeTeacher, onOpenStudents, onViewSection,
+  currentPage, setCurrentPage, pageSize, setPageSize,
 }: ClassesSectionsMobileProps) => {
 
   const yearStart = new Date().getFullYear();
@@ -159,8 +185,23 @@ const ClassesSectionsMobile = ({
             <div className="flex gap-[10px] px-5 pt-3.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
               {gradesSummary.map(g => {
                 const hf = healthFill(g.healthScore);
-                const accent = g.healthScore >= 75 ? GREEN : g.healthScore >= 50 ? GOLD : g.healthScore > 0 ? ORANGE : RED;
-                const Icon = g.healthScore >= 75 ? CheckCircle : g.healthScore < 50 && g.healthScore > 0 ? XCircle : AlertCircle;
+                const accent =
+                  g.healthScore === null ? T4 :
+                  g.healthScore >= 75 ? GREEN :
+                  g.healthScore >= 50 ? GOLD :
+                  g.healthScore > 0 ? ORANGE :
+                  RED;
+                const Icon =
+                  g.healthScore === null ? AlertCircle :
+                  g.healthScore >= 75 ? CheckCircle :
+                  g.healthScore < 50 && g.healthScore > 0 ? XCircle :
+                  AlertCircle;
+                const attColor =
+                  g.avgAttendance === null ? T4 :
+                  g.avgAttendance >= 85 ? GREEN :
+                  g.avgAttendance >= 70 ? GOLD :
+                  g.avgAttendance > 0 ? RED :
+                  T4;
                 return (
                   <div key={g.grade}
                     className="rounded-[18px] p-3 bg-white flex-shrink-0 relative overflow-hidden transition-transform active:scale-[0.96]"
@@ -176,10 +217,10 @@ const ClassesSectionsMobile = ({
                     </div>
                     <div>
                       {[
-                        { label: "Sections", val: g.sections, color: T1 },
-                        { label: "Students", val: g.students, color: T1 },
-                        { label: "Avg Attendance", val: g.avgAttendance > 0 ? `${g.avgAttendance}%` : "—", color: g.avgAttendance >= 85 ? GREEN : g.avgAttendance >= 70 ? GOLD : g.avgAttendance > 0 ? RED : T4 },
-                        { label: "Health Score", val: g.healthScore > 0 ? `${g.healthScore}/100` : "—", color: hf.color },
+                        { label: "Sections", val: String(g.sections), color: T1 },
+                        { label: "Students", val: String(g.students), color: T1 },
+                        { label: "Avg Attendance", val: g.avgAttendance !== null ? `${g.avgAttendance}%` : "—", color: attColor },
+                        { label: "Health Score", val: g.healthScore !== null ? `${g.healthScore}/100` : "—", color: hf.color },
                       ].map((row, i, arr) => (
                         <div key={row.label} className="flex items-center justify-between py-[3px]"
                           style={i < arr.length - 1 ? { borderBottom: `0.5px solid ${SEP}` } : {}}>
@@ -188,9 +229,15 @@ const ClassesSectionsMobile = ({
                         </div>
                       ))}
                     </div>
-                    {/* Health bar */}
+                    {/* Health bar — null = striped gray, never solid red */}
                     <div className="h-1 rounded-[2px] mt-2 overflow-hidden" style={{ background: BG2 }}>
-                      <div className="h-full rounded-[2px]" style={{ width: `${Math.max(0, Math.min(100, g.healthScore))}%`, background: hf.bar }} />
+                      <div
+                        className="h-full rounded-[2px]"
+                        style={{
+                          width: g.healthScore === null ? "100%" : `${Math.max(0, Math.min(100, g.healthScore))}%`,
+                          background: hf.bar,
+                        }}
+                      />
                     </div>
                   </div>
                 );
@@ -221,17 +268,33 @@ const ClassesSectionsMobile = ({
               </p>
             </div>
           ) : (
-            classes.map(cls => {
+            classes
+              .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+              .map(cls => {
               const theme = themeForStatus(cls.status);
               const StatusIcon = theme.Icon;
               const chipText = (cls.section || cls.name).slice(0, 3).toUpperCase();
-              const hasMarks = cls.avgMarksNum > 0 || cls.avgMarks !== "—";
-              const hasAtt = cls.attendanceNum > 0 || cls.attendance !== "—";
-              const attGood = cls.attendanceNum >= 85;
-              const marksColor = !hasMarks ? T4 : cls.avgMarksNum >= 70 ? GREEN : cls.avgMarksNum >= 45 ? ORANGE : RED;
-              const attColor = !hasAtt ? T4 : attGood ? GREEN : cls.attendanceNum >= 70 ? ORANGE : RED;
-              const attendanceSub = !hasAtt ? "No data" : attGood ? "Excellent" : cls.attendanceNum >= 70 ? "Decent" : "Needs work";
-              const marksSub = !hasMarks ? "No data" : cls.avgMarksNum >= 70 ? "On track" : cls.avgMarksNum >= 45 ? "Improving" : "Below par";
+              // null-safe: distinct from "0" — null = no data tracked,
+              // 0 = real-but-zero. Avoids the score=0 → red fabrication.
+              const hasMarks = cls.avgMarksNum !== null;
+              const hasAtt = cls.attendanceNum !== null;
+              const attGood = hasAtt && cls.attendanceNum! >= 85;
+              const marksColor = !hasMarks ? T4 :
+                cls.avgMarksNum! >= 70 ? GREEN :
+                cls.avgMarksNum! >= 45 ? ORANGE :
+                RED;
+              const attColor = !hasAtt ? T4 :
+                attGood ? GREEN :
+                cls.attendanceNum! >= 70 ? ORANGE :
+                RED;
+              const attendanceSub = !hasAtt ? "No data" :
+                attGood ? "Excellent" :
+                cls.attendanceNum! >= 70 ? "Decent" :
+                "Needs work";
+              const marksSub = !hasMarks ? "No data" :
+                cls.avgMarksNum! >= 70 ? "On track" :
+                cls.avgMarksNum! >= 45 ? "Improving" :
+                "Below par";
 
               return (
                 <div key={cls.id} className="mx-5 mt-[10px] rounded-[22px] bg-white relative overflow-hidden"
@@ -316,7 +379,7 @@ const ClassesSectionsMobile = ({
                       </div>
                       {hasMarks ? (
                         <div className="h-[3px] rounded-[2px] mt-1 overflow-hidden" style={{ background: BG2 }}>
-                          <div className="h-full rounded-[2px]" style={{ width: `${Math.max(0, Math.min(100, cls.avgMarksNum))}%`, background: `linear-gradient(90deg, ${marksColor}, ${marksColor}AA)` }} />
+                          <div className="h-full rounded-[2px]" style={{ width: `${Math.max(0, Math.min(100, cls.avgMarksNum!))}%`, background: `linear-gradient(90deg, ${marksColor}, ${marksColor}AA)` }} />
                         </div>
                       ) : (
                         <div className="text-[10px] font-medium mt-[1px]" style={{ color: T4 }}>{marksSub}</div>
@@ -329,7 +392,7 @@ const ClassesSectionsMobile = ({
                       </div>
                       {hasAtt ? (
                         <div className="h-[3px] rounded-[2px] mt-1 overflow-hidden" style={{ background: BG2 }}>
-                          <div className="h-full rounded-[2px]" style={{ width: `${Math.max(0, Math.min(100, cls.attendanceNum))}%`, background: `linear-gradient(90deg, ${attColor}, ${attColor}AA)` }} />
+                          <div className="h-full rounded-[2px]" style={{ width: `${Math.max(0, Math.min(100, cls.attendanceNum!))}%`, background: `linear-gradient(90deg, ${attColor}, ${attColor}AA)` }} />
                         </div>
                       ) : (
                         <div className="text-[10px] font-medium mt-[1px]" style={{ color: T4 }}>{attendanceSub}</div>
@@ -371,6 +434,21 @@ const ClassesSectionsMobile = ({
                 </div>
               );
             })
+          )}
+
+          {/* ── Pagination footer (mobile variant) ── */}
+          {classes.length > 0 && (
+            <div className="mx-5 mt-3 px-2">
+              <StudentsPagination
+                totalItems={classes.length}
+                currentPage={currentPage}
+                setCurrentPage={setCurrentPage}
+                pageSize={pageSize}
+                setPageSize={setPageSize}
+                variant="mobile"
+                itemNoun={{ one: "class", other: "classes" }}
+              />
+            </div>
           )}
 
           {/* ── Summary dark card ── */}

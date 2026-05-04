@@ -360,18 +360,21 @@ const AcademicsMobile = ({
         ))}
       </div>
 
-      {/* ── Section label: Curriculum Progress ── */}
+      {/* ── Section label: Assessment Coverage ── */}
       <div className="px-5 pt-4 flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.10em]" style={{ color: T4 }}>
-        Curriculum Progress
+        Assessment Coverage
         <div className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
       </div>
 
-      {/* ── Curriculum Progress Card ── */}
+      {/* ── Assessment Coverage Card ── */}
       {curriculumData.length > 0 ? (
         <div className="mx-5 mt-3 rounded-[24px] p-5 bg-white"
           style={{ boxShadow: SHADOW_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
           <div className="flex items-center justify-between mb-4">
-            <div className="text-[15px] font-bold tracking-[-0.2px]" style={{ color: T1 }}>Curriculum Progress</div>
+            <div className="min-w-0">
+              <div className="text-[15px] font-bold tracking-[-0.2px]" style={{ color: T1 }}>Assessment Coverage</div>
+              <div className="text-[10px] mt-0.5" style={{ color: T4 }}>% of cohort tested per subject</div>
+            </div>
             <div className="px-[11px] py-1 rounded-full text-[11px] font-bold"
               style={{ background: currChip.bg, color: currChip.color, border: `0.5px solid ${currChip.bdr}` }}>
               {currChip.label}

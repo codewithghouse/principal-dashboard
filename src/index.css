@@ -492,6 +492,21 @@ select {
   padding: 12px 16px !important;
   line-height: 1.5 !important;
 }
+/* Escape hatch: components that need custom padding/line-height (e.g.
+   pill-style selects with right-side chevron + a 44px height for
+   vertical centering across browsers) opt out by adding .custom-chrome.
+   The class-based rule has higher specificity than the element-only
+   rule above, and reads its values from CSS custom properties so the
+   component can set them inline via React style. Without this trick,
+   external !important always beats inline styles set via React. */
+input.custom-chrome,
+textarea.custom-chrome,
+select.custom-chrome {
+  padding: var(--cc-padding, 12px 16px) !important;
+  line-height: var(--cc-line-height, 1.5) !important;
+  font-size: var(--cc-font-size, 14px) !important;
+  font-weight: var(--cc-font-weight, 400) !important;
+}
 button {
   padding: 8px 16px !important;
 }

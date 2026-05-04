@@ -11,19 +11,13 @@ import {
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, getDocs } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
+import { pctOfDoc } from "@/lib/scoreUtils";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-const getScore = (r: any): number => {
-  if (typeof r.percentage === "number" && r.percentage > 0) return Math.round(r.percentage);
-  const raw = r.marksObtained ?? r.marks ?? r.score ?? r.obtainedMarks ?? r.obtained ?? r.marksScored ?? null;
-  if (raw === null) return 0;
-  const hasTotal =
-    r.totalMarks != null || r.maxMarks != null || r.totalScore != null ||
-    r.fullMarks   != null || r.total    != null || r.outOf    != null;
-  if (!hasTotal) return Math.min(100, Math.round(Number(raw)));
-  const total = r.totalMarks ?? r.maxMarks ?? r.totalScore ?? r.fullMarks ?? r.total ?? r.outOf ?? 100;
-  return total > 0 ? Math.round((Number(raw) / Number(total)) * 100) : 0;
-};
+// Wraps shared `pctOfDoc` (returns null for missing data, handles all 4 score
+// schemas). Was: defaulted to 0 → fabricated low-end bucket counts and
+// dragged subject averages toward zero (memory: bug_pattern_score_zero_no_data).
+const getScore = (r: any): number | null => pctOfDoc(r);
 
 const barColor = (v: number) => v >= 75 ? "#22c55e" : v >= 55 ? "#f59e0b" : "#ef4444";
 
@@ -54,71 +48,138 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
   const [totalStudents,    setTotalStudents]    = useState(subject.totalStudents || 0);
   const [loading,          setLoading]          = useState(true);
 
-  const resultsRef = useRef<any[]>([]);
+  const resultsRef    = useRef<any[]>([]);
+  const testScoresRef = useRef<any[]>([]);
+  const gradebookRef  = useRef<any[]>([]);
 
   const schoolId = userData?.schoolId || userData?.school || "";
   const branchId = userData?.branchId || "";
 
   // ── load data ─────────────────────────────────────────────────────────────
+  // P0 fixes:
+  //  - schoolId-only server-side; branchId in-memory (memory: branchid_inference_lag)
+  //  - 3 score collections live-merged (results + test_scores + gradebook_scores)
+  //    — bulk-upload schools used to see "No data" because they write to
+  //    test_scores/gradebook_scores instead of results.
+  //  - Real errLog handlers replace silent .then() / no-error onSnapshot.
+  //  - Subject-match fallback covers BOTH teacherIds-strict AND result-subject-loose
+  //    so a substitute teacher's score isn't lost just because they're not in
+  //    the original assignment list.
   useEffect(() => {
     if (!schoolId) return;
 
-    const constraints = [where("schoolId", "==", schoolId)];
-    if (branchId) constraints.push(where("branchId", "==", branchId));
+    const inBranch = (raw: any): boolean =>
+      !branchId || !raw?.branchId || raw.branchId === branchId;
 
     // Step 1: Build teacher → subject map for this school
     const teacherMapLocal: Record<string, { name: string; subject: string }> = {};
-    getDocs(query(collection(db, "teachers"), ...constraints)).then((snap) => {
-      snap.docs.forEach((d) => {
-        const t = d.data();
-        teacherMapLocal[d.id] = {
-          name:    t.name    || t.teacherName || "Teacher",
-          subject: t.subject || t.subjectName || "General",
-        };
-      });
-    });
+    let mapReady = false;
+    let pendingRecompute = false;
 
-    // Step 2: Listen to results for this school
-    const unsub = onSnapshot(
-      query(collection(db, "results"), ...constraints),
-      (snap) => {
-        const allResults = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const subjectMatches = (r: any): boolean => {
+      // Match by EITHER teacherIds list OR subject field — accept whichever
+      // hits (was: strict precedence which made substitute teachers' scores
+      // invisible if they weren't on the original assignment list).
+      const tid = r.teacherId;
+      if (tid && subject.teacherIds?.includes(tid)) return true;
+      const subj = String(r.subject ?? r.subjectName ?? teacherMapLocal[tid]?.subject ?? "").toLowerCase();
+      return subj === subject.name.toLowerCase();
+    };
 
-        // Filter to this subject's teachers (if teacherIds provided) OR by subject name in result
-        const subjectResults = allResults.filter((r) => {
-          if (subject.teacherIds && subject.teacherIds.length > 0) {
-            return subject.teacherIds.includes(r.teacherId);
-          }
-          // Fallback: match by subject field or teacherMap
-          const subj = teacherMapLocal[r.teacherId]?.subject || r.subject || r.subjectName || "General";
-          return subj.toLowerCase() === subject.name.toLowerCase();
+    const recompute = () => {
+      if (!mapReady) { pendingRecompute = true; return; }
+      const merged = [
+        ...resultsRef.current.filter(inBranch),
+        ...testScoresRef.current.filter(inBranch),
+        ...gradebookRef.current.filter(inBranch),
+      ];
+      const subjectResults = merged.filter(subjectMatches);
+      computeFromResults(subjectResults, teacherMapLocal);
+    };
+
+    getDocs(query(collection(db, "teachers"), where("schoolId", "==", schoolId)))
+      .then((snap) => {
+        snap.docs.forEach((d) => {
+          const t = d.data();
+          if (!inBranch(t)) return;
+          teacherMapLocal[d.id] = {
+            name:    t.name    || t.teacherName || "Teacher",
+            // Don't fabricate "General" — let downstream check actual presence.
+            subject: t.subject || t.subjectName || "",
+          };
         });
+        mapReady = true;
+        if (pendingRecompute) recompute();
+      })
+      .catch((err) => console.warn("[SubjectAnalysis] teacher map fetch failed:", err));
 
-        resultsRef.current = subjectResults;
-        computeFromResults(subjectResults, teacherMapLocal);
-      }
+    const u1 = onSnapshot(
+      query(collection(db, "results"), where("schoolId", "==", schoolId)),
+      (snap) => { resultsRef.current = snap.docs.map((d) => ({ id: d.id, ...d.data() })); recompute(); },
+      (err) => console.warn("[SubjectAnalysis] results listener failed:", err),
+    );
+    const u2 = onSnapshot(
+      query(collection(db, "test_scores"), where("schoolId", "==", schoolId)),
+      (snap) => { testScoresRef.current = snap.docs.map((d) => ({ id: d.id, ...d.data() })); recompute(); },
+      (err) => console.warn("[SubjectAnalysis] test_scores listener failed:", err),
+    );
+    const u3 = onSnapshot(
+      query(collection(db, "gradebook_scores"), where("schoolId", "==", schoolId)),
+      (snap) => { gradebookRef.current = snap.docs.map((d) => ({ id: d.id, ...d.data() })); recompute(); },
+      (err) => console.warn("[SubjectAnalysis] gradebook_scores listener failed:", err),
     );
 
-    return () => unsub();
+    // Safety timer — unblock spinner after 5s if all listeners denied/empty
+    const safetyTimer = setTimeout(() => setLoading(false), 5000);
+
+    return () => { clearTimeout(safetyTimer); u1(); u2(); u3(); };
   }, [schoolId, branchId, subject.name]);
 
   const computeFromResults = (
     results: any[],
     teacherMap: Record<string, { name: string; subject: string }>
   ) => {
-    if (results.length === 0) {
+    // Cross-collection dedup (memory: same exam mirrored to results +
+    // test_scores wouldn't double-count). Also drops null-pct docs entirely
+    // — never feeds fabricated 0s into averages or distribution buckets.
+    const fpSeen = new Set<string>();
+    const deduped: { raw: any; _pct: number }[] = [];
+    results.forEach((r) => {
+      const p = getScore(r);
+      if (p === null) return;
+      const subjKey = String(r.subject ?? r.subjectName ?? "").toLowerCase();
+      const ts = r.timestamp ?? r.createdAt ?? r.date;
+      const dateK = (() => {
+        if (!ts) return "";
+        if (typeof ts === "string") return ts.slice(0, 10);
+        if (ts?.toDate) return ts.toDate().toISOString().slice(0, 10);
+        return "";
+      })();
+      const studentKey = String(r.studentId || r.studentEmail || "").toLowerCase();
+      const fp = `${studentKey}|${subjKey}|${dateK}|${Math.round(p * 10)}`;
+      if (fpSeen.has(fp)) return;
+      fpSeen.add(fp);
+      deduped.push({ raw: r, _pct: p });
+    });
+
+    if (deduped.length === 0) {
+      setSectionData([]);
+      setMarksDistData([]);
+      setTeacherData([]);
+      setInsights(null);
+      setTotalStudents(subject.totalStudents || 0);
       setLoading(false);
       return;
     }
 
     // ── 1. Section-wise performance ─────────────────────────────────────────
     const classGroups: Record<string, { scores: number[]; className: string; teacherName: string }> = {};
-    results.forEach((r) => {
-      const cid   = r.classId   || "Unknown";
-      const cName = r.className || cid;
-      const tName = teacherMap[r.teacherId]?.name || r.teacherName || "—";
+    deduped.forEach(({ raw, _pct }) => {
+      const cid   = raw.classId   || "Unknown";
+      const cName = raw.className || cid;
+      const tName = teacherMap[raw.teacherId]?.name || raw.teacherName || "—";
       if (!classGroups[cid]) classGroups[cid] = { scores: [], className: cName, teacherName: tName };
-      classGroups[cid].scores.push(getScore(r));
+      classGroups[cid].scores.push(_pct);
     });
 
     const sections = Object.entries(classGroups).map(([, cb]) => {
@@ -133,12 +194,15 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
       const top  = sections[sections.length - 1];
       const weak = sections[0];
 
-      // Key issues from data
       const issues: string[] = [];
       const lowSections = sections.filter((s) => s.value < 60);
-      if (lowSections.length > 0)
-        issues.push(`${lowSections.length} section(s) scoring below 60% (${lowSections.map(s => s.section).join(", ")})`);
-      const allScores = results.map((r) => getScore(r));
+      if (lowSections.length > 0) {
+        // Truncate the section list at 4 names to avoid an overflowing comma-list
+        const names = lowSections.map(s => s.section);
+        const shown = names.slice(0, 4).join(", ") + (names.length > 4 ? `, +${names.length - 4} more` : "");
+        issues.push(`${lowSections.length} section(s) scoring below 60% (${shown})`);
+      }
+      const allScores = deduped.map((d) => d._pct);
       const passRate  = Math.round(allScores.filter((s) => s >= 40).length / allScores.length * 100);
       if (passRate < 80) issues.push(`Pass rate is ${passRate}% — ${100 - passRate}% students below passing marks`);
       const avgScore  = Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length);
@@ -149,7 +213,7 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
     }
 
     // ── 3. Marks distribution ───────────────────────────────────────────────
-    const allScores = results.map((r) => getScore(r));
+    const allScores = deduped.map((d) => d._pct);
     setMarksDistData([
       { range: "0-20",   students: allScores.filter((s) => s <= 20).length,            color: "#ef4444" },
       { range: "21-40",  students: allScores.filter((s) => s > 20 && s <= 40).length,  color: "#f97316" },
@@ -159,13 +223,17 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
     ]);
 
     // ── 4. Teacher effectiveness ────────────────────────────────────────────
+    // Skip phantom "unknown" teacher — was rendering as a row before, now
+    // only real teacherIds with a name make the list.
     const teacherGroups: Record<string, { name: string; scores: number[]; grades: Set<string> }> = {};
-    results.forEach((r) => {
-      const tid   = r.teacherId   || "unknown";
-      const tName = teacherMap[tid]?.name || r.teacherName || "Teacher";
-      const cName = r.className   || "—";
+    deduped.forEach(({ raw, _pct }) => {
+      const tid = raw.teacherId;
+      if (!tid) return;
+      const tName = teacherMap[tid]?.name || raw.teacherName || "";
+      if (!tName) return; // skip teachers we can't identify
+      const cName = raw.className || "—";
       if (!teacherGroups[tid]) teacherGroups[tid] = { name: tName, scores: [], grades: new Set() };
-      teacherGroups[tid].scores.push(getScore(r));
+      teacherGroups[tid].scores.push(_pct);
       teacherGroups[tid].grades.add(cName);
     });
 
@@ -181,11 +249,17 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
         initials: data.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
         avatarBg: colors[idx % colors.length],
       };
-    });
+    }).sort((a, b) => b.avg - a.avg); // highest-performing teacher first
     setTeacherData(teachers);
 
-    // ── 5. Total students ───────────────────────────────────────────────────
-    const uniqueStudents = new Set(results.map((r) => r.studentId).filter(Boolean));
+    // ── 5. Total students — dual-key (studentId OR studentEmail) ────────────
+    // Was: only `studentId` set membership which silently missed legacy
+    // email-keyed bulk imports.
+    const uniqueStudents = new Set(
+      deduped
+        .map((d) => d.raw.studentId || (d.raw.studentEmail || "").toLowerCase())
+        .filter(Boolean)
+    );
     setTotalStudents(uniqueStudents.size || subject.totalStudents || 0);
 
     setLoading(false);
