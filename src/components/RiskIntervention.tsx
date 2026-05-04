@@ -1,30 +1,37 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   ChevronLeft, CalendarCheck, BookOpen, Bell, UserCog,
-  Loader2, Send, CheckCircle2, AlertCircle, Clock,
-  X, AlertTriangle
+  Loader2, Send, CheckCircle2, AlertCircle, Clock, X,
 } from "lucide-react";
 import { db } from "@/lib/firebase";
 import {
-  collection, query, where, onSnapshot, addDoc,
-  serverTimestamp, orderBy
+  collection, query, where, onSnapshot,
+  serverTimestamp, orderBy, writeBatch, doc, getDoc, getDocs, limit,
 } from "firebase/firestore";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/AuthContext";
+import { ymdLocal } from "@/lib/scoreUtils";
 
 interface RiskStudent {
   id: string;
   name: string;
   email: string;
   className: string;
+  classId?: string;
   teacherName: string;
   teacherId: string;
   schoolId: string;
   branchId: string;
   attPct: number | null;
   avgScore: number | null;
+  hasScoreData?: boolean;
+  hasAttendanceData?: boolean;
   incidentCount: number;
   parentEngagement: number;
+  /** Org-wide totals — used so empty-data bars can render "no data tracked"
+   *  instead of fabricating a 100% / RED bar from zero signals. */
+  orgIncidentTotal?: number;
+  orgParentNoteTotal?: number;
   riskLevel: string;
   riskFactors: string[];
   lastAction: string;
@@ -89,27 +96,47 @@ const RiskIntervention = ({ student, onBack }: Props) => {
   const [selectedAction, setSelectedAction] = useState<(typeof ACTIONS)[number] | null>(null);
   const [actionNotes, setActionNotes]   = useState("");
   const [actionDate, setActionDate]     = useState("");
+  const [counselorName, setCounselorName] = useState("");
+  // Lock to prevent rapid double-click of "Notify Teacher" sending two emails
+  // before setNotifying lands (iOS/keyboard bounce — Resend rate-limit risk).
+  const notifyingRef = useRef(false);
 
   const initials = student.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
-  // ── Risk factor bars (real data) ─────────────────────────────────────────────
-  const riskFactorBars = [
+  // ── Risk factor bars (P1-M + P1-N + CF-4 fixes) ──────────────────────────
+  // Bars now distinguish 4 states explicitly:
+  //   • value=null     → "—" + gray (no data)
+  //   • org has 0 data → "Not tracked" + gray (school doesn't use this signal)
+  //   • value=0/low    → red (real risk)
+  //   • value=high     → green (real positive)
+  // The previous version showed RED bars at "0%" for both real risk AND
+  // for empty data — and rendered Discipline=100% even when the school
+  // never logged a single incident. Both were fabricated visuals.
+  type RiskBar = { label: string; value: number | null; desc: string; color: string; tracked: boolean };
+  const GRAY = "#94a3b8";
+
+  const orgTracksIncidents   = (student.orgIncidentTotal ?? 1) > 0;
+  const orgTracksParentNotes = (student.orgParentNoteTotal ?? 1) > 0;
+
+  const riskFactorBars: RiskBar[] = [
     {
       label: "Attendance",
-      value: student.attPct ?? 0,
+      value: student.attPct,
+      tracked: true,
       desc: student.attPct === null
         ? "No attendance recorded yet"
         : student.attPct < 75
           ? `Below 75% threshold (currently ${student.attPct}%)`
           : `Good — ${student.attPct}%`,
-      color: student.attPct === null ? "#94a3b8"
+      color: student.attPct === null ? GRAY
         : student.attPct < 60 ? "#ef4444"
         : student.attPct < 75 ? "#f59e0b"
         : "#22c55e",
     },
     {
       label: "Academic Average",
-      value: student.avgScore ?? 0,
+      value: student.avgScore,
+      tracked: true,
       desc: student.avgScore === null
         ? "No exam results recorded yet"
         : student.avgScore < 40
@@ -117,138 +144,181 @@ const RiskIntervention = ({ student, onBack }: Props) => {
           : student.avgScore < 55
             ? `Below average — ${student.avgScore}%`
             : `Passing — ${student.avgScore}%`,
-      color: student.avgScore === null ? "#94a3b8"
+      color: student.avgScore === null ? GRAY
         : student.avgScore < 40 ? "#ef4444"
         : student.avgScore < 55 ? "#f59e0b"
         : "#22c55e",
     },
     {
       label: "Discipline Score",
-      value: Math.max(0, 100 - student.incidentCount * 20),
-      desc: student.incidentCount === 0
-        ? "No incidents recorded"
-        : `${student.incidentCount} incident${student.incidentCount > 1 ? "s" : ""} logged`,
-      color: student.incidentCount === 0 ? "#22c55e"
+      tracked: orgTracksIncidents,
+      value: orgTracksIncidents ? Math.max(0, 100 - student.incidentCount * 20) : null,
+      desc: !orgTracksIncidents
+        ? "Not tracked at this school"
+        : student.incidentCount === 0
+          ? "No incidents recorded"
+          : `${student.incidentCount} incident${student.incidentCount > 1 ? "s" : ""} logged`,
+      color: !orgTracksIncidents ? GRAY
+        : student.incidentCount === 0 ? "#22c55e"
         : student.incidentCount >= 3 ? "#ef4444"
         : "#f59e0b",
     },
     {
       label: "Parent Engagement",
-      value: student.parentEngagement,
-      desc: student.parentEngagement === 0
-        ? "No parent communications logged"
-        : student.parentEngagement < 40
-          ? "Low engagement with school"
-          : "Actively communicating",
-      color: student.parentEngagement < 20 ? "#ef4444"
+      tracked: orgTracksParentNotes,
+      value: orgTracksParentNotes ? student.parentEngagement : null,
+      desc: !orgTracksParentNotes
+        ? "No parent comms tracked at this school"
+        : student.parentEngagement === 0
+          ? "No parent communications logged"
+          : student.parentEngagement < 40
+            ? "Low engagement with school"
+            : "Actively communicating",
+      color: !orgTracksParentNotes ? GRAY
+        : student.parentEngagement < 20 ? "#ef4444"
         : student.parentEngagement < 60 ? "#f59e0b"
         : "#22c55e",
     },
   ];
 
   // ── Intervention history listener ────────────────────────────────────────────
+  // Dual-key fetch (memory: dual_query_pattern_studentid_email): reads ALL
+  // interventions for this school, then client-filters by studentId OR
+  // studentEmail. studentId-only listener silently misses legacy writes
+  // that captured only studentEmail. Also drops server-side branchId filter
+  // (memory: branchid_inference_lag) and applies branch in-memory.
   useEffect(() => {
-    if (!student.id) { setHistLoading(false); return; }
+    if (!student.id && !student.email) { setHistLoading(false); return; }
     const schoolId = userData?.schoolId;
     const branchId = userData?.branchId;
     if (!schoolId) { setHistLoading(false); return; }
 
-    // Base constraints — always scoped to this school/branch
-    const baseConstraints: any[] = [
-      where("studentId", "==", student.id),
-      where("schoolId", "==", schoolId),
-    ];
-    if (branchId) baseConstraints.push(where("branchId", "==", branchId));
+    const studentEmail = (student.email || "").toLowerCase().trim();
+    const inBranch = (raw: any): boolean =>
+      !branchId || !raw?.branchId || raw.branchId === branchId;
+    const matchesStudent = (raw: any): boolean => {
+      const sid = String(raw?.studentId || "");
+      const sem = String(raw?.studentEmail || "").toLowerCase().trim();
+      return (student.id && sid === student.id) || (!!studentEmail && sem === studentEmail);
+    };
 
     // Track fallback listener so it can be cleaned up
     let unsub2: (() => void) | null = null;
 
-    // Try with orderBy first; if composite index missing, fall back to unordered
+    // Try with orderBy first; if composite index missing, fall back to unordered.
     const q = query(
       collection(db, "interventions"),
-      ...baseConstraints,
-      orderBy("createdAt", "desc")
+      where("schoolId", "==", schoolId),
+      orderBy("createdAt", "desc"),
     );
+
+    const apply = (docs: any[]) => {
+      setHistory(
+        docs
+          .filter(d => inBranch(d) && matchesStudent(d))
+          .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)),
+      );
+      setHistLoading(false);
+    };
 
     const unsub = onSnapshot(
       q,
-      snap => {
-        setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setHistLoading(false);
-      },
+      snap => apply(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       () => {
         // Fallback without orderBy (no composite index needed)
-        const q2 = query(collection(db, "interventions"), ...baseConstraints);
-        unsub2 = onSnapshot(q2, snap2 => {
-          setHistory(
-            snap2.docs
-              .map(d => ({ id: d.id, ...d.data() }))
-              .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
-          );
-          setHistLoading(false);
-        });
+        const q2 = query(collection(db, "interventions"), where("schoolId", "==", schoolId));
+        unsub2 = onSnapshot(q2, snap2 => apply(snap2.docs.map(d => ({ id: d.id, ...d.data() }))));
       }
     );
 
     return () => { unsub(); unsub2?.(); };
-  }, [student.id, userData?.schoolId, userData?.branchId]);
+  }, [student.id, student.email, userData?.schoolId, userData?.branchId]);
 
   // ── Save action ──────────────────────────────────────────────────────────────
   const handleSaveAction = async () => {
     if (!selectedAction) return;
     if (!actionNotes.trim()) return toast.error("Please add notes for this action.");
+
+    // P0-E: REJECT writes when schoolId can't be resolved. Empty-string
+    // schoolId orphans the doc — invisible to scoped queries forever.
+    const schoolId = student.schoolId || userData?.schoolId;
+    if (!schoolId) {
+      toast.error("Session expired — please re-login.");
+      return;
+    }
+    const branchId = student.branchId || userData?.branchId || null;
+
+    // Counselor escalation requires a real assignee — "TBD" silently
+    // showed as "Assigned: TBD" forever in RiskStudents' Assigned-To cell.
+    if (selectedAction.id === "counselor" && !counselorName.trim()) {
+      toast.error("Please enter the counselor's name.");
+      return;
+    }
+
     setSaving(true);
     try {
-      await addDoc(collection(db, "interventions"), {
+      // P1-Q: Single atomic batch instead of sequential addDocs. The previous
+      // version could leave an orphan `interventions` doc if the second
+      // `parent_meetings` / `student_flags` write failed.
+      const batch = writeBatch(db);
+      const dateStr = actionDate || ymdLocal(new Date());
+
+      const interventionRef = doc(collection(db, "interventions"));
+      batch.set(interventionRef, {
         studentId: student.id,
         studentName: student.name,
         studentEmail: student.email,
         actionId: selectedAction.id,
         actionTitle: selectedAction.title,
         notes: actionNotes.trim(),
-        date: actionDate || new Date().toISOString().slice(0, 10),
+        date: dateStr,
         status: "Applied",
-        schoolId: student.schoolId || userData?.schoolId || "",
-        branchId: student.branchId || userData?.branchId || "",
+        schoolId,
+        branchId,
         createdAt: serverTimestamp(),
       });
 
-      // If meeting → also save to parent_meetings
       if (selectedAction.id === "meeting" && actionDate) {
-        await addDoc(collection(db, "parent_meetings"), {
+        const meetingRef = doc(collection(db, "parent_meetings"));
+        batch.set(meetingRef, {
           studentId: student.id,
           studentName: student.name,
           studentEmail: student.email,
           purpose: actionNotes.trim(),
           date: actionDate,
           status: "scheduled",
-          schoolId: student.schoolId || userData?.schoolId || "",
-          branchId: student.branchId || userData?.branchId || "",
+          schoolId,
+          branchId,
           createdAt: serverTimestamp(),
         });
       }
 
-      // If counselor → save to student_flags
       if (selectedAction.id === "counselor") {
-        await addDoc(collection(db, "student_flags"), {
+        const flagRef = doc(collection(db, "student_flags"));
+        batch.set(flagRef, {
           studentId: student.id,
           studentName: student.name,
           studentEmail: student.email,
           type: "counselor_assigned",
-          counselorName: "TBD",
+          counselorName: counselorName.trim(),
           notes: actionNotes.trim(),
           status: "active",
-          schoolId: student.schoolId || userData?.schoolId || "",
-          branchId: student.branchId || userData?.branchId || "",
+          schoolId,
+          branchId,
           createdAt: serverTimestamp(),
         });
       }
+
+      await batch.commit();
 
       toast.success(`${selectedAction.title} saved!`);
       setActionModal(false);
       setActionNotes("");
       setActionDate("");
-    } catch {
+      setCounselorName("");
+    } catch (err) {
+      // P3: log the actual error so production rule denials are debuggable.
+      console.error("[RiskIntervention] save failed:", err);
       toast.error("Could not save action.");
     } finally {
       setSaving(false);
@@ -256,16 +326,81 @@ const RiskIntervention = ({ student, onBack }: Props) => {
   };
 
   // ── Notify teacher ───────────────────────────────────────────────────────────
+  // 🔴 PRIVACY-CRITICAL: previously emailed `student.email` (the STUDENT)
+  // with a "Risk Alert: you need attention" subject. Now resolves the
+  // teacher's actual email via teacherId → teachers doc → email field.
+  // If we can't resolve the teacher email, REFUSE TO SEND rather than
+  // fall back to the student's address.
   const handleNotifyTeacher = async () => {
-    if (!student.email) return toast.error("No student email found.");
+    // Double-click guard — iOS/keyboard can fire twice before setNotifying
+    // lands. ref-based lock fires synchronously.
+    if (notifyingRef.current) return;
+    notifyingRef.current = true;
+
+    const schoolId = student.schoolId || userData?.schoolId;
+    if (!schoolId) {
+      toast.error("Session expired — please re-login.");
+      notifyingRef.current = false;
+      return;
+    }
+    const branchId = student.branchId || userData?.branchId || null;
+
     setNotifying(true);
     try {
-      await fetch("/api/send-email", {
+      // Resolve teacher email — try teacherId first (canonical), fall back
+      // to looking up via the class doc if needed.
+      let teacherEmail = "";
+      let resolvedTeacherName = student.teacherName || "Teacher";
+      if (student.teacherId) {
+        try {
+          const tSnap = await getDoc(doc(db, "teachers", student.teacherId));
+          if (tSnap.exists()) {
+            const t = tSnap.data() as any;
+            teacherEmail = String(t.email || "").trim();
+            if (t.name) resolvedTeacherName = t.name;
+          }
+        } catch (err) {
+          console.warn("[RiskIntervention] teacher lookup by id failed:", err);
+        }
+      }
+      // Class-fallback: if no teacherId or teacher doc had no email
+      if (!teacherEmail && student.classId) {
+        try {
+          const taSnap = await getDocs(query(
+            collection(db, "teaching_assignments"),
+            where("schoolId", "==", schoolId),
+            where("classId", "==", student.classId),
+            limit(1),
+          ));
+          const taTeacherId = taSnap.docs[0]?.data()?.teacherId;
+          if (taTeacherId) {
+            const tSnap = await getDoc(doc(db, "teachers", taTeacherId));
+            if (tSnap.exists()) {
+              const t = tSnap.data() as any;
+              teacherEmail = String(t.email || "").trim();
+              if (t.name) resolvedTeacherName = t.name;
+            }
+          }
+        } catch (err) {
+          console.warn("[RiskIntervention] teacher lookup by class failed:", err);
+        }
+      }
+
+      if (!teacherEmail) {
+        toast.error(`No email on file for ${resolvedTeacherName}. Add it in Teachers settings to enable alerts.`);
+        return;
+      }
+
+      // P0-D: actually CHECK the response. Previously HTTP 4xx/5xx was
+      // silently logged as "Teacher notified!" — principal trusted a lie.
+      // Build redacted subject (P3 polish — student name out of inbox preview).
+      const schoolName = (userData as any)?.schoolName || (userData as any)?.branchName || "your school";
+      const res = await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: student.email,
-          subject: `Risk Alert: ${student.name} needs attention`,
+          to: teacherEmail,
+          subject: `Risk alert from ${schoolName}`,
           html: `<div style="font-family:sans-serif;padding:24px">
             <h2 style="color:#1e3a8a">Risk Alert — ${student.name}</h2>
             <p>Risk Level: <strong>${student.riskLevel}</strong></p>
@@ -276,33 +411,53 @@ const RiskIntervention = ({ student, onBack }: Props) => {
           </div>`,
         }),
       });
-      await addDoc(collection(db, "interventions"), {
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        console.error("[RiskIntervention] email API failed:", res.status, errBody);
+        toast.error(`Email failed (${res.status}). Try again or check console.`);
+        return;
+      }
+
+      // Only log the intervention AFTER email succeeded — no false positives.
+      const batch = writeBatch(db);
+      batch.set(doc(collection(db, "interventions")), {
         studentId: student.id,
         studentName: student.name,
         studentEmail: student.email,
         actionId: "teacher",
         actionTitle: "Notify Class Teacher",
-        notes: `Email notification sent to ${student.teacherName || "teacher"} regarding ${student.riskLevel} risk.`,
-        date: new Date().toISOString().slice(0, 10),
+        notes: `Email sent to ${resolvedTeacherName} (${teacherEmail}) regarding ${student.riskLevel} risk.`,
+        date: ymdLocal(new Date()),
         status: "Applied",
-        schoolId: student.schoolId || userData?.schoolId || "",
-        branchId: student.branchId || userData?.branchId || "",
+        schoolId,
+        branchId,
         createdAt: serverTimestamp(),
       });
-      toast.success("Teacher notified via email!");
-    } catch {
+      await batch.commit();
+
+      toast.success(`Teacher (${resolvedTeacherName}) notified via email!`);
+    } catch (err) {
+      console.error("[RiskIntervention] notify teacher failed:", err);
       toast.error("Notification failed.");
     } finally {
       setNotifying(false);
+      notifyingRef.current = false;
     }
   };
 
   // ── Schedule follow-up ───────────────────────────────────────────────────────
   const handleScheduleFollowUp = async () => {
     if (!followUp.date) return toast.error("Please select a follow-up date.");
+    const schoolId = student.schoolId || userData?.schoolId;
+    if (!schoolId) {
+      toast.error("Session expired — please re-login.");
+      return;
+    }
+    const branchId = student.branchId || userData?.branchId || null;
     setSavingFollowUp(true);
     try {
-      await addDoc(collection(db, "interventions"), {
+      const batch = writeBatch(db);
+      batch.set(doc(collection(db, "interventions")), {
         studentId: student.id,
         studentName: student.name,
         studentEmail: student.email,
@@ -312,13 +467,15 @@ const RiskIntervention = ({ student, onBack }: Props) => {
         date: followUp.date,
         assignedTo: followUp.assignTo.trim(),
         status: "Scheduled",
-        schoolId: student.schoolId || userData?.schoolId || "",
-        branchId: student.branchId || userData?.branchId || "",
+        schoolId,
+        branchId,
         createdAt: serverTimestamp(),
       });
+      await batch.commit();
       setFollowUp({ date: "", assignTo: "", notes: "" });
       toast.success("Follow-up scheduled!");
-    } catch {
+    } catch (err) {
+      console.error("[RiskIntervention] follow-up failed:", err);
       toast.error("Could not schedule follow-up.");
     } finally {
       setSavingFollowUp(false);
@@ -389,23 +546,36 @@ const RiskIntervention = ({ student, onBack }: Props) => {
           <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
             <h2 className="text-base font-bold text-slate-900 mb-6">Risk Factor Breakdown</h2>
             <div className="space-y-6">
-              {riskFactorBars.map((f, i) => (
-                <div key={i}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-bold text-slate-700">{f.label}</span>
-                    <span className="text-sm font-black" style={{ color: f.color }}>
-                      {f.value}%
-                    </span>
+              {riskFactorBars.map((f, i) => {
+                // Null value → render "—" + striped/empty bar (no fake 0%
+                // visual that misleads). The bar's WIDTH stays 100% (full
+                // gray track) when the value is null OR when the school
+                // doesn't track that signal at all.
+                const isUnknown = f.value === null;
+                const valueLabel = isUnknown ? "—" : `${f.value}%`;
+                const barWidth = isUnknown ? 100 : Math.max(0, Math.min(100, f.value!));
+                const barBg = isUnknown
+                  // diagonal stripe for "no data" — visually distinct from a low real value
+                  ? "repeating-linear-gradient(45deg, #f1f5f9 0 6px, #e2e8f0 6px 12px)"
+                  : f.color;
+                return (
+                  <div key={i}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold text-slate-700">{f.label}</span>
+                      <span className="text-sm font-black" style={{ color: f.color }}>
+                        {valueLabel}
+                      </span>
+                    </div>
+                    <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{ width: `${barWidth}%`, background: barBg }}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-400 font-medium mt-1.5">{f.desc}</p>
                   </div>
-                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${f.value}%`, backgroundColor: f.color }}
-                    />
-                  </div>
-                  <p className="text-xs text-slate-400 font-medium mt-1.5">{f.desc}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -554,13 +724,32 @@ const RiskIntervention = ({ student, onBack }: Props) => {
               </button>
             </div>
             <div className="p-6 space-y-4">
-              {(selectedAction.id === "meeting" || selectedAction.id === "followup") && (
+              {/* Date input — meetings need a scheduled date; remedial &
+                  counselor benefit from one too. The dead "followup" branch
+                  (which had no matching ACTIONS entry) was removed. */}
+              {(selectedAction.id === "meeting" || selectedAction.id === "remedial" || selectedAction.id === "counselor") && (
                 <div>
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Date</label>
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">
+                    {selectedAction.id === "meeting" ? "Meeting Date" : "Start Date"}
+                  </label>
                   <input
                     type="date"
                     value={actionDate}
                     onChange={e => setActionDate(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                  />
+                </div>
+              )}
+              {/* P1-O: Real counselor-name input replaces the "TBD" literal
+                  that used to be hardcoded on every escalation write. */}
+              {selectedAction.id === "counselor" && (
+                <div>
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Counselor Name *</label>
+                  <input
+                    type="text"
+                    value={counselorName}
+                    onChange={e => setCounselorName(e.target.value)}
+                    placeholder="e.g. Mr. Anand Verma"
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
                   />
                 </div>

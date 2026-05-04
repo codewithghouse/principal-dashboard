@@ -28,10 +28,10 @@ const Header = ({ onMenuClick }: HeaderProps) => {
         />
         <div className="flex flex-col min-w-0">
           <span className="text-sm font-bold text-primary uppercase leading-tight truncate max-w-[120px] sm:max-w-none">
-            {userData?.schoolName || "EDULLENT"}
+            {userData?.branchName || userData?.branch || userData?.branchId || userData?.schoolName || "EDULLENT"}
           </span>
           <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">
-            {userData?.branchName || userData?.branch || userData?.branchId || "Portal"}
+            {userData?.role === "data_entry" ? "Data Entry Portal" : "Principal Portal"}
           </span>
         </div>
       </div>

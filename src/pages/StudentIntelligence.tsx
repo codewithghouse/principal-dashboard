@@ -9,7 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Loader2, Search, Users, AlertTriangle, TrendingUp, Award,
-  GraduationCap, MessageSquare, ChevronRight, Megaphone,
+  GraduationCap, MessageSquare, ChevronRight, ChevronDown, Megaphone, Clock, Building2,
 } from "lucide-react";
 import {
   classifyStudent, CATEGORY_META,
@@ -40,6 +40,9 @@ interface StudentDoc extends DocumentData {
 }
 interface ScoreDoc extends DocumentData {
   studentId?: string;
+  /** Legacy fallback — some writers (older bulk-upload paths) only stamped
+   *  studentEmail. Used by the email→id index to recover those scores. */
+  studentEmail?: string;
   percentage?: number | string;
   score?: number | string;
   mark?: number | string;
@@ -47,10 +50,14 @@ interface ScoreDoc extends DocumentData {
   maxMarks?: number | string;
   maxScore?: number | string;
   totalMarks?: number | string;
+  obtainedMarks?: number | string;
+  outOf?: number | string;
 }
 interface AttendanceDoc extends DocumentData {
   studentId?: string;
+  studentEmail?: string;
   status?: string;
+  date?: string;
 }
 interface EnrollmentDoc extends DocumentData {
   studentId?: string;
@@ -73,6 +80,17 @@ const TABS: { key: Category; label: string; icon: any }[] = [
   { key: "developing", label: "Developing", icon: TrendingUp },
   { key: "smart",      label: "Smart",      icon: Award },
 ];
+
+// Attendance window — keeps the listener payload small and the tier
+// classification meaningful. Lifetime attendance includes years of stale
+// records that don't reflect a student's CURRENT engagement; 60 days is
+// the same window the Students.tsx page uses for cross-page consistency.
+const ATTENDANCE_WINDOW_DAYS = 60;
+const daysAgoStr = (n: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+};
 
 export default function StudentIntelligence() {
   const { userData } = useAuth();
@@ -103,6 +121,15 @@ export default function StudentIntelligence() {
   const [notifyParent, setNotifyParent]   = useState<ClassifiedStudent | null>(null);
   const [notifyAllOpen, setNotifyAllOpen] = useState(false);
   const [aiInsightStudent, setAiInsightStudent] = useState<ClassifiedStudent | null>(null);
+
+  // Live time ticker for the toolbar — updates every minute. Same UX cue as
+  // Dashboard / Students so principals always see "this is real-time".
+  const [now, setNow] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const branchLabel = (userData?.branchName || userData?.branch || userData?.branchTitle || "") as string;
 
   // ── Fetch all tenant-scoped data (real-time) ──────────────────────────────
   useEffect(() => {
@@ -167,8 +194,15 @@ export default function StudentIntelligence() {
         },
         errHandler("gradebook_scores"),
       ),
+      // Server-side date filter — see ATTENDANCE_WINDOW_DAYS at module top.
+      // Composite index needed: (schoolId, branchId, date ASC) — already
+      // deployed for the parallel filter on Students.tsx + Dashboard.tsx.
       onSnapshot(
-        query(collection(db, "attendance"), ...schoolAndBranch),
+        query(
+          collection(db, "attendance"),
+          ...schoolAndBranch,
+          where("date", ">=", daysAgoStr(ATTENDANCE_WINDOW_DAYS)),
+        ),
         snap => {
           setAttendance(snap.docs.map(d => d.data() as AttendanceDoc));
           markLoaded("attendance");
@@ -197,98 +231,208 @@ export default function StudentIntelligence() {
   }, [userData?.schoolId, userData?.branchId]);
 
   // ── Build per-student aggregates + classify ────────────────────────────────
-  const classified = useMemo<ClassifiedStudent[]>(() => {
-    if (students.length === 0) return [];
+  const { classified, pendingDataCount } = useMemo<{
+    classified: ClassifiedStudent[];
+    /** Students whose data is fully missing (no scores AND no attendance).
+     *  These are EXCLUDED from the tier classification because lumping them
+     *  with the genuinely-weak tier inflates the at-risk count and dilutes
+     *  the principal's attention. Surfaced separately via `pendingDataCount`. */
+    pendingDataCount: number;
+  }>(() => {
+    if (students.length === 0) return { classified: [], pendingDataCount: 0 };
 
-    // Index scores by studentId
-    const scoreMap = new Map<string, number[]>();
-    const addScore = (sid: string, pct: number) => {
-      if (!sid || isNaN(pct)) return;
-      if (!scoreMap.has(sid)) scoreMap.set(sid, []);
-      scoreMap.get(sid)!.push(Math.max(0, Math.min(100, pct)));
+    // ── Email → studentId index ───────────────────────────────────────
+    // Some legacy writers (pre-fix bulk uploads) only stamped studentEmail
+    // on score/attendance docs. Without this index those records silently
+    // never matched a student → student appeared as "no test data yet" →
+    // wrongly classified as Weak. The index recovers them.
+    const emailToId = new Map<string, string>();
+    students.forEach(s => {
+      const e = String(s.email || s.studentEmail || "").toLowerCase().trim();
+      if (e && !emailToId.has(e)) emailToId.set(e, s.id);
+    });
+    /** Resolve a doc to a canonical studentId — try studentId first, then
+     *  fall back to studentEmail via the email→id index. Returns "" when
+     *  neither is usable so the caller can early-return. */
+    const resolveSid = (d: { studentId?: string; studentEmail?: string }): string => {
+      if (d.studentId) return d.studentId;
+      const e = String(d.studentEmail || "").toLowerCase().trim();
+      return e ? (emailToId.get(e) || "") : "";
     };
-    // Normalize score → percentage across the 3 different schemas we support.
+
+    // ── Score normalization ───────────────────────────────────────────
+    // Clamping happens INSIDE pctOf for every path now. The previous version
+    // clamped at the call site only, which let `percentage: 150` (bonus
+    // marks) sneak through as 150 to downstream code that used it raw.
+    const clamp = (n: number): number => Math.max(0, Math.min(100, n));
     const pctOf = (doc: any): number | null => {
+      const numOf = (v: any): number => {
+        if (v === null || v === undefined || v === "") return NaN;
+        const n = typeof v === "number" ? v : parseFloat(String(v));
+        return Number.isFinite(n) ? n : NaN;
+      };
       // 1) explicit percentage
-      if (doc.percentage != null && !isNaN(Number(doc.percentage))) return Number(doc.percentage);
-      // 2) mark / maxMarks (gradebook_scores pattern)
-      const mark = Number(doc.mark ?? doc.marks ?? NaN);
-      const maxMarks = Number(doc.maxMarks ?? doc.max_marks ?? doc.totalMarks ?? NaN);
-      if (!isNaN(mark) && !isNaN(maxMarks) && maxMarks > 0) return (mark / maxMarks) * 100;
-      // 3) score / maxScore (alt gradebook pattern)
-      const score = Number(doc.score ?? NaN);
-      const maxScore = Number(doc.maxScore ?? doc.max_score ?? NaN);
-      if (!isNaN(score) && !isNaN(maxScore) && maxScore > 0) return (score / maxScore) * 100;
-      // 4) score as raw percentage (legacy test_scores)
-      if (!isNaN(score) && score >= 0 && score <= 100) return score;
+      const direct = numOf(doc.percentage);
+      if (Number.isFinite(direct)) return clamp(direct);
+      // 2) mark / maxMarks (gradebook_scores pattern, older shape)
+      const mark = numOf(doc.mark ?? doc.marks ?? doc.obtainedMarks);
+      const maxMarks = numOf(doc.maxMarks ?? doc.max_marks ?? doc.totalMarks);
+      if (Number.isFinite(mark) && Number.isFinite(maxMarks) && maxMarks > 0) return clamp((mark / maxMarks) * 100);
+      // 3) score / maxScore (alt gradebook + test_scores pattern)
+      const score = numOf(doc.score);
+      const maxScore = numOf(doc.maxScore ?? doc.max_score ?? doc.outOf);
+      if (Number.isFinite(score) && Number.isFinite(maxScore) && maxScore > 0) return clamp((score / maxScore) * 100);
+      // 4) score as raw percentage (legacy test_scores — score field already 0-100)
+      if (Number.isFinite(score) && score >= 0 && score <= 100) return clamp(score);
       return null;
     };
-    scores.forEach(s => {
-      const pct = pctOf(s);
-      if (pct != null) addScore(s.studentId, pct);
-    });
-    results.forEach(r => {
-      const pct = pctOf(r);
-      if (pct != null) addScore(r.studentId, pct);
-    });
-    gradebook.forEach(g => {
-      const pct = pctOf(g);
-      if (pct != null) addScore(g.studentId, pct);
-    });
 
-    // Attendance aggregate by studentId
+    // Index scores by canonical studentId. We dedup across the three score
+    // collections via a content fingerprint — a real duplicate (same writer
+    // mirrored to multiple collections during a migration) has identical
+    // studentId + subject + date + maxMarks + score. Legitimate retakes
+    // differ on `date`, so they survive. Without this, schools that wrote
+    // the same exam to both `test_scores` AND `results` saw their student
+    // averages silently inflated (every score counted twice).
+    const scoreMap = new Map<string, number[]>();
+    const fingerprintsSeen = new Set<string>();
+    /** Stable, low-resolution date key tolerant of Firestore Timestamp /
+     *  string / number shapes. Day-precision is enough — tests taken on
+     *  the same date with the same score and student are duplicates. */
+    const fingerprintDate = (d: any): string => {
+      const v = d?.timestamp ?? d?.createdAt ?? d?.date;
+      if (!v) return "";
+      if (typeof v === "string") return v.slice(0, 10);
+      if (typeof v === "number") return new Date(v).toISOString().slice(0, 10);
+      if (v?.toDate) return v.toDate().toISOString().slice(0, 10);
+      if (v?.seconds) return new Date(v.seconds * 1000).toISOString().slice(0, 10);
+      return "";
+    };
+    const addScore = (sid: string, pct: number) => {
+      if (!sid) return;
+      if (!scoreMap.has(sid)) scoreMap.set(sid, []);
+      scoreMap.get(sid)!.push(pct);
+    };
+    const ingestScores = (docs: ScoreDoc[]) => {
+      docs.forEach(d => {
+        const pct = pctOf(d);
+        if (pct === null) return;
+        const sid = resolveSid(d);
+        if (!sid) return;
+        const subj = String(d.subject ?? d.subjectName ?? "").trim().toLowerCase();
+        const dateKey = fingerprintDate(d);
+        const fp = `${sid}|${subj}|${dateKey}|${Math.round(pct * 10)}`;
+        if (fingerprintsSeen.has(fp)) return; // cross-collection duplicate
+        fingerprintsSeen.add(fp);
+        addScore(sid, pct);
+      });
+    };
+    ingestScores(scores);
+    ingestScores(results);
+    ingestScores(gradebook);
+
+    // ── Attendance aggregate ──────────────────────────────────────────
+    // "late" counts as present — the student WAS there, just late. Keeping
+    // the previous strict "present"-only count silently penalized late
+    // students and pushed their tier down. Cross-page consistent with
+    // Dashboard + Students.tsx now.
     const attMap = new Map<string, { total: number; present: number }>();
     attendance.forEach(a => {
-      if (!a.studentId) return;
-      const key = a.studentId;
-      const prev = attMap.get(key) || { total: 0, present: 0 };
+      const sid = resolveSid(a);
+      if (!sid) return;
+      const prev = attMap.get(sid) || { total: 0, present: 0 };
       prev.total++;
-      if (String(a.status ?? "").toLowerCase() === "present") prev.present++;
-      attMap.set(key, prev);
+      const status = String(a.status ?? "").toLowerCase();
+      if (status === "present" || status === "late") prev.present++;
+      attMap.set(sid, prev);
     });
 
-    // Class name lookup
+    // Class name lookup — accept name / className / label / title fallback
+    // because principal-dashboard has had three different writers for class
+    // docs over its lifetime, each picking a different field name. Without
+    // the wider chain a class doc would render as a blank label in filters.
     const classNameMap = new Map<string, string>();
-    classes.forEach(c => classNameMap.set(c.id, c.name || c.className || ""));
-
-    // Enrollment → roll fallback: studentId → rollNo (first match wins)
-    const enrollRollMap = new Map<string, string>();
-    enrollments.forEach(e => {
-      const sid = e.studentId as string;
-      const roll = String(e.rollNo ?? e.roll ?? "").trim();
-      if (sid && roll && !enrollRollMap.has(sid)) enrollRollMap.set(sid, roll);
+    classes.forEach(c => {
+      const label = (c.name as string) || (c.className as string) || (c as any).label || (c as any).title || "";
+      classNameMap.set(c.id, label);
     });
 
-    return students.map(stu => {
-      const rollNo =
-        stu.rollNo ||
-        stu.roll ||
-        enrollRollMap.get(stu.id) ||
-        "";
+    // Enrollment fallback maps — primary classId AND rollNo recovered for
+    // students whose primary doc is missing those fields. (Multi-class
+    // students still surface only their FIRST enrollment's classId here;
+    // the per-student profile page handles the multi-class join.)
+    const enrollRollMap = new Map<string, string>();
+    const enrollClassIdMap = new Map<string, string>();
+    enrollments.forEach(e => {
+      const sid = (e.studentId as string) || (e.studentEmail ? emailToId.get(String(e.studentEmail).toLowerCase().trim()) || "" : "");
+      if (!sid) return;
+      const roll = String(e.rollNo ?? e.roll ?? "").trim();
+      if (roll && !enrollRollMap.has(sid)) enrollRollMap.set(sid, roll);
+      const cid = String(e.classId ?? "").trim();
+      if (cid && !enrollClassIdMap.has(sid)) enrollClassIdMap.set(sid, cid);
+    });
+
+    // ── Per-student classification ────────────────────────────────────
+    // Students with truly zero data (no scores AND no attendance records)
+    // are EXCLUDED from the tier list — they're not "weak", they're
+    // "awaiting data". The page surfaces their count separately so the
+    // principal can chase setup without them polluting Weak count.
+    let pending = 0;
+    const out: ClassifiedStudent[] = [];
+    students.forEach(stu => {
+      const rollNo  = stu.rollNo || stu.roll || enrollRollMap.get(stu.id) || "";
+      const classId = stu.classId || enrollClassIdMap.get(stu.id) || "";
+      const att = attMap.get(stu.id);
+      const studentScores = scoreMap.get(stu.id) || [];
+      const totalAttendance = att?.total || 0;
+
+      if (studentScores.length === 0 && totalAttendance === 0) {
+        pending++;
+        return; // skip — show in pending banner instead of "Weak" tier
+      }
+
       const signals: StudentSignals = {
         studentId: stu.id,
         studentName: stu.name || stu.studentName || "Unnamed",
-        className: classNameMap.get(stu.classId) || stu.className || "",
-        classId: stu.classId,
+        className: classNameMap.get(classId) || stu.className || "",
+        classId,
         rollNo,
         email: stu.email,
         parentEmail: stu.parentEmail,
         parentPhone: stu.parentPhone,
         branchId: stu.branchId,
-        totalAttendance: attMap.get(stu.id)?.total || 0,
-        presentAttendance: attMap.get(stu.id)?.present || 0,
-        scores: scoreMap.get(stu.id) || [],
+        totalAttendance,
+        presentAttendance: att?.present || 0,
+        scores: studentScores,
       };
-      return classifyStudent(signals);
+      out.push(classifyStudent(signals));
     });
+
+    return { classified: out, pendingDataCount: pending };
   }, [students, scores, results, gradebook, attendance, classes, enrollments]);
+
+  // ── Class options for the dropdown ────────────────────────────────────────
+  // Surfaces a synthetic "(Unassigned)" option ONLY when there are
+  // classified students whose classId doesn't match any class doc — these
+  // were silently invisible to a principal filtering by class before.
+  const validClassIds = useMemo(() => new Set(classes.map(c => c.id)), [classes]);
+  const unassignedCount = useMemo(
+    () => classified.filter(s => !s.classId || !validClassIds.has(s.classId)).length,
+    [classified, validClassIds],
+  );
 
   // ── Filter + group ────────────────────────────────────────────────────────
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return classified.filter(s => {
       if (s.category !== activeTab) return false;
-      if (classFilter !== "all" && s.classId !== classFilter) return false;
+      if (classFilter === "all") {
+        // pass-through
+      } else if (classFilter === "unassigned") {
+        if (s.classId && validClassIds.has(s.classId)) return false;
+      } else if (s.classId !== classFilter) {
+        return false;
+      }
       if (q) {
         const hay = `${s.studentName} ${s.rollNo || ""} ${s.className || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -299,7 +443,7 @@ export default function StudentIntelligence() {
       if (a.category === "weak" || a.category === "developing") return a.avgScore - b.avgScore;
       return b.avgScore - a.avgScore;
     });
-  }, [classified, activeTab, classFilter, search]);
+  }, [classified, activeTab, classFilter, search, validClassIds]);
 
   const counts = useMemo(() => ({
     weak:       classified.filter(s => s.category === "weak").length,
@@ -471,6 +615,32 @@ export default function StudentIntelligence() {
           </div>
         </div>
 
+        {/* Pending-data banner — visible only when some students have zero
+            scores AND zero attendance. They were silently classified as Weak
+            in the previous version, dragging the at-risk count up; now they
+            show separately with an actionable hint. */}
+        {!loading && pendingDataCount > 0 && (
+          <div className="mx-5 mt-3 rounded-[16px] p-3 flex items-start gap-2.5"
+            style={{
+              background: "linear-gradient(135deg, rgba(255,170,0,0.10) 0%, rgba(255,170,0,0.04) 100%)",
+              border: "0.5px solid rgba(255,170,0,0.32)",
+              boxShadow: "0 4px 14px rgba(255,170,0,0.10)",
+            }}>
+            <div className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0"
+              style={{ background: "rgba(255,170,0,0.14)", border: "0.5px solid rgba(255,170,0,0.30)" }}>
+              <AlertTriangle className="w-4 h-4" style={{ color: "#A85D00" }} strokeWidth={2.4} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-bold leading-snug" style={{ color: "#7A4500" }}>
+                {pendingDataCount} student{pendingDataCount === 1 ? "" : "s"} awaiting data
+              </p>
+              <p className="text-[11px] mt-1 leading-snug" style={{ color: "#8A5500" }}>
+                No scores or attendance recorded yet — excluded from tier analysis.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Notify All Button */}
         <button
           onClick={() => setNotifyAllOpen(true)}
@@ -503,11 +673,23 @@ export default function StudentIntelligence() {
         </div>
 
         {/* Class dropdown */}
+        {/* Explicit height + matching line-height = perfect vertical centering.
+            Without this, Edge/Safari clip the text inside <select> because their
+            default line-height is shorter than the box height set by py-3. */}
         <select
           value={classFilter}
           onChange={e => setClassFilter(e.target.value)}
-          className="w-[calc(100%-40px)] mx-5 mt-[10px] py-3 px-4 rounded-[14px] text-[14px] font-semibold outline-none cursor-pointer appearance-none bg-white"
+          className="w-[calc(100%-40px)] mx-5 mt-[10px] rounded-[14px] font-semibold outline-none cursor-pointer appearance-none bg-white block"
           style={{
+            height: 44,
+            lineHeight: "44px",
+            fontSize: 14,
+            paddingTop: 0,
+            paddingBottom: 0,
+            paddingLeft: 16,
+            paddingRight: 38,
+            textIndent: 0,
+            verticalAlign: "middle",
             border: "0.5px solid rgba(0,85,255,0.14)",
             color: T1,
             boxShadow: SH,
@@ -519,10 +701,14 @@ export default function StudentIntelligence() {
           <option value="all">All Classes ({classified.length})</option>
           {classes.map(c => {
             const inClass = classified.filter(s => s.classId === c.id).length;
+            const label = (c.name as string) || (c.className as string) || (c as any).label || (c as any).title || c.id;
             return (
-              <option key={c.id} value={c.id}>{c.name || c.className} ({inClass})</option>
+              <option key={c.id} value={c.id}>{label} ({inClass})</option>
             );
           })}
+          {unassignedCount > 0 && (
+            <option value="unassigned">(Unassigned) ({unassignedCount})</option>
+          )}
         </select>
 
         {/* Tier cards */}
@@ -537,6 +723,8 @@ export default function StudentIntelligence() {
             return (
               <button key={key}
                 onClick={() => setActiveTab(key)}
+                aria-label={`Filter by ${label} tier (${count} student${count === 1 ? "" : "s"})`}
+                aria-pressed={active}
                 className="rounded-[20px] px-[14px] py-4 relative overflow-hidden active:scale-[0.96] transition-transform text-left"
                 style={{
                   background: t.bg,
@@ -660,7 +848,7 @@ export default function StudentIntelligence() {
 
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-4 pt-2 pb-5 flex-wrap">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-1 min-w-0">
           <div className="w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0"
             style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 6px 18px rgba(0,85,255,0.28)" }}>
             <Sparkles className="w-[22px] h-[22px] text-white" strokeWidth={2.4} />
@@ -669,6 +857,24 @@ export default function StudentIntelligence() {
             <div className="text-[24px] font-bold leading-none" style={{ color: dT1, letterSpacing: "-0.6px" }}>Student Intelligence</div>
             <div className="text-[12px] mt-1" style={{ color: dT3 }}>Auto-detected performance tiers · Filter by class · Notify in one click</div>
           </div>
+        </div>
+        {/* Branch + live-time chips — same UX cue as Dashboard + Students. */}
+        <div className="flex items-center gap-2 shrink-0">
+          {branchLabel && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold"
+              style={{ background: "rgba(0,85,255,0.08)", color: dB1, border: "0.5px solid rgba(0,85,255,0.18)" }}>
+              <Building2 className="w-[13px] h-[13px]" strokeWidth={2.4} />
+              {branchLabel}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold"
+            style={{ background: "rgba(0,200,83,0.08)", color: dGREEN_D, border: "0.5px solid rgba(0,200,83,0.18)" }}>
+            <Clock className="w-[13px] h-[13px]" strokeWidth={2.4} />
+            {now.toLocaleString("en-IN", {
+              weekday: "short", day: "numeric", month: "short",
+              hour: "numeric", minute: "2-digit",
+            })}
+          </span>
         </div>
         <button
           onClick={() => setNotifyAllOpen(true)}
@@ -732,6 +938,29 @@ export default function StudentIntelligence() {
       </div>
       </div>
 
+      {/* Pending-data banner — desktop. Same logic as mobile. */}
+      {!loading && pendingDataCount > 0 && (
+        <div className="mt-4 rounded-[16px] p-4 flex items-start gap-3"
+          style={{
+            background: "linear-gradient(135deg, rgba(255,170,0,0.08) 0%, rgba(255,170,0,0.04) 100%)",
+            border: "0.5px solid rgba(255,170,0,0.32)",
+            boxShadow: "0 4px 14px rgba(255,170,0,0.10)",
+          }}>
+          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0"
+            style={{ background: "rgba(255,170,0,0.14)", border: "0.5px solid rgba(255,170,0,0.30)" }}>
+            <AlertTriangle className="w-[18px] h-[18px]" style={{ color: "#A85D00" }} strokeWidth={2.4} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-bold leading-snug" style={{ color: "#7A4500" }}>
+              {pendingDataCount} student{pendingDataCount === 1 ? "" : "s"} awaiting data setup
+            </p>
+            <p className="text-[11.5px] mt-1 leading-relaxed" style={{ color: "#8A5500" }}>
+              These students have no recorded scores or attendance yet — they're excluded from the tier classification so they don't pollute the at-risk count. Add data via Attendance / Exams &amp; Results pages to bring them into the analysis.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Tier Cards (filter tabs) */}
       <div className="grid grid-cols-3 gap-4 mt-5" style={{ perspective: "1200px" }}>
         {TABS.map(t => {
@@ -741,6 +970,8 @@ export default function StudentIntelligence() {
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
+              aria-label={`Filter by ${td.label} tier (${counts[t.key]} student${counts[t.key] === 1 ? "" : "s"})`}
+              aria-pressed={active}
               {...tilt3D}
               className="rounded-[20px] p-5 text-left relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
               style={{
@@ -770,38 +1001,133 @@ export default function StudentIntelligence() {
 
       {/* Filters Row */}
       <div className="flex items-center gap-3 mt-5 flex-wrap">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
+        {/* Search — proven inline-style pattern from Students.tsx so the
+            icon stays pixel-aligned (Tailwind's `top-1/2 -translate-y-1/2`
+            on an SVG sometimes drifts depending on the icon library). The
+            <span> wrapper with line-height: 0 + flex centering kills any
+            inline-block baseline weirdness. */}
+        <div style={{ position: "relative", flex: 1, minWidth: 240 }}>
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: 16,
+              top: "50%",
+              transform: "translateY(-50%)",
+              pointerEvents: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              lineHeight: 0,
+            }}
+          >
+            <Search size={16} color="rgba(0,85,255,0.42)" strokeWidth={2.2} />
+          </span>
           <input
             type="text"
             placeholder="Search student, roll no, class..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full h-11 pl-11 pr-4 bg-white rounded-[14px] text-[13px] font-medium outline-none"
-            style={{ border: `0.5px solid ${dSEP}`, color: dT1, boxShadow: dSH, fontFamily: "inherit" }}
+            style={{
+              width: "100%",
+              height: 44,
+              // L: 16 icon-pos + 16 icon-w + 14 gap = 46 → text never overlaps the magnifier glass.
+              padding: "0 18px 0 46px",
+              borderRadius: 14,
+              background: "#fff",
+              fontSize: 13,
+              fontWeight: 500,
+              color: dT1,
+              outline: "none",
+              border: `0.5px solid ${dSEP}`,
+              boxShadow: dSH,
+              fontFamily: "inherit",
+            }}
           />
         </div>
-        <select
-          value={classFilter}
-          onChange={e => setClassFilter(e.target.value)}
-          className="h-11 px-4 pr-10 bg-white rounded-[14px] text-[13px] font-semibold outline-none cursor-pointer appearance-none"
-          style={{
-            border: `0.5px solid ${dSEP}`,
-            color: dT2,
-            boxShadow: dSH,
-            fontFamily: "inherit",
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230055FF' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "right 14px center",
-          }}>
-          <option value="all">All Classes ({classified.length})</option>
-          {classes.map(c => {
-            const inClass = classified.filter(s => s.classId === c.id).length;
-            return (
-              <option key={c.id} value={c.id}>{c.name || c.className} ({inClass})</option>
-            );
-          })}
-        </select>
+        {/* Class filter — minWidth ensures the dropdown chip stays a
+            usable, readable size even when the toolbar wraps tightly. */}
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <select
+            value={classFilter}
+            onChange={e => setClassFilter(e.target.value)}
+            style={{
+              height: 44,
+              // Matching line-height so Edge/Safari don't clip glyphs vertically.
+              lineHeight: "44px",
+              minWidth: 196,
+              // L: 14 icon-pos + 14 icon-w + 12 gap = 40 · R: 14 chev-pos + 16 chev-w + 12 gap = 42
+              padding: "0 42px 0 40px",
+              borderRadius: 14,
+              background: "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              letterSpacing: "0.02em",
+              color: dT2,
+              outline: "none",
+              border: `0.5px solid ${dSEP}`,
+              boxShadow: dSH,
+              fontFamily: "inherit",
+              appearance: "none",
+              WebkitAppearance: "none",
+              MozAppearance: "none",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              textOverflow: "ellipsis",
+              overflow: "hidden",
+              verticalAlign: "middle",
+            }}>
+            <option value="all" style={{ color: "#001040", background: "#fff" }}>All Classes ({classified.length})</option>
+            {classes.map(c => {
+              const inClass = classified.filter(s => s.classId === c.id).length;
+              const label = (c.name as string) || (c.className as string) || (c as any).label || (c as any).title || c.id;
+              return (
+                <option key={c.id} value={c.id} style={{ color: "#001040", background: "#fff" }}>
+                  {label} ({inClass})
+                </option>
+              );
+            })}
+            {unassignedCount > 0 && (
+              <option value="unassigned" style={{ color: "#001040", background: "#fff" }}>
+                (Unassigned) ({unassignedCount})
+              </option>
+            )}
+          </select>
+          {/* Leading icon — same wrapper pattern as the search input. */}
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: 14,
+              top: "50%",
+              transform: "translateY(-50%)",
+              pointerEvents: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              lineHeight: 0,
+            }}
+          >
+            <GraduationCap size={14} strokeWidth={2.4} color={dB1} />
+          </span>
+          {/* Native-looking dropdown chevron. */}
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              right: 14,
+              top: "50%",
+              transform: "translateY(-50%)",
+              pointerEvents: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              lineHeight: 0,
+            }}
+          >
+            <ChevronDown size={16} strokeWidth={2.6} color={dB1} />
+          </span>
+        </div>
       </div>
 
       {/* Section Label */}

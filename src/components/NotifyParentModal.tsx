@@ -43,43 +43,61 @@ export default function NotifyParentModal({ student, onClose }: Props) {
   const [sendEmailFlag, setSendEmailFlag] = useState(true);
   const [sending, setSending] = useState(false);
 
-  const parentEmail = student.parentEmail || student.email || "";
+  // ⚠ DO NOT silently fall back to student.email — that's the STUDENT'S
+  // address, not the parent's. If parentEmail is missing we surface the
+  // empty state in the UI so the principal sees no recipient and either
+  // updates the parent's email in Settings or skips email-send.
+  const parentEmail = (student.parentEmail || "").trim();
+  const parentEmailValid = parentEmail !== "" && isValidEmail(parentEmail);
 
   const handleSend = async () => {
     if (!message.trim()) {
       toast.error("Message cannot be empty.");
       return;
     }
+    if (!userData?.schoolId) {
+      toast.error("Session lost — please log in again.");
+      return;
+    }
     setSending(true);
+    let emailFailed = false;
     try {
-      // 1) In-app note — always written
+      // 1) In-app note — always written. studentEmail field added per the
+      // dual-query pattern (memory: dual_query_pattern_studentid_email):
+      // parent dashboard reads per-student docs by BOTH studentId AND
+      // studentEmail then merges. Without this field, legacy email-keyed
+      // parent-side reads would silently miss this note.
       const msgText = message.trim();
+      const principalUid = auth.currentUser?.uid || (userData as any)?.id || "";
       await addDoc(collection(db, "principal_to_parent_notes"), {
-        schoolId: userData?.schoolId,
-        branchId: userData?.branchId || null,
+        schoolId: userData.schoolId,
+        branchId: userData.branchId || null,
         studentId: student.studentId,
+        studentEmail: student.email || null,
         studentName: student.studentName,
-        parentEmail,
+        parentEmail: parentEmail || null,
         category: student.category,
         // write BOTH field names so either dashboard render path works
         message: msgText,
         content: msgText,
         from: "principal",
-        principalId: (userData as any)?.uid || (userData as any)?.id || "",
+        principalId: principalUid,
         principalName: (userData as any)?.name || "Principal",
         read: false,
         timestamp: serverTimestamp(),
-        _lastModifiedBy: (userData as any)?.uid || "principal",
+        _lastModifiedBy: principalUid,
       });
 
-      // 2) Optional email (non-blocking — in-app note is authoritative)
-      if (sendEmailFlag && parentEmail) {
+      // 2) Optional email — strict validation BEFORE the API call. Garbage
+      // values like "n/a" or "tbd" used to silently hit the email API,
+      // bounce, and burn rate-limit quota.
+      if (sendEmailFlag && parentEmailValid) {
         try {
           const html = buildParentEmailHtml({
             studentName: student.studentName,
-            schoolName: (userData as any)?.schoolName || "Edullent",
+            schoolName: (userData as any)?.schoolName || (userData as any)?.branchName || "your school",
             principalName: (userData as any)?.name || "Principal",
-            message: message.trim(),
+            message: msgText,
           });
           const res = await fetch("/api/send-email", {
             method: "POST",
@@ -93,15 +111,22 @@ export default function NotifyParentModal({ student, onClose }: Props) {
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             console.warn("[NotifyParent] email API returned error:", res.status, err);
-            toast.warning("Email failed — in-app note was still delivered.");
+            emailFailed = true;
           }
         } catch (emailErr) {
           console.warn("[NotifyParent] email failed (in-app note still sent):", emailErr);
-          toast.warning("Email failed — in-app note was still delivered.");
+          emailFailed = true;
         }
       }
 
-      toast.success(`Message sent to ${student.studentName}'s parent`);
+      // Single, accurate toast — no toast race between success + failure.
+      if (emailFailed) {
+        toast.warning(`Note delivered to inbox — email to ${parentEmail} failed.`);
+      } else if (sendEmailFlag && !parentEmailValid) {
+        toast.warning("Note delivered to inbox — no valid parent email on file, skipped sending.");
+      } else {
+        toast.success(`Message sent to ${student.studentName}'s parent`);
+      }
       onClose();
     } catch (err: any) {
       console.error("[NotifyParent] send failed:", err);

@@ -13,6 +13,7 @@ import { InstallBanner } from "@/components/InstallBanner";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
 import LoginPage from "./pages/Login";
 import RequestAccess from "./pages/RequestAccess";
+import SchoolPicker from "@/components/SchoolPicker";
 
 import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
@@ -75,7 +76,7 @@ const DeoGuard = ({ children }: { children: React.ReactNode }) => {
 
 // ─── Route Guard ──────────────────────────────────────────────────────────────
 const AppRoutes = () => {
-  const { user, userData, loading } = useAuth();
+  const { user, userData, loading, schoolOptions, pickSchool, pickerBusy } = useAuth();
 
   // 1. Public route — always accessible regardless of auth
   if (window.location.pathname === "/request-access") {
@@ -88,6 +89,23 @@ const AppRoutes = () => {
 
   // 2. Block ALL rendering until Firebase finishes restoring session
   if (loading) return <AuthLoader />;
+
+  // 2.5 — Multi-school principal needs to pick which school to enter.
+  // Shown over the Login page (user is signed in but userData is unset
+  // pending their pick).
+  if (user && !userData && schoolOptions && schoolOptions.length > 0) {
+    return (
+      <>
+        <LoginPage />
+        <SchoolPicker
+          options={schoolOptions}
+          onPick={pickSchool}
+          busy={pickerBusy}
+          email={user.email || undefined}
+        />
+      </>
+    );
+  }
 
   // 3. Not authenticated OR not in the whitelist → show Login
   if (!user || !userData) return <LoginPage />;

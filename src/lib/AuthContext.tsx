@@ -11,6 +11,8 @@ import {
 import { auth, db } from './firebase';
 import { collection, getDocs, updateDoc, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { syncClaimsAndRefreshToken } from './syncClaims';
+import type { SchoolOption } from '../components/SchoolPicker';
+import { SELECTED_SCHOOL_KEY } from '../components/SchoolPicker';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AuthContextType {
@@ -20,6 +22,11 @@ interface AuthContextType {
   error: string | null;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  /** Multi-school principal picker — when populated the App renders the
+   *  picker modal. User clicking an option calls `pickSchool(schoolId)`. */
+  schoolOptions: SchoolOption[] | null;
+  pickSchool: (schoolId: string) => Promise<void>;
+  pickerBusy: boolean;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -31,6 +38,139 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userData, setUserData] = useState<any | null>(null);
   const [loading, setLoading]   = useState(true);   // true until Firebase responds
   const [error, setError]       = useState<string | null>(null);
+  // Picker state — when set, App.tsx renders the SchoolPicker modal.
+  const [schoolOptions, setSchoolOptions] = useState<SchoolOption[] | null>(null);
+  const [pickerBusy, setPickerBusy]       = useState(false);
+
+  // Re-runnable resolver — extracted from the auth listener so the picker
+  // can call it again with a `preferredSchoolId` after the user picks.
+  // Returns true when userData was set (success), false when picker is
+  // showing and waiting for input.
+  const resolveUserContext = async (
+    currentUser: User,
+    prefs: { preferredSchoolId?: string } = {},
+  ): Promise<boolean> => {
+    const userEmail = currentUser.email!.toLowerCase().trim();
+
+    // Sync claims with optional preference (set after user picks a school).
+    const synced = await syncClaimsAndRefreshToken(
+      currentUser,
+      prefs.preferredSchoolId
+        ? { preferredRole: "principal", preferredSchoolId: prefs.preferredSchoolId }
+        : undefined,
+    );
+    const claimSchoolId = synced?.schoolId || null;
+    const claimRole = synced?.role || null;
+
+    // Primary scoped query
+    const pQuery = claimSchoolId
+      ? query(
+          collection(db, 'principals'),
+          where('schoolId', '==', claimSchoolId),
+          where('email', '==', userEmail),
+        )
+      : query(collection(db, 'principals'), where('email', '==', userEmail));
+    const snap = await getDocs(pQuery);
+    let matched = snap.docs[0] ?? null;
+
+    // Owner→principal recovery: when the user accidentally registered as
+    // owner (orphan schools/{uid} doc) but is also an invited principal
+    // somewhere, the scoped query above misses the principal record.
+    // Recovery is allowed because hasOwnerRole() permits unrestricted LIST.
+    let recoveryAll: typeof snap.docs = [];
+    if (!matched && claimRole === "owner") {
+      try {
+        const recoverySnap = await getDocs(
+          query(collection(db, 'principals'), where('email', '==', userEmail)),
+        );
+        recoveryAll = recoverySnap.docs.slice();
+
+        if (recoveryAll.length === 0) {
+          // No principal record → fall through to data_entry / "not authorised"
+        } else if (recoveryAll.length === 1) {
+          // Single record → use it directly
+          matched = recoveryAll[0];
+        } else {
+          // Multiple records → check stored selection from previous session.
+          const stored = typeof window !== "undefined"
+            ? window.localStorage.getItem(SELECTED_SCHOOL_KEY)
+            : null;
+          if (stored) {
+            const fromStored = recoveryAll.find(d => (d.data() as any).schoolId === stored);
+            if (fromStored) matched = fromStored;
+          }
+          // Still nothing → show picker. Caller must wait for pickSchool().
+          if (!matched) {
+            const opts: SchoolOption[] = recoveryAll.map(d => {
+              const dd = d.data() as any;
+              return {
+                id: d.id,
+                schoolId: dd.schoolId,
+                schoolName: dd.schoolName || "Unnamed school",
+                branchName: dd.branchName || dd.branch || dd.branchId,
+                status: dd.status,
+                lastActive: dd.lastActive,
+              };
+            });
+            setUser(currentUser);
+            setSchoolOptions(opts);
+            setError(null);
+            return false; // wait for picker
+          }
+        }
+      } catch (recErr) {
+        console.warn('[AuthContext] owner→principal recovery query failed:', recErr);
+      }
+    }
+
+    if (matched) {
+      const data = matched.data() as any;
+      // One-time UID linking + status upgrade
+      if (data.status !== 'Active' || !data.uid) {
+        await updateDoc(doc(db, 'principals', matched.id), {
+          uid: currentUser.uid,
+          status: 'Active',
+          email: userEmail,
+          lastActive: new Date().toLocaleString(),
+        });
+      }
+      // Persist the chosen schoolId for next session
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(SELECTED_SCHOOL_KEY, data.schoolId);
+        }
+      } catch { /* localStorage may be blocked */ }
+
+      setUser(currentUser);
+      setUserData({ ...data, id: matched.id, role: 'principal' });
+      setSchoolOptions(null); // clear picker if it was showing
+      setError(null);
+      return true;
+    }
+
+    // Not a principal — check data_entry path (unchanged from before).
+    return false; // signals fall-through to caller's deo/error logic
+  };
+
+  // Picker callback — re-runs resolveUserContext with the picked schoolId.
+  const pickSchool = async (chosenSchoolId: string) => {
+    if (!user) return;
+    setPickerBusy(true);
+    try {
+      // Persist immediately so the next sync uses it even if the call fails.
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(SELECTED_SCHOOL_KEY, chosenSchoolId);
+        }
+      } catch { /* ignore */ }
+      await resolveUserContext(user, { preferredSchoolId: chosenSchoolId });
+    } catch (err) {
+      console.error('[AuthContext] pickSchool failed:', err);
+      setError('Could not switch school. Try again.');
+    } finally {
+      setPickerBusy(false);
+    }
+  };
 
   useEffect(() => {
     // 1. Set persistence FIRST before listener starts
@@ -50,42 +190,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const userEmail = currentUser.email.toLowerCase().trim();
 
-          // Sync custom claims first — Cloud Function returns chosen schoolId.
-          // Principals doc has public `get` (RequestAccess page needs school
-          // name lookup), but `list` requires inSameSchool() — so we filter
-          // by claimSchoolId when available.
-          const synced = await syncClaimsAndRefreshToken(currentUser);
-          const claimSchoolId = synced?.schoolId || null;
+          // Try to resolve the user as a principal (handles single-record,
+          // stored-selection, and picker paths). Returns true on success,
+          // false when picker is showing (waiting for user input) OR when
+          // the user isn't a principal at all.
+          const resolved = await resolveUserContext(currentUser);
+          if (resolved) {
+            // Done — userData is set, picker (if any) is cleared
+            setLoading(false);
+            return;
+          }
 
-          // 3. Fetch principal by email. If claims already set schoolId, scope
-          //    the query; otherwise fall through (first-time login race).
-          const pQuery = claimSchoolId
-            ? query(
-                collection(db, 'principals'),
-                where('schoolId', '==', claimSchoolId),
-                where('email', '==', userEmail),
-              )
-            : query(collection(db, 'principals'), where('email', '==', userEmail));
-          const snap = await getDocs(pQuery);
-          const matched = snap.docs[0] ?? null;
+          // If resolveUserContext set the picker, halt here and wait.
+          if (schoolOptions && schoolOptions.length > 0) {
+            setLoading(false);
+            return;
+          }
 
-          if (matched) {
-            const data = matched.data() as any;
+          // Re-derive claims for the data_entry / pending fallback paths.
+          // (resolveUserContext already called syncUserClaims, so this read
+          // just inspects the existing token without another network round-trip.)
+          const tokenResult = await currentUser.getIdTokenResult();
+          const claimSchoolId = (tokenResult.claims as any).schoolId || null;
 
-            // 4. One-time UID linking + status upgrade
-            if (data.status !== 'Active' || !data.uid) {
-              await updateDoc(doc(db, 'principals', matched.id), {
-                uid: currentUser.uid,
-                status: 'Active',
-                email: userEmail,
-                lastActive: new Date().toLocaleString()
-              });
-            }
-
-            setUser(currentUser);
-            setUserData({ ...data, id: matched.id, role: 'principal' });
-            setError(null);
-          } else {
+          {
             // Not a principal — check if they are an approved data entry operator.
             // Same schoolId-filter pattern: rules require inSameSchool() on list.
             const deoQuery = claimSchoolId
@@ -184,10 +312,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setUserData(null);
     setError(null);
+    setSchoolOptions(null);
+    // Clear stored school selection so a fresh login on this browser
+    // re-shows the picker for users with multiple records.
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(SELECTED_SCHOOL_KEY);
+      }
+    } catch { /* ignore */ }
   };
 
   return (
-    <AuthContext.Provider value={{ user, userData, loading, error, loginWithGoogle, logout }}>
+    <AuthContext.Provider value={{
+      user, userData, loading, error,
+      loginWithGoogle, logout,
+      schoolOptions, pickSchool, pickerBusy,
+    }}>
       {children}
     </AuthContext.Provider>
   );

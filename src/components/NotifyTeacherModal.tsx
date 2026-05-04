@@ -73,12 +73,20 @@ export default function NotifyTeacherModal({ student, onClose }: Props) {
 
           if (teacherIds.length > 0) {
             const all = await fetchAllTeachers();
-            list = all.filter(t => teacherIds.includes(t.id));
+            // Filter: must (a) be one of the teacherIds AND (b) actually
+            // exist as a real teacher doc with a name. Stale assignments
+            // referencing deleted teachers used to render as "undefined ·"
+            // entries in the dropdown — silently letting the principal
+            // pick a ghost recipient.
+            list = all.filter(t => teacherIds.includes(t.id) && !!t.name);
           }
         }
 
-        // Fall back to all teachers if no classId or class had no assignments
-        if (list.length === 0) list = await fetchAllTeachers();
+        // Fall back to all teachers if no classId or class had no assignments.
+        // Same name-presence guard so the dropdown never shows nameless rows.
+        if (list.length === 0) {
+          list = (await fetchAllTeachers()).filter(t => !!t.name);
+        }
 
         if (cancelled) return;
         setTeachers(list);

@@ -21,60 +21,98 @@ export interface StudentSignals {
   parentEmail?: string;
   parentPhone?: string;
   branchId?: string;
-  /** Raw inputs — caller pre-aggregates from Firestore */
+  /** Raw inputs — caller pre-aggregates from Firestore.
+   *  ⚠ MUST be in ASCENDING DATE ORDER (oldest first) — downstream trend
+   *  analysis in `student-insight.ts` slices the array as
+   *  `earlier = scores.slice(0, half)` and `recent = scores.slice(-half)`.
+   *  If the producer hands us reverse-chronological data, every "trend"
+   *  message is silently INVERTED. classifyStudent does NOT sort because
+   *  we'd lose that contract — sort at the producer if your data isn't
+   *  already in order. */
   totalAttendance: number;
   presentAttendance: number;
-  scores: number[];            // percentages 0-100
+  scores: number[];            // percentages 0-100, ASC by date
 }
+
+// Tunable thresholds — exported so other modules can stay aligned. Memory
+// `bug_pattern_score_zero_no_data` warned about constants drifting across
+// pages; importing from here is the cure. Mastery gateway is a separate
+// constant because it lives only in the "developing" reasons copy.
+export const WEAK_SCORE_THRESHOLD       = 50;
+export const WEAK_ATTENDANCE_THRESHOLD  = 70;
+export const SMART_SCORE_THRESHOLD      = 75;
+export const SMART_ATTENDANCE_THRESHOLD = 85;
+export const MASTERY_GATEWAY            = 65;
 
 export interface ClassifiedStudent extends StudentSignals {
-  avgScore: number;            // 0-100 (rounded)
-  attendancePct: number;       // 0-100 (rounded)
+  /** Average percentage 0-100 (rounded) — null when no usable scores.
+   *  Consumers MUST handle null explicitly: defaulting null to 0
+   *  silently classifies score-less students as "Weak", inflating the
+   *  at-risk count. */
+  avgScore: number | null;
+  /** Attendance % 0-100 (rounded) — null when no attendance records. */
+  attendancePct: number | null;
   category: Category;
-  reasons: string[];           // human-readable, e.g. ["Low avg score (42%)", "Attendance 65%"]
-  priority: number;            // sortable: higher = more urgent (weak > dev > smart)
+  reasons: string[];
+  priority: number;
+  /** True only when the student has at least one usable score. UI uses this
+   *  to show "—" instead of "0%" and to skip score-based reasons. */
+  hasScoreData: boolean;
+  /** True only when the student has at least one attendance record. */
+  hasAttendanceData: boolean;
 }
-
-const WEAK_SCORE_THRESHOLD       = 50;
-const WEAK_ATTENDANCE_THRESHOLD  = 70;
-const SMART_SCORE_THRESHOLD      = 75;
-const SMART_ATTENDANCE_THRESHOLD = 85;
 
 export function classifyStudent(s: StudentSignals): ClassifiedStudent {
   // Defensive: filter out any non-finite scores that slipped past upstream
-  // normalization (e.g., Firestore doc with `percentage: null`).
-  const validScores = s.scores.filter(
-    n => typeof n === "number" && Number.isFinite(n),
-  );
-  const avgScore = validScores.length
+  // normalization (e.g., Firestore doc with `percentage: null`). Also clamp
+  // 0–100 in case bonus marks slipped through.
+  const validScores = s.scores
+    .filter(n => typeof n === "number" && Number.isFinite(n))
+    .map(n => Math.max(0, Math.min(100, n)));
+  const hasScoreData = validScores.length > 0;
+  const avgScore: number | null = hasScoreData
     ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length)
-    : 0;
+    : null;
 
-  const attendancePct =
-    s.totalAttendance > 0 && Number.isFinite(s.totalAttendance)
-      ? Math.round((s.presentAttendance / s.totalAttendance) * 100)
-      : 0;
+  const hasAttendanceData = s.totalAttendance > 0 && Number.isFinite(s.totalAttendance);
+  const attendancePct: number | null = hasAttendanceData
+    ? Math.round((s.presentAttendance / s.totalAttendance) * 100)
+    : null;
 
   const reasons: string[] = [];
   let category: Category;
 
-  if (avgScore < WEAK_SCORE_THRESHOLD || attendancePct < WEAK_ATTENDANCE_THRESHOLD) {
+  // Classification: only judge against signals we ACTUALLY have. A student
+  // with no scores but high attendance shouldn't be tarred as Weak just
+  // because avgScore defaults to 0. Same for the inverse. The previous
+  // version triggered "weak" purely from missing data, which is exactly the
+  // memory `bug_pattern_score_zero_no_data` failure.
+  const failsScore      = hasScoreData      && (avgScore!      < WEAK_SCORE_THRESHOLD);
+  const failsAttendance = hasAttendanceData && (attendancePct! < WEAK_ATTENDANCE_THRESHOLD);
+  const passesSmartScore      = hasScoreData      && (avgScore!      >= SMART_SCORE_THRESHOLD);
+  const passesSmartAttendance = hasAttendanceData && (attendancePct! >= SMART_ATTENDANCE_THRESHOLD);
+
+  if (failsScore || failsAttendance) {
     category = "weak";
-    if (validScores.length === 0) reasons.push("No test data recorded yet");
-    if (avgScore < WEAK_SCORE_THRESHOLD && validScores.length > 0)
-      reasons.push(`Low average score (${avgScore}%)`);
-    if (attendancePct < WEAK_ATTENDANCE_THRESHOLD && s.totalAttendance > 0)
-      reasons.push(`Low attendance (${attendancePct}%)`);
-    if (reasons.length === 0) reasons.push("Insufficient data — review manually");
-  } else if (avgScore >= SMART_SCORE_THRESHOLD && attendancePct >= SMART_ATTENDANCE_THRESHOLD) {
+    if (failsScore) reasons.push(`Low average score (${avgScore}%)`);
+    if (failsAttendance) reasons.push(`Low attendance (${attendancePct}%)`);
+  } else if (
+    // Strict Smart needs BOTH signals AND both above bar. If only one signal
+    // exists, can't promote — fall through to "developing" with a hint.
+    passesSmartScore && passesSmartAttendance
+  ) {
     category = "smart";
     reasons.push(`Strong performance (${avgScore}%)`);
     reasons.push(`Excellent attendance (${attendancePct}%)`);
   } else {
     category = "developing";
-    reasons.push(`Average score ${avgScore}%`);
-    reasons.push(`Attendance ${attendancePct}%`);
-    if (avgScore >= 65) reasons.push("Close to mastery threshold");
+    if (hasScoreData)      reasons.push(`Average score ${avgScore}%`);
+    if (hasAttendanceData) reasons.push(`Attendance ${attendancePct}%`);
+    if (hasScoreData && (avgScore as number) >= MASTERY_GATEWAY) {
+      reasons.push("Close to mastery threshold");
+    }
+    if (!hasScoreData)      reasons.push("No test data recorded yet");
+    if (!hasAttendanceData) reasons.push("No attendance recorded yet");
   }
 
   const priority =
@@ -88,6 +126,8 @@ export function classifyStudent(s: StudentSignals): ClassifiedStudent {
     category,
     reasons,
     priority,
+    hasScoreData,
+    hasAttendanceData,
   };
 }
 

@@ -64,7 +64,19 @@ export async function getStudentInsight(
   if (!schoolId) throw new Error("schoolId is required");
   if (!student?.studentId) throw new Error("student.studentId is required");
 
-  const cacheRef = doc(db, "student_ai_insights", student.studentId);
+  // Composite cache key — `${schoolId}_${studentId}`. Today studentId is a
+  // Firestore students-collection auto-id (globally unique by construction)
+  // so a bare studentId would work, BUT:
+  //   1. If a future migration ever sets studentId from email/roll, two
+  //      schools with overlapping student emails would collide on the same
+  //      cache doc.
+  //   2. With a bare key, school B's first read finds school A's doc owned
+  //      by school A → setDoc fails the rule's `inSameSchool()` check →
+  //      every view re-computes for school B. Composite key gives each
+  //      tenant its own cache doc, eliminating both the silent collision
+  //      risk AND the cache-thrash perf regression.
+  const cacheKey = `${schoolId}_${student.studentId}`;
+  const cacheRef = doc(db, "student_ai_insights", cacheKey);
 
   // 1) Try cache (best-effort — never block on permission errors)
   if (!opts.force) {

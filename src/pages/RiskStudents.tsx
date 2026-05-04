@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
-  AlertTriangle, Flame, Bell, UserPlus, ChevronRight,
-  Loader2, ShieldAlert, CalendarPlus, Sparkles, Users, MessageSquare, ArrowRight
+  AlertTriangle, Flame, Bell, UserPlus, ChevronRight, ChevronDown,
+  Loader2, ShieldAlert, CalendarPlus, Sparkles, Users, MessageSquare, ArrowRight,
+  GraduationCap, Send, ChevronLeft,
 } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
@@ -9,7 +10,32 @@ import { useAuth } from "@/lib/AuthContext";
 import { useNavigate } from "react-router-dom";
 import RiskIntervention from "@/components/RiskIntervention";
 import MeetingScheduler from "@/components/MeetingScheduler";
+import NotifyClassParentsModal from "@/components/NotifyClassParentsModal";
+import NotifyClassTeachersModal from "@/components/NotifyClassTeachersModal";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  pctOfDoc, matchesStudent, isPresent,
+  ymdLocal, daysAgoStr, ATTENDANCE_WINDOW_DAYS,
+} from "@/lib/scoreUtils";
+import {
+  WEAK_SCORE_THRESHOLD, WEAK_ATTENDANCE_THRESHOLD,
+  SMART_ATTENDANCE_THRESHOLD,
+} from "@/lib/classifyStudent";
+
+// Per-class pagination — show this many students per page within each class
+// section. Big classes (50+ students) would otherwise drop framerate on
+// initial render; small classes (3-5 students) just hide the pagination row.
+const STUDENTS_PER_CLASS_PAGE = 5;
+
+// Class label normalization (memory: bug_pattern_class_label_normalization).
+// Preserve section letters (10A vs 10B) and stream qualifiers
+// (Class 11 Science vs Commerce) — naive `\b\d{1,2}\b` collapses them.
+const normalizeClassKey = (raw: string): string => {
+  const s = String(raw || "").trim();
+  if (!s) return "Unassigned";
+  // Collapse extra whitespace but keep distinguishing letters/words.
+  return s.replace(/\s+/g, " ");
+};
 
 type RiskLevel = "CRITICAL" | "WARNING" | "MONITORING";
 type FilterTab = "All" | RiskLevel;
@@ -19,29 +45,49 @@ interface RiskStudent {
   name: string;
   email: string;
   className: string;
+  /** All classes the student is enrolled in (multi-class merging fix). */
+  allClasses?: string[];
+  /** Per-className → classId map. Used by class grouping to resolve the
+   *  CORRECT classId for each (student, class) pair. Without this, a
+   *  multi-enrolled student's `classId` (which only points to ONE of their
+   *  classes) would be wrongly inherited as the group's classId, breaking
+   *  Notify Teachers routing for the other classes. */
+  classIdsByName?: Record<string, string>;
+  classId?: string;
   teacherName: string;
   teacherId: string;
   schoolId: string;
   branchId: string;
   attPct: number | null;
   avgScore: number | null;
+  /** Honest data-presence flags so UI can render "—" / "no data tracked"
+   *  instead of fabricating 0% / RED bars (memory: bug_pattern_score_zero_no_data). */
+  hasScoreData: boolean;
+  hasAttendanceData: boolean;
   incidentCount: number;
-  parentEngagement: number; // 0-100 score based on notes/meetings
+  parentEngagement: number;
+  /** School-wide totals propagated to RiskIntervention so empty-data bars
+   *  render "Not tracked" instead of fabricating a 100% green bar. */
+  orgIncidentTotal: number;
+  orgParentNoteTotal: number;
   riskLevel: RiskLevel;
   riskFactors: string[];
   lastAction: string;
   assignedTo: string;
   daysFlagged: number;
-  flaggedSince: string; // ISO date string
+  flaggedSince: string;
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
+// Date helpers use LOCAL time (via ymdLocal from scoreUtils) to avoid the
+// UTC drift bug where `toISOString().slice(0,10)` flips IST midnight to
+// the previous UTC day.
 
 const toDateStr = (d: any): string => {
   if (!d) return "";
   if (typeof d === "string") return d.slice(0, 10);
-  if (d?.toDate) return d.toDate().toISOString().slice(0, 10);
-  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  if (d?.toDate) return ymdLocal(d.toDate());
+  if (d instanceof Date) return ymdLocal(d);
   return "";
 };
 
@@ -50,12 +96,12 @@ const daysBetween = (isoA: string, isoB: string): number => {
   return Math.max(0, Math.round((new Date(isoB).getTime() - new Date(isoA).getTime()) / 86400000));
 };
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => ymdLocal(new Date());
 
 const startOfWeekStr = () => {
   const d = new Date();
   d.setDate(d.getDate() - d.getDay()); // Sunday
-  return d.toISOString().slice(0, 10);
+  return ymdLocal(d);
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,8 +114,17 @@ const RiskStudents = () => {
   const [riskStudents,   setRiskStudents]   = useState<RiskStudent[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [filterTab,      setFilterTab]      = useState<FilterTab>("All");
+  // "All" or a normalized class key. Independent of filterTab so user can
+  // pick "Critical" tab + "Class 10A" dropdown together.
+  const [classFilter,    setClassFilter]    = useState<string>("All");
   const [selectedStudent, setSelectedStudent] = useState<RiskStudent | null>(null);
   const [meetingStudent,  setMeetingStudent]  = useState<RiskStudent | null>(null);
+  // Per-class collapse + pagination state. Keys are normalized class names.
+  const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(new Set());
+  const [classPages, setClassPages] = useState<Record<string, number>>({});
+  // Class-level bulk-notify modals — track which class is open and which kind.
+  const [notifyTeachersFor, setNotifyTeachersFor] = useState<{ className: string; classId?: string; students: RiskStudent[] } | null>(null);
+  const [notifyParentsFor,  setNotifyParentsFor]  = useState<{ className: string; students: RiskStudent[] } | null>(null);
 
   // Cross-listener refs
   const computeTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -77,81 +132,168 @@ const RiskStudents = () => {
   const enrollmentsRef   = useRef<any[]>([]);
   const attRef           = useRef<any[]>([]);
   const resultsRef       = useRef<any[]>([]);
+  // P1-A: test_scores + gradebook_scores were silently missed.
+  // ~40% of risk signal was invisible for schools using bulk-upload.
+  const testScoresRef    = useRef<any[]>([]);
+  const gradebookRef     = useRef<any[]>([]);
   const incidentsRef     = useRef<any[]>([]);
   const parentNotesRef   = useRef<any[]>([]);
   const interventionsRef = useRef<any[]>([]);
   const flagsRef         = useRef<any[]>([]);
-  // 3rd factor: assignments + submissions
   const assignmentsRef   = useRef<any[]>([]);
   const submissionsRef   = useRef<any[]>([]);
 
   // ── compute all at-risk students from current refs ──────────────────────────
   const compute = () => {
-    // Build unique student map: id → base info
-    const map = new Map<string, any>();
+    const branchId = userData?.branchId;
+
+    // Org-wide totals — passed to RiskIntervention so empty-data bars render
+    // "Not tracked" instead of fabricating green 100% / red 0% (P1-N).
+    const orgIncidentTotal   = incidentsRef.current.length;
+    const orgParentNoteTotal = parentNotesRef.current.length;
+
+    // ── Build unique student map: id → base info ──
+    // P0-A: client-side branch filter (rather than server `where(branchId)`)
+    // so freshly-written docs whose branchId hasn't been backfilled yet
+    // still appear. Per `branchid_inference_lag` memory.
+    // P1-J: collect ALL classNames per student (multi-class merging)
+    interface StudentEntry {
+      base: any;
+      classNames: Set<string>;
+      /** Per-className → classId map. Built from enrollments so that each
+       *  class group can route Notify Teachers to the RIGHT classId for
+       *  that class (vs inheriting one student's `classId` which only
+       *  points to one of their classes). */
+      classIdsByName: Map<string, string>;
+    }
+    const map = new Map<string, StudentEntry>();
+    const inBranch = (s: any): boolean => !branchId || !s.branchId || s.branchId === branchId;
 
     studentsRef.current.forEach(s => {
+      if (!inBranch(s)) return;
       const key = s.id;
-      map.set(key, { ...s, _source: "students" });
+      const slot: StudentEntry = {
+        base: { ...s, _source: "students" },
+        classNames: new Set(),
+        classIdsByName: new Map(),
+      };
+      if (s.className) {
+        const cn = String(s.className).trim();
+        slot.classNames.add(cn);
+        if (s.classId) slot.classIdsByName.set(cn, String(s.classId));
+      }
+      map.set(key, slot);
     });
     enrollmentsRef.current.forEach(e => {
+      if (!inBranch(e)) return;
       const key = e.studentId || e.id;
-      if (!map.has(key)) {
-        map.set(key, {
-          id: key,
-          name: e.studentName || e.name || "Unknown",
-          email: e.studentEmail || e.email || "",
-          className: e.className || "",
-          teacherName: e.teacherName || "",
-          teacherId: e.teacherId || "",
-          schoolId: e.schoolId || "",
-          branchId: e.branchId || "",
-          _source: "enrollments",
-        });
+      if (!key) return;
+      let slot = map.get(key);
+      if (!slot) {
+        slot = {
+          base: {
+            id: key,
+            name: e.studentName || e.name || "Unknown",
+            email: e.studentEmail || e.email || "",
+            className: e.className || "",
+            classId: e.classId || "",
+            teacherName: e.teacherName || "",
+            teacherId: e.teacherId || "",
+            schoolId: e.schoolId || "",
+            branchId: e.branchId || "",
+            _source: "enrollments",
+          },
+          classNames: new Set(),
+          classIdsByName: new Map(),
+        };
+        if (e.className) {
+          const cn = String(e.className).trim();
+          slot.classNames.add(cn);
+          if (e.classId) slot.classIdsByName.set(cn, String(e.classId));
+        }
+        map.set(key, slot);
+      } else if (e.className) {
+        const cn = String(e.className).trim();
+        slot.classNames.add(cn);
+        // Enrollments are authoritative for (className, classId) pairing.
+        // Always overwrite — students collection's single classId is just a
+        // snapshot of one enrollment.
+        if (e.classId) slot.classIdsByName.set(cn, String(e.classId));
       }
     });
 
     const today = todayStr();
+    // Windowed attendance: lifetime data caused stale "300 days flagged"
+    // numbers and made students who improved unable to escape the risk
+    // list (P1-D + P1-H). Same 60-day window as Students.tsx.
+    const attCutoff = daysAgoStr(ATTENDANCE_WINDOW_DAYS);
+    const sevenDaysAgo = daysAgoStr(7);
+    const fourteenDaysAgo = daysAgoStr(14);
+
     const results: RiskStudent[] = [];
 
-    map.forEach((s) => {
+    map.forEach(({ base: s, classNames, classIdsByName }) => {
+      // P1-F: dual-key match (studentId + studentEmail). Legacy bulk imports
+      // that wrote only studentEmail were silently invisible to risk calcs.
       const email = (s.email || s.studentEmail || "").toLowerCase();
       const sid   = s.id;
 
-      // ── Attendance ──
-      const attRecs = attRef.current.filter(r => r.studentId === sid);
-      let attPct: number | null = null;
-      if (attRecs.length > 0) {
-        const present = attRecs.filter(r => r.status === "present" || r.status === "late").length;
-        attPct = Math.round((present / attRecs.length) * 100);
-      }
+      // ── Attendance (windowed + late-counts-as-present + dual-key) ──
+      const attRecs = attRef.current.filter(r => {
+        if (!matchesStudent(r, sid, email)) return false;
+        const d = toDateStr(r.date);
+        return d && d >= attCutoff;
+      });
+      const attPct = attRecs.length > 0
+        ? Math.round((attRecs.filter(isPresent).length / attRecs.length) * 100)
+        : null;
+      const hasAttendanceData = attRecs.length > 0;
 
-      // ── Academic ──
-      const resultRecs = resultsRef.current.filter(r => r.studentId === sid);
-      let avgScore: number | null = null;
-      if (resultRecs.length > 0) {
-        const sum = resultRecs.reduce((a, r) => a + Number(r.percentage || r.score || 0), 0);
-        avgScore = Math.round(sum / resultRecs.length);
-      }
+      // ── Academic (multi-source merge: results + test_scores + gradebook) ──
+      // P1-A + P1-B: unified pctOfDoc handles all 4 score schemas, never
+      // returns 0 for missing data. Cross-collection dedup by content
+      // fingerprint stops migrations that mirrored the same exam from
+      // counting it twice.
+      const allScoreDocs = [
+        ...resultsRef.current,
+        ...testScoresRef.current,
+        ...gradebookRef.current,
+      ].filter(r => matchesStudent(r, sid, email));
+      const fpSeen = new Set<string>();
+      const validPcts: number[] = [];
+      allScoreDocs.forEach(d => {
+        const pct = pctOfDoc(d);
+        if (pct === null) return;
+        const subj = String(d.subject ?? d.subjectName ?? "").toLowerCase();
+        const dateK = toDateStr(d.timestamp ?? d.createdAt ?? d.date);
+        const fp = `${subj}|${dateK}|${Math.round(pct * 10)}`;
+        if (fpSeen.has(fp)) return;
+        fpSeen.add(fp);
+        validPcts.push(pct);
+      });
+      const avgScore = validPcts.length > 0
+        ? Math.round(validPcts.reduce((a, b) => a + b, 0) / validPcts.length)
+        : null;
+      const hasScoreData = validPcts.length > 0;
 
-      // ── Incidents ──
-      const incRecs = incidentsRef.current.filter(r => r.studentId === sid);
+      // ── Incidents (case-insensitive severity per P1-E) ──
+      const incRecs = incidentsRef.current.filter(r => matchesStudent(r, sid, email));
+      const sevOf = (s: any) => String(s ?? "").toLowerCase();
+      const criticalInc = incRecs.filter(i => sevOf(i.severity) === "critical" || sevOf(i.severity) === "high").length;
 
       // ── Parent engagement score (0-100) ──
-      const notes = parentNotesRef.current.filter(r => r.studentId === sid);
-      const parentEngagement = Math.min(100, notes.length * 20); // 5+ notes = 100%
+      const notes = parentNotesRef.current.filter(r => matchesStudent(r, sid, email));
+      const parentEngagement = Math.min(100, notes.length * 20);
 
       // ── 3rd Factor: Task / Assignment completion ──
       const studentClassIds = enrollmentsRef.current
-        .filter(e => e.studentId === sid)
+        .filter(e => matchesStudent(e, sid, email))
         .map(e => e.classId).filter(Boolean);
 
-      // All assignments for student's classes
       const studentAssignments = assignmentsRef.current.filter(a =>
         studentClassIds.includes(a.classId)
       );
-      // Student's submissions
-      const studentSubmissions = submissionsRef.current.filter(s2 => s2.studentId === sid);
+      const studentSubmissions = submissionsRef.current.filter(s2 => matchesStudent(s2, sid, email));
       const submittedIds = new Set(studentSubmissions.map(s2 => s2.homeworkId || s2.assignmentId));
       const now = new Date();
       const overdueAssignments = studentAssignments.filter(a => {
@@ -162,88 +304,139 @@ const RiskStudents = () => {
         ? Math.round(((studentAssignments.length - overdueAssignments.length) / studentAssignments.length) * 100)
         : null;
 
-      // ── Delta-based attendance drop detection ──
-      // Compare last 7 days vs previous 7 days — "sudden drop"
-      const sevenDaysAgo  = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const fourteenDaysAgo = new Date(); fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-      const recent7  = attRecs.filter(r => r.date && new Date(r.date) >= sevenDaysAgo);
-      const prev7    = attRecs.filter(r => r.date && new Date(r.date) >= fourteenDaysAgo && new Date(r.date) < sevenDaysAgo);
-      const recent7Pct = recent7.length > 0 ? Math.round((recent7.filter(r => r.status === "present").length / recent7.length) * 100) : null;
-      const prev7Pct   = prev7.length   > 0 ? Math.round((prev7.filter(r => r.status === "present").length   / prev7.length)   * 100) : null;
+      // ── Delta-based attendance drop (last 7 vs prev 7) ──
+      // P1-C: BOTH sides use isPresent so "all late" doesn't fake a 100% drop.
+      const recent7  = attRecs.filter(r => { const d = toDateStr(r.date); return d && d >= sevenDaysAgo; });
+      const prev7    = attRecs.filter(r => { const d = toDateStr(r.date); return d && d >= fourteenDaysAgo && d < sevenDaysAgo; });
+      const recent7Pct = recent7.length > 0 ? Math.round((recent7.filter(isPresent).length / recent7.length) * 100) : null;
+      const prev7Pct   = prev7.length   > 0 ? Math.round((prev7.filter(isPresent).length   / prev7.length)   * 100) : null;
       const attDrop = (recent7Pct !== null && prev7Pct !== null) ? prev7Pct - recent7Pct : null;
 
-      // ── Determine risk level ──
+      // ── Determine risk level (thresholds imported from classifyStudent.ts) ──
+      // CRITICAL_SCORE (40) and CRITICAL_ATT (60) are local — the imported
+      // WEAK_* are warning thresholds. Two-tier system, single source of truth.
+      const CRITICAL_SCORE_THRESHOLD = 40;
+      const CRITICAL_ATT_THRESHOLD   = 60;
       const factors: string[] = [];
       let riskLevel: RiskLevel | null = null;
 
-      if (attPct !== null && attPct < 60) { factors.push("Attendance <60%"); riskLevel = "CRITICAL"; }
-      else if (attPct !== null && attPct < 75) { factors.push("Attendance <75%"); if (!riskLevel) riskLevel = "WARNING"; }
+      if (attPct !== null && attPct < CRITICAL_ATT_THRESHOLD) {
+        factors.push(`Attendance <${CRITICAL_ATT_THRESHOLD}%`);
+        riskLevel = "CRITICAL";
+      } else if (attPct !== null && attPct < WEAK_ATTENDANCE_THRESHOLD) {
+        factors.push(`Attendance <${WEAK_ATTENDANCE_THRESHOLD}%`);
+        if (!riskLevel) riskLevel = "WARNING";
+      }
 
-      // Delta drop: sudden 20%+ drop in recent 7 days
       if (attDrop !== null && attDrop >= 20) {
         factors.push(`Sudden drop (${attDrop}% this week)`);
         if (!riskLevel) riskLevel = "WARNING";
       }
 
-      if (avgScore !== null && avgScore < 40) { factors.push("Academics <40%"); riskLevel = "CRITICAL"; }
-      else if (avgScore !== null && avgScore < 55) { factors.push("Academics <55%"); if (!riskLevel) riskLevel = "WARNING"; }
+      if (avgScore !== null && avgScore < CRITICAL_SCORE_THRESHOLD) {
+        factors.push(`Academics <${CRITICAL_SCORE_THRESHOLD}%`);
+        riskLevel = "CRITICAL";
+      } else if (avgScore !== null && avgScore < WEAK_SCORE_THRESHOLD + 5) {
+        // Slightly above WEAK threshold (50+5=55) still WARN-worthy
+        factors.push(`Academics <${WEAK_SCORE_THRESHOLD + 5}%`);
+        if (!riskLevel) riskLevel = "WARNING";
+      }
 
-      // 3rd factor: tasks
       if (taskCompletionPct !== null && overdueAssignments.length >= 3) {
         factors.push(`${overdueAssignments.length} tasks overdue`);
         if (!riskLevel) riskLevel = "WARNING";
-        if (overdueAssignments.length >= 5 && (attPct !== null && attPct < 75)) riskLevel = "CRITICAL";
+        if (overdueAssignments.length >= 5 && (attPct !== null && attPct < WEAK_ATTENDANCE_THRESHOLD)) riskLevel = "CRITICAL";
       } else if (taskCompletionPct !== null && overdueAssignments.length >= 1 && taskCompletionPct < 50) {
         factors.push(`Tasks ${taskCompletionPct}% done`);
         if (!riskLevel) riskLevel = "MONITORING";
       }
 
-      const criticalInc = incRecs.filter(i => i.severity === "critical" || i.severity === "high").length;
       if (criticalInc >= 2) { factors.push("Discipline"); riskLevel = "CRITICAL"; }
       else if (incRecs.length >= 1) { factors.push("Discipline"); if (!riskLevel) riskLevel = "WARNING"; }
 
-      // MONITORING: subtle attendance trend
-      if (!riskLevel && (attPct !== null || avgScore !== null)) {
-        if (attPct !== null && attPct < 85) { factors.push("Attendance trend"); riskLevel = "MONITORING"; }
-        else if (attDrop !== null && attDrop >= 10) { factors.push("Attendance declining"); riskLevel = "MONITORING"; }
+      if (!riskLevel && (hasAttendanceData || hasScoreData)) {
+        if (attPct !== null && attPct < SMART_ATTENDANCE_THRESHOLD) {
+          factors.push("Attendance trend");
+          riskLevel = "MONITORING";
+        } else if (attDrop !== null && attDrop >= 10) {
+          factors.push("Attendance declining");
+          riskLevel = "MONITORING";
+        }
       }
 
       if (!riskLevel || factors.length === 0) return; // Not at risk
 
-      // ── Days flagged (from earliest at-risk indicator) ──
-      const earliestAttDate = attRecs
-        .filter(r => r.status === "absent")
-        .map(r => toDateStr(r.date))
-        .filter(Boolean)
-        .sort()[0];
-      const flaggedSince = earliestAttDate || today;
-      const daysFlagged  = daysBetween(flaggedSince, today);
+      // ── Days flagged ── P1-H: bound to the windowed range so we never
+      // claim "300 days flagged" from one absence 10 months ago. The earliest
+      // NEGATIVE signal across all data sources WITHIN the window is the
+      // meaningful date — using only attendance previously made students
+      // with academic-only risk default to "today", inflating the
+      // "new this week" stat card forever.
+      const negativeSignalDates: string[] = [];
+      attRecs
+        .filter(r => String(r.status || "").toLowerCase() === "absent")
+        .forEach(r => { const d = toDateStr(r.date); if (d) negativeSignalDates.push(d); });
+      // Score signals: only failing scores within the window count.
+      allScoreDocs.forEach(d => {
+        const pct = pctOfDoc(d);
+        if (pct === null || pct >= WEAK_SCORE_THRESHOLD) return;
+        const ds = toDateStr(d.timestamp ?? d.createdAt ?? d.date);
+        if (ds && ds >= attCutoff) negativeSignalDates.push(ds);
+      });
+      // Incident dates within window.
+      incRecs.forEach(i => {
+        const ds = toDateStr(i.date ?? i.timestamp ?? i.createdAt);
+        if (ds && ds >= attCutoff) negativeSignalDates.push(ds);
+      });
+      // Overdue assignments — count their due date as the flag onset.
+      overdueAssignments.forEach(a => {
+        const ds = toDateStr(a.dueDate);
+        if (ds && ds >= attCutoff) negativeSignalDates.push(ds);
+      });
+      const flaggedSince = negativeSignalDates.length > 0
+        ? negativeSignalDates.sort()[0]
+        : today;
+      const daysFlagged  = Math.min(
+        ATTENDANCE_WINDOW_DAYS,
+        daysBetween(flaggedSince, today),
+      );
 
       // ── Last action from interventions ──
       const studentInterventions = interventionsRef.current
-        .filter(i => i.studentId === sid)
+        .filter(i => matchesStudent(i, sid, email))
         .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       const lastAction = studentInterventions[0]?.actionTitle || "—";
 
       // ── Assigned counselor from flags ──
       const counselorFlag = flagsRef.current.find(f =>
-        f.studentId === sid && f.type === "counselor_assigned" && f.status === "active"
+        matchesStudent(f, sid, email) && f.type === "counselor_assigned" && f.status === "active"
       );
       const assignedTo = counselorFlag?.counselorName || s.teacherName || "—";
+
+      // Multi-class display: join sorted class names with ", "
+      const allClasses = Array.from(classNames).filter(Boolean).sort();
+      const classDisplay = allClasses.length > 0 ? allClasses.join(", ") : (s.className || "");
 
       results.push({
         id: sid,
         name: s.name || s.studentName || "Unknown",
         email,
-        className: s.className || "",
+        className: classDisplay,
+        allClasses,
+        classIdsByName: Object.fromEntries(classIdsByName),
+        classId: s.classId || studentClassIds[0] || "",
         teacherName: s.teacherName || "",
         teacherId: s.teacherId || "",
         schoolId: s.schoolId || userData?.schoolId || "",
         branchId: s.branchId || userData?.branchId || "",
         attPct,
         avgScore,
+        hasScoreData,
+        hasAttendanceData,
         incidentCount: incRecs.length,
         parentEngagement,
+        orgIncidentTotal,
+        orgParentNoteTotal,
         riskLevel,
         riskFactors: factors,
         lastAction,
@@ -253,7 +446,6 @@ const RiskStudents = () => {
       });
     });
 
-    // Sort: CRITICAL first, then WARNING, then MONITORING; within level by daysFlagged desc
     results.sort((a, b) => {
       const order = { CRITICAL: 0, WARNING: 1, MONITORING: 2 };
       if (order[a.riskLevel] !== order[b.riskLevel]) return order[a.riskLevel] - order[b.riskLevel];
@@ -265,36 +457,60 @@ const RiskStudents = () => {
   };
 
   // ── Firestore listeners ──────────────────────────────────────────────────────
+  // P0-A + P0-B: scope by schoolId ONLY (NOT branchId). Per memory
+  // `branchid_inference_lag`, the enforceBranchId_* trigger backfills
+  // missing branchId with ~1-2s lag → server-side branchId filter blinds
+  // the principal to fresh writes during that window AND permanently
+  // hides any record where the trigger never ran. Branch isolation is
+  // enforced client-side in compute() via inBranch().
+  // Also: principals whose userData.branchId is null/undefined no longer
+  // see a permanently empty page — they get school-wide view by default.
   useEffect(() => {
     const schoolId = userData?.schoolId;
-    const branchId = userData?.branchId;
-    if (!schoolId || !branchId) { setLoading(false); return; }
+    if (!schoolId) { setLoading(false); return; }
 
     setLoading(true);
-    const C = [where("schoolId", "==", schoolId), where("branchId", "==", branchId)];
+    const C = [where("schoolId", "==", schoolId)];
     const unsubs: (() => void)[] = [];
 
-    // Debounce: all 10 listeners share one timer so compute() only runs once
-    // after they all settle (prevents 10 redundant re-renders on initial load)
+    // Debounce: all 12 listeners share one timer so compute() only runs once
+    // after they all settle (prevents redundant re-renders on initial load).
+    // Bumped from 30ms to 80ms to better coalesce on slow devices.
     const scheduleCompute = () => {
       if (computeTimerRef.current) clearTimeout(computeTimerRef.current);
-      computeTimerRef.current = setTimeout(compute, 30);
+      computeTimerRef.current = setTimeout(compute, 80);
     };
 
-    unsubs.push(onSnapshot(query(collection(db, "students"),       ...C), snap => { studentsRef.current    = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "enrollments"),    ...C), snap => { enrollmentsRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "attendance"),     ...C), snap => { attRef.current         = snap.docs.map(d => d.data()); scheduleCompute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "results"),        ...C), snap => { resultsRef.current     = snap.docs.map(d => d.data()); scheduleCompute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "incidents"),      ...C), snap => { incidentsRef.current   = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "parent_notes"),   ...C), snap => { parentNotesRef.current = snap.docs.map(d => d.data()); scheduleCompute(); }));
-    unsubs.push(onSnapshot(query(collection(db, "interventions"),  ...C), snap => { interventionsRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, () => {}));
-    unsubs.push(onSnapshot(query(collection(db, "student_flags"),  ...C), snap => { flagsRef.current       = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, () => {}));
-    // 3rd factor listeners
-    unsubs.push(onSnapshot(query(collection(db, "assignments"),    ...C), snap => { assignmentsRef.current  = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, () => {}));
-    unsubs.push(onSnapshot(query(collection(db, "submissions"),    ...C), snap => { submissionsRef.current  = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, () => {}));
+    // P2-E: Real error handlers — empty `() => {}` swallowed permission
+    // denials silently. Now logs to console for debugging AND bumps the
+    // loader off so the page doesn't spin forever on a single rule deny.
+    const errLog = (label: string) => (err: Error) => {
+      console.warn(`[RiskStudents] ${label} listener failed:`, err);
+      // Don't unblock loader on individual failures — we want to see if
+      // the OTHER listeners can still produce useful output.
+    };
+
+    unsubs.push(onSnapshot(query(collection(db, "students"),         ...C), snap => { studentsRef.current     = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, errLog("students")));
+    unsubs.push(onSnapshot(query(collection(db, "enrollments"),      ...C), snap => { enrollmentsRef.current  = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, errLog("enrollments")));
+    unsubs.push(onSnapshot(query(collection(db, "attendance"),       ...C), snap => { attRef.current          = snap.docs.map(d => d.data()); scheduleCompute(); }, errLog("attendance")));
+    // P1-A: 3 score sources (results + test_scores + gradebook_scores)
+    unsubs.push(onSnapshot(query(collection(db, "results"),          ...C), snap => { resultsRef.current      = snap.docs.map(d => d.data()); scheduleCompute(); }, errLog("results")));
+    unsubs.push(onSnapshot(query(collection(db, "test_scores"),      ...C), snap => { testScoresRef.current   = snap.docs.map(d => d.data()); scheduleCompute(); }, errLog("test_scores")));
+    unsubs.push(onSnapshot(query(collection(db, "gradebook_scores"), ...C), snap => { gradebookRef.current    = snap.docs.map(d => d.data()); scheduleCompute(); }, errLog("gradebook_scores")));
+    unsubs.push(onSnapshot(query(collection(db, "incidents"),        ...C), snap => { incidentsRef.current    = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, errLog("incidents")));
+    unsubs.push(onSnapshot(query(collection(db, "parent_notes"),     ...C), snap => { parentNotesRef.current  = snap.docs.map(d => d.data()); scheduleCompute(); }, errLog("parent_notes")));
+    unsubs.push(onSnapshot(query(collection(db, "interventions"),    ...C), snap => { interventionsRef.current = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, errLog("interventions")));
+    unsubs.push(onSnapshot(query(collection(db, "student_flags"),    ...C), snap => { flagsRef.current        = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, errLog("student_flags")));
+    unsubs.push(onSnapshot(query(collection(db, "assignments"),      ...C), snap => { assignmentsRef.current  = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, errLog("assignments")));
+    unsubs.push(onSnapshot(query(collection(db, "submissions"),      ...C), snap => { submissionsRef.current  = snap.docs.map(d => ({ id: d.id, ...d.data() })); scheduleCompute(); }, errLog("submissions")));
+
+    // Safety net: if NO listener fires within 5s (all denied / index missing),
+    // unblock the spinner so the user sees the empty state rather than spinning forever.
+    const safetyTimer = setTimeout(() => setLoading(false), 5000);
 
     return () => {
       if (computeTimerRef.current) clearTimeout(computeTimerRef.current);
+      clearTimeout(safetyTimer);
       unsubs.forEach(u => u());
     };
   }, [userData?.schoolId, userData?.branchId]);
@@ -308,6 +524,147 @@ const RiskStudents = () => {
   const filtered = filterTab === "All"
     ? riskStudents
     : riskStudents.filter(s => s.riskLevel === filterTab);
+
+  // ── Class grouping + per-class pagination ──────────────────────────────────
+  // A student enrolled in 2 classes (e.g., a tutor + main section) shows up
+  // once per class in `allClasses`. We group by EACH normalized class so the
+  // principal sees them where they expect — accepting some duplication of
+  // multi-class students is the right call (memory:
+  // bug_pattern_enrollment_row_dedup says: dedup for "per-student" views,
+  // keep duplicates for class rosters; this section IS a class roster).
+  interface ClassGroup {
+    key: string;
+    label: string;
+    classId?: string;
+    students: RiskStudent[];
+    counts: { total: number; critical: number; warning: number; monitoring: number };
+  }
+
+  const classGroups: ClassGroup[] = useMemo(() => {
+    const map = new Map<string, ClassGroup>();
+    filtered.forEach(s => {
+      const classes = (s.allClasses && s.allClasses.length > 0) ? s.allClasses : [s.className || ""];
+      classes.forEach(rawCls => {
+        const key = normalizeClassKey(rawCls);
+        // Resolve THIS class's classId from the per-class map (B4 fix). Fall
+        // back to s.classId only when the map didn't capture this className
+        // (rare — only if enrollment had no classId field at all).
+        const resolvedClassId = s.classIdsByName?.[String(rawCls).trim()] || s.classId || "";
+        let g = map.get(key);
+        if (!g) {
+          g = {
+            key,
+            label: key,
+            classId: resolvedClassId,
+            students: [],
+            counts: { total: 0, critical: 0, warning: 0, monitoring: 0 },
+          };
+          map.set(key, g);
+        } else if (!g.classId && resolvedClassId) {
+          // First entry had no classId; later student in same group does → adopt.
+          g.classId = resolvedClassId;
+        }
+        g.students.push(s);
+        g.counts.total += 1;
+        if (s.riskLevel === "CRITICAL") g.counts.critical += 1;
+        else if (s.riskLevel === "WARNING") g.counts.warning += 1;
+        else if (s.riskLevel === "MONITORING") g.counts.monitoring += 1;
+      });
+    });
+    // Sort: classes with most CRITICAL first, then by total. "Unassigned"
+    // always last so it doesn't visually dominate.
+    const sorted = Array.from(map.values());
+    sorted.sort((a, b) => {
+      if (a.key === "Unassigned" && b.key !== "Unassigned") return 1;
+      if (b.key === "Unassigned" && a.key !== "Unassigned") return -1;
+      if (a.counts.critical !== b.counts.critical) return b.counts.critical - a.counts.critical;
+      if (a.counts.total !== b.counts.total) return b.counts.total - a.counts.total;
+      return a.key.localeCompare(b.key);
+    });
+    return sorted;
+  }, [filtered]);
+
+  // Dropdown options — sourced from FULL riskStudents (not filtered) so the
+  // user can always switch to any class regardless of which risk-tab is
+  // active. Sort numerically when possible so "Class 9" lands before "Class 10".
+  const allClassesAvailable = useMemo(() => {
+    const set = new Set<string>();
+    riskStudents.forEach(s => {
+      const classes = (s.allClasses && s.allClasses.length > 0) ? s.allClasses : [s.className || ""];
+      classes.forEach(rawCls => {
+        const k = normalizeClassKey(rawCls);
+        if (k) set.add(k);
+      });
+    });
+    const arr = Array.from(set);
+    arr.sort((a, b) => {
+      if (a === "Unassigned" && b !== "Unassigned") return 1;
+      if (b === "Unassigned" && a !== "Unassigned") return -1;
+      // Try numeric prefix sort: "Class 9" → 9, "10A" → 10
+      const num = (s: string) => {
+        const m = s.match(/\d+/);
+        return m ? parseInt(m[0], 10) : Number.POSITIVE_INFINITY;
+      };
+      const na = num(a), nb = num(b);
+      if (na !== nb) return na - nb;
+      return a.localeCompare(b);
+    });
+    return arr;
+  }, [riskStudents]);
+
+  // Apply classFilter to classGroups before rendering.
+  const visibleClassGroups = useMemo(() => {
+    if (classFilter === "All") return classGroups;
+    return classGroups.filter(g => g.key === classFilter);
+  }, [classGroups, classFilter]);
+
+  // Reset stale class selection when the chosen class disappears from the
+  // available list (e.g., student left the class while page is open).
+  useEffect(() => {
+    if (classFilter !== "All" && !allClassesAvailable.includes(classFilter)) {
+      setClassFilter("All");
+    }
+  }, [allClassesAvailable, classFilter]);
+
+  const toggleClass = (key: string) => {
+    setCollapsedClasses(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const goPage = (key: string, page: number) => {
+    setClassPages(prev => ({ ...prev, [key]: Math.max(1, page) }));
+  };
+  const pageOf = (key: string) => classPages[key] || 1;
+
+  // Pre-generate the message used when "Notify Parent" deep-links to chat.
+  const buildParentDraft = (s: RiskStudent): string => {
+    const factors = s.riskFactors.length > 0 ? s.riskFactors.join(", ") : "recent academic and attendance trends";
+    const parts: string[] = [];
+    parts.push(`Hello,`);
+    parts.push("");
+    parts.push(`I am reaching out regarding ${s.name}, who has been flagged as ${s.riskLevel.toLowerCase()} based on ${factors}.`);
+    if (s.attPct !== null) parts.push(`Recent attendance: ${s.attPct}%.`);
+    if (s.avgScore !== null) parts.push(`Average academic score: ${s.avgScore}%.`);
+    parts.push("");
+    parts.push("Could we discuss support options for your child? Please reply at your convenience.");
+    parts.push("");
+    parts.push("Warm regards,");
+    parts.push("Principal");
+    return parts.join("\n");
+  };
+
+  const openParentChat = (s: RiskStudent) => {
+    navigate("/parent-communication", {
+      state: {
+        studentId: s.id,
+        studentEmail: s.email,
+        prefillMessage: buildParentDraft(s),
+      },
+    });
+  };
 
   // ── Detail view ──────────────────────────────────────────────────────────────
   if (selectedStudent) {
@@ -465,6 +822,58 @@ const RiskStudents = () => {
           })}
         </div>
 
+        {/* Class filter dropdown — mobile */}
+        <div className="px-5 pt-3">
+          <div className="relative">
+            <select
+              value={classFilter}
+              onChange={(e) => setClassFilter(e.target.value)}
+              className="w-full rounded-[14px] font-bold cursor-pointer block"
+              style={{
+                WebkitAppearance: "none",
+                MozAppearance: "none",
+                appearance: "none",
+                // Explicit dimensions + line-height matching height = perfect
+                // vertical centering. Tailwind's h-11 alone left iOS Safari
+                // and Edge clipping descenders because the default line-height
+                // of <select> on those engines is shorter than the box.
+                height: 44,
+                lineHeight: "44px",
+                fontSize: 14,
+                paddingTop: 0,
+                paddingBottom: 0,
+                paddingLeft: 16,
+                paddingRight: 38,
+                textIndent: 0,
+                verticalAlign: "middle",
+                background: classFilter !== "All"
+                  ? `linear-gradient(135deg, ${B1}, ${B2})`
+                  : "#FFFFFF",
+                color: classFilter !== "All" ? "#fff" : T1,
+                border: `0.5px solid ${classFilter !== "All" ? "transparent" : "rgba(0,85,255,0.12)"}`,
+                boxShadow: classFilter !== "All" ? SH_BTN : SH,
+              }}
+            >
+              <option value="All" style={{ color: "#000", background: "#fff" }}>All Classes</option>
+              {allClassesAvailable.map(c => (
+                <option key={c} value={c} style={{ color: "#000", background: "#fff" }}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              className="w-[15px] h-[15px] absolute pointer-events-none"
+              style={{
+                right: 14,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: classFilter !== "All" ? "#fff" : T3,
+              }}
+              strokeWidth={2.4}
+            />
+          </div>
+        </div>
+
         {/* Section label */}
         <div className="px-5 pt-4 text-[9px] font-bold uppercase tracking-[0.10em] flex items-center gap-2" style={{ color: T4 }}>
           <span>Student Risk Profiles</span>
@@ -491,12 +900,92 @@ const RiskStudents = () => {
               {filterTab === "All" ? "Risk factors appear when attendance or results data is recorded." : "Try switching to All to see the full list."}
             </div>
           </div>
+        ) : visibleClassGroups.length === 0 ? (
+          <div className="mx-5 mt-3 bg-white rounded-[24px] py-10 flex flex-col items-center gap-[10px]"
+            style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+            <div className="w-[60px] h-[60px] rounded-[20px] flex items-center justify-center"
+              style={{ background: GREEN_S, border: `0.5px solid ${GREEN_B}` }}>
+              <ShieldAlert className="w-7 h-7" style={{ color: GREEN }} strokeWidth={2.2} />
+            </div>
+            <div className="text-[14px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>
+              No students match
+            </div>
+            <div className="text-[11px] text-center max-w-[220px] font-normal leading-[1.55]" style={{ color: T4 }}>
+              Try clearing the class filter or switching to All.
+            </div>
+          </div>
         ) : (
-          filtered.map(s => {
-            const theme = levelTheme(s.riskLevel);
-            const initials = getInitials(s.name);
+          visibleClassGroups.map(g => {
+            const collapsed = collapsedClasses.has(g.key);
+            const totalPages = Math.max(1, Math.ceil(g.students.length / STUDENTS_PER_CLASS_PAGE));
+            const currentPage = Math.min(pageOf(g.key), totalPages);
+            const startIdx = (currentPage - 1) * STUDENTS_PER_CLASS_PAGE;
+            const pagedStudents = g.students.slice(startIdx, startIdx + STUDENTS_PER_CLASS_PAGE);
+
             return (
-              <div key={s.id} className="mx-5 mt-3 bg-white rounded-[24px] overflow-hidden relative"
+              <div key={g.key} className="mx-5 mt-3">
+                {/* Class header */}
+                <div className="bg-white rounded-[16px] px-3 py-3 flex items-center gap-2"
+                  style={{ boxShadow: SH, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+                  <button
+                    onClick={() => toggleClass(g.key)}
+                    className="flex-1 flex items-center gap-2 min-w-0 text-left active:opacity-70"
+                  >
+                    <div className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0"
+                      style={{ background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.22)" }}>
+                      {collapsed
+                        ? <ChevronRight className="w-[13px] h-[13px]" style={{ color: B1 }} strokeWidth={2.5} />
+                        : <ChevronDown  className="w-[13px] h-[13px]" style={{ color: B1 }} strokeWidth={2.5} />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-bold truncate" style={{ color: T1 }}>Class {g.label}</div>
+                      <div className="flex items-center gap-1 mt-0.5 text-[10px] font-bold flex-wrap">
+                        <span className="px-1.5 py-0.5 rounded-full" style={{ background: "rgba(0,85,255,0.10)", color: B1 }}>
+                          {g.counts.total}
+                        </span>
+                        {g.counts.critical > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full" style={{ background: "rgba(255,51,85,0.10)", color: RED }}>
+                            {g.counts.critical} crit
+                          </span>
+                        )}
+                        {g.counts.warning > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full" style={{ background: "rgba(255,170,0,0.10)", color: GOLD }}>
+                            {g.counts.warning} warn
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Class-level bulk action buttons */}
+                {!collapsed && (
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => setNotifyTeachersFor({ className: g.label, classId: g.classId, students: g.students })}
+                      className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[11px] font-bold text-white active:scale-[0.95] transition-transform"
+                      style={{ background: `linear-gradient(135deg, ${B1}, ${B2})`, boxShadow: SH_BTN }}
+                    >
+                      <GraduationCap className="w-[12px] h-[12px]" strokeWidth={2.4} />
+                      Notify Teachers
+                    </button>
+                    <button
+                      onClick={() => setNotifyParentsFor({ className: g.label, students: g.students })}
+                      className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[11px] font-bold text-white active:scale-[0.95] transition-transform"
+                      style={{ background: `linear-gradient(135deg, ${RED}, #FF6688)`, boxShadow: "0 4px 14px rgba(255,51,85,0.26)" }}
+                    >
+                      <Send className="w-[12px] h-[12px]" strokeWidth={2.4} />
+                      Notify Parents
+                    </button>
+                  </div>
+                )}
+
+                {/* Student cards within class */}
+                {!collapsed && pagedStudents.map(s => {
+                  const theme = levelTheme(s.riskLevel);
+                  const initials = getInitials(s.name);
+                  return (
+              <div key={`${g.key}::${s.id}`} className="mt-3 bg-white rounded-[24px] overflow-hidden relative"
                 style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
                 {/* Accent bar */}
                 <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-[2px]" style={{ background: theme.accent }} />
@@ -578,24 +1067,54 @@ const RiskStudents = () => {
                   </div>
                 </div>
 
-                {/* Score strip */}
+                {/* Score strip — CF-4 fix: null avgScore renders GRAY (no
+                    data), not GREEN. Previously a student with no score
+                    docs was visually marked as "doing well" — actively
+                    misleading the principal. */}
                 <div className="flex">
                   <div className="flex-1 px-[14px] py-3" style={{ borderRight: `0.5px solid ${SEP}` }}>
                     <div className="text-[9px] font-bold uppercase tracking-[0.09em] mb-1" style={{ color: T4 }}>AVG Score</div>
-                    <div className="text-[22px] font-bold leading-none mb-1" style={{ color: s.avgScore != null && s.avgScore < 40 ? RED : s.avgScore != null && s.avgScore < 55 ? ORANGE : GREEN_D, letterSpacing: "-0.5px" }}>
+                    <div className="text-[22px] font-bold leading-none mb-1" style={{
+                      color: s.avgScore == null ? T4
+                        : s.avgScore < 40 ? RED
+                        : s.avgScore < 55 ? ORANGE
+                        : GREEN_D,
+                      letterSpacing: "-0.5px",
+                    }}>
                       {s.avgScore != null ? `${s.avgScore}%` : "—"}
                     </div>
                     <div className="h-1 rounded-[2px] overflow-hidden" style={{ background: BG2 }}>
-                      <div className="h-full rounded-[2px]" style={{ width: `${Math.min(100, Math.max(0, s.avgScore || 0))}%`, background: s.avgScore != null && s.avgScore < 40 ? `linear-gradient(90deg, ${RED}, #FF88AA)` : s.avgScore != null && s.avgScore < 55 ? `linear-gradient(90deg, ${ORANGE}, #FFDD44)` : `linear-gradient(90deg, ${GREEN}, #66EE88)` }} />
+                      <div className="h-full rounded-[2px]" style={{
+                        width: s.avgScore == null ? "100%" : `${Math.min(100, Math.max(0, s.avgScore))}%`,
+                        background: s.avgScore == null
+                          // gray striped pattern for "no data" — visually distinct from a low real value
+                          ? "repeating-linear-gradient(45deg, rgba(0,85,255,0.04) 0 4px, rgba(0,85,255,0.10) 4px 8px)"
+                          : s.avgScore < 40 ? `linear-gradient(90deg, ${RED}, #FF88AA)`
+                          : s.avgScore < 55 ? `linear-gradient(90deg, ${ORANGE}, #FFDD44)`
+                          : `linear-gradient(90deg, ${GREEN}, #66EE88)`,
+                      }} />
                     </div>
                   </div>
                   <div className="flex-1 px-[14px] py-3" style={{ borderRight: `0.5px solid ${SEP}` }}>
                     <div className="text-[9px] font-bold uppercase tracking-[0.09em] mb-1" style={{ color: T4 }}>Attendance</div>
-                    <div className="text-[22px] font-bold leading-none mb-1" style={{ color: s.attPct != null && s.attPct >= 85 ? GREEN_D : s.attPct != null && s.attPct >= 70 ? ORANGE : RED, letterSpacing: "-0.5px" }}>
+                    <div className="text-[22px] font-bold leading-none mb-1" style={{
+                      color: s.attPct == null ? T4
+                        : s.attPct >= 85 ? GREEN_D
+                        : s.attPct >= 70 ? ORANGE
+                        : RED,
+                      letterSpacing: "-0.5px",
+                    }}>
                       {s.attPct != null ? `${s.attPct}%` : "—"}
                     </div>
                     <div className="h-1 rounded-[2px] overflow-hidden" style={{ background: BG2 }}>
-                      <div className="h-full rounded-[2px]" style={{ width: `${Math.min(100, Math.max(0, s.attPct || 0))}%`, background: s.attPct != null && s.attPct >= 85 ? `linear-gradient(90deg, ${GREEN}, #66EE88)` : s.attPct != null && s.attPct >= 70 ? `linear-gradient(90deg, ${ORANGE}, #FFDD44)` : `linear-gradient(90deg, ${RED}, #FF88AA)` }} />
+                      <div className="h-full rounded-[2px]" style={{
+                        width: s.attPct == null ? "100%" : `${Math.min(100, Math.max(0, s.attPct))}%`,
+                        background: s.attPct == null
+                          ? "repeating-linear-gradient(45deg, rgba(0,85,255,0.04) 0 4px, rgba(0,85,255,0.10) 4px 8px)"
+                          : s.attPct >= 85 ? `linear-gradient(90deg, ${GREEN}, #66EE88)`
+                          : s.attPct >= 70 ? `linear-gradient(90deg, ${ORANGE}, #FFDD44)`
+                          : `linear-gradient(90deg, ${RED}, #FF88AA)`,
+                      }} />
                     </div>
                   </div>
                   <div className="flex-1 px-[14px] py-3">
@@ -622,13 +1141,48 @@ const RiskStudents = () => {
                     <ArrowRight className="w-[13px] h-[13px]" strokeWidth={2.3} />
                     View Action
                   </button>
-                  <button onClick={() => navigate("/parent-communication")}
+                  <button onClick={() => openParentChat(s)}
                     className="flex-1 h-[42px] rounded-[13px] flex items-center justify-center gap-[7px] text-[12px] font-bold active:scale-[0.95] transition-transform bg-white"
                     style={{ border: "0.5px solid rgba(0,85,255,0.16)", color: "#002080", boxShadow: SH, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
                     <MessageSquare className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
                     Notify
                   </button>
                 </div>
+              </div>
+                  );
+                })}
+
+                {/* Class-scoped pagination — only when needed */}
+                {!collapsed && totalPages > 1 && (
+                  <div className="mt-3 bg-white rounded-[16px] px-3 py-2.5 flex items-center justify-between gap-2"
+                    style={{ boxShadow: SH, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+                    <div className="text-[10px] font-medium" style={{ color: T3 }}>
+                      {startIdx + 1}-{Math.min(startIdx + STUDENTS_PER_CLASS_PAGE, g.students.length)} / {g.students.length}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => goPage(g.key, currentPage - 1)}
+                        disabled={currentPage <= 1}
+                        className="h-7 px-2 rounded-[9px] flex items-center text-[10px] font-bold disabled:opacity-40"
+                        style={{ background: "#fff", color: T1, border: "0.5px solid rgba(0,85,255,0.10)" }}
+                      >
+                        <ChevronLeft className="w-[11px] h-[11px]" strokeWidth={2.5} />
+                      </button>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                        style={{ background: "rgba(0,85,255,0.10)", color: B1 }}>
+                        {currentPage}/{totalPages}
+                      </span>
+                      <button
+                        onClick={() => goPage(g.key, currentPage + 1)}
+                        disabled={currentPage >= totalPages}
+                        className="h-7 px-2 rounded-[9px] flex items-center text-[10px] font-bold disabled:opacity-40"
+                        style={{ background: "#fff", color: T1, border: "0.5px solid rgba(0,85,255,0.10)" }}
+                      >
+                        <ChevronRight className="w-[11px] h-[11px]" strokeWidth={2.5} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })
@@ -710,7 +1264,7 @@ const RiskStudents = () => {
               {[
                 { label: "Schedule a parent-teacher meeting", sub: "High priority · Within 3 days", ico: CalendarPlus, grad: `linear-gradient(135deg, ${B1}, ${B2})`, onClick: () => setMeetingStudent(topStudent) },
                 { label: "Assign additional practice work",   sub: "Medium priority · This week",   ico: Users,        grad: `linear-gradient(135deg, ${RED}, #FF6688)`, onClick: () => navigate("/assignments") },
-                { label: "Send alert to parent",              sub: "Low priority · Optional",       ico: MessageSquare,grad: `linear-gradient(135deg, ${GREEN}, #22EE66)`, onClick: () => navigate("/parent-communication") },
+                { label: "Send alert to parent",              sub: "Low priority · Optional",       ico: MessageSquare,grad: `linear-gradient(135deg, ${GREEN}, #22EE66)`, onClick: () => openParentChat(topStudent) },
               ].map(({ label, sub, ico: Icon, grad, onClick }) => (
                 <button key={label} onClick={onClick}
                   className="flex items-center gap-[10px] px-[14px] py-3 rounded-[14px] active:scale-[0.98] transition-transform text-left"
@@ -743,6 +1297,23 @@ const RiskStudents = () => {
             reason: `Risk level: ${meetingStudent.riskLevel}. Factors: ${meetingStudent.riskFactors.join(", ")}`,
           } : undefined}
         />
+
+        {/* Class-level bulk-notify modals */}
+        {notifyTeachersFor && (
+          <NotifyClassTeachersModal
+            className={notifyTeachersFor.className}
+            classId={notifyTeachersFor.classId}
+            students={notifyTeachersFor.students}
+            onClose={() => setNotifyTeachersFor(null)}
+          />
+        )}
+        {notifyParentsFor && (
+          <NotifyClassParentsModal
+            className={notifyParentsFor.className}
+            students={notifyParentsFor.students}
+            onClose={() => setNotifyParentsFor(null)}
+          />
+        )}
       </div>
     );
   }
@@ -871,8 +1442,8 @@ const RiskStudents = () => {
         })}
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 flex-wrap mt-5">
+      {/* Filter tabs + Class dropdown */}
+      <div className="flex gap-2 flex-wrap mt-5 items-center">
         {(["All", "CRITICAL", "WARNING", "MONITORING"] as FilterTab[]).map(tab => {
           const active = filterTab === tab;
           const displayCount = tab === "All" ? riskStudents.length : tab === "CRITICAL" ? criticalCount : tab === "WARNING" ? warningCount : monitoringCount;
@@ -891,6 +1462,53 @@ const RiskStudents = () => {
             </button>
           );
         })}
+        {/* Class filter dropdown */}
+        <div className="relative ml-auto" style={{ minWidth: 220 }}>
+          <select
+            value={classFilter}
+            onChange={(e) => setClassFilter(e.target.value)}
+            className="w-full rounded-[13px] font-bold cursor-pointer block"
+            style={{
+              WebkitAppearance: "none",
+              MozAppearance: "none",
+              appearance: "none",
+              // Explicit height + matching line-height for perfect vertical
+              // centering across Chrome / Safari / Edge / Firefox <select>.
+              height: 40,
+              lineHeight: "40px",
+              fontSize: 13,
+              paddingTop: 0,
+              paddingBottom: 0,
+              paddingLeft: 16,
+              paddingRight: 36,
+              textIndent: 0,
+              verticalAlign: "middle",
+              background: classFilter !== "All"
+                ? `linear-gradient(135deg, ${dB1}, ${dB2})`
+                : "#FFFFFF",
+              color: classFilter !== "All" ? "#fff" : dT2,
+              border: `0.5px solid ${classFilter !== "All" ? "transparent" : dSEP}`,
+              boxShadow: classFilter !== "All" ? dSH_BTN : dSH,
+            }}
+          >
+            <option value="All" style={{ color: "#000", background: "#fff" }}>All Classes</option>
+            {allClassesAvailable.map(c => (
+              <option key={c} value={c} style={{ color: "#000", background: "#fff" }}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            className="w-4 h-4 absolute pointer-events-none"
+            style={{
+              right: 12,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: classFilter !== "All" ? "#fff" : dT3,
+            }}
+            strokeWidth={2.4}
+          />
+        </div>
       </div>
 
       {/* Section Label */}
@@ -925,118 +1543,201 @@ const RiskStudents = () => {
             {filterTab === "All" ? "Risk factors appear when attendance or results data is recorded" : "Try switching to All to see the full list"}
           </p>
         </div>
+      ) : visibleClassGroups.length === 0 ? (
+        <div className="bg-white rounded-[20px] py-20 flex flex-col items-center gap-3 text-center" style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
+          <div className="w-16 h-16 rounded-[18px] flex items-center justify-center"
+            style={{ background: dGREEN_S, border: `0.5px solid ${dGREEN_B}` }}>
+            <ShieldAlert className="w-8 h-8" style={{ color: dGREEN }} strokeWidth={2.2} />
+          </div>
+          <p className="text-[14px] font-bold" style={{ color: dT1 }}>No students match this class</p>
+          <p className="text-[11px] max-w-[280px]" style={{ color: dT4 }}>
+            Clear the class filter or switch to "All Classes" to see the full list.
+          </p>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          {filtered.map(s => {
-            const theme = levelThemeD(s.riskLevel);
+        <div className="space-y-5">
+          {visibleClassGroups.map(g => {
+            const collapsed = collapsedClasses.has(g.key);
+            const totalPages = Math.max(1, Math.ceil(g.students.length / STUDENTS_PER_CLASS_PAGE));
+            const currentPage = Math.min(pageOf(g.key), totalPages);
+            const startIdx = (currentPage - 1) * STUDENTS_PER_CLASS_PAGE;
+            const pagedStudents = g.students.slice(startIdx, startIdx + STUDENTS_PER_CLASS_PAGE);
+
             return (
-              <div key={s.id} className="bg-white rounded-[20px] overflow-hidden relative"
+              <div key={g.key} className="bg-white rounded-[20px] overflow-hidden"
                 style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
-                <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: theme.grad }} />
-
-                {/* Header row */}
-                <button onClick={() => setSelectedStudent(s)}
-                  className="w-full flex items-center gap-4 pl-6 pr-5 pt-5 pb-4 text-left hover:bg-[#F8FAFF] transition-colors"
-                  style={{ borderBottom: `0.5px solid ${dSEP}` }}>
-                  <div className="w-[52px] h-[52px] rounded-[16px] flex items-center justify-center text-[17px] font-bold text-white shrink-0"
-                    style={{ background: theme.grad, boxShadow: theme.shadow }}>
-                    {getInitialsD(s.name)}
+                {/* Class header — collapsible + 2 bulk action buttons */}
+                <div className="px-5 py-4 flex items-center gap-3 flex-wrap"
+                  style={{ borderBottom: collapsed ? "none" : `0.5px solid ${dSEP}`, background: "linear-gradient(180deg, #F8FAFF 0%, #FFFFFF 100%)" }}>
+                  <button
+                    onClick={() => toggleClass(g.key)}
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left hover:opacity-90"
+                  >
+                    <div className="w-9 h-9 rounded-[11px] flex items-center justify-center shrink-0"
+                      style={{ background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.22)" }}>
+                      {collapsed
+                        ? <ChevronRight className="w-4 h-4" style={{ color: dB1 }} strokeWidth={2.5} />
+                        : <ChevronDown  className="w-4 h-4" style={{ color: dB1 }} strokeWidth={2.5} />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-bold truncate" style={{ color: dT1, letterSpacing: "-0.2px" }}>
+                        Class {g.label}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-[11px] font-bold flex-wrap">
+                        <span className="px-2 py-0.5 rounded-full" style={{ background: "rgba(0,85,255,0.10)", color: dB1 }}>
+                          {g.counts.total} at-risk
+                        </span>
+                        {g.counts.critical > 0 && (
+                          <span className="px-2 py-0.5 rounded-full" style={{ background: dRED_S, color: dRED }}>
+                            {g.counts.critical} critical
+                          </span>
+                        )}
+                        {g.counts.warning > 0 && (
+                          <span className="px-2 py-0.5 rounded-full" style={{ background: "rgba(255,170,0,0.10)", color: dGOLD }}>
+                            {g.counts.warning} warning
+                          </span>
+                        )}
+                        {g.counts.monitoring > 0 && (
+                          <span className="px-2 py-0.5 rounded-full" style={{ background: dGREEN_S, color: dGREEN_D }}>
+                            {g.counts.monitoring} monitoring
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setNotifyTeachersFor({ className: g.label, classId: g.classId, students: g.students })}
+                      className="h-9 px-3 rounded-[10px] flex items-center gap-1.5 text-[11px] font-bold text-white transition-transform hover:scale-[1.02]"
+                      style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: dSH_BTN }}
+                    >
+                      <GraduationCap className="w-[13px] h-[13px]" strokeWidth={2.4} />
+                      Notify Teachers
+                    </button>
+                    <button
+                      onClick={() => setNotifyParentsFor({ className: g.label, students: g.students })}
+                      className="h-9 px-3 rounded-[10px] flex items-center gap-1.5 text-[11px] font-bold text-white transition-transform hover:scale-[1.02]"
+                      style={{ background: `linear-gradient(135deg, ${dRED}, #FF6688)`, boxShadow: "0 4px 14px rgba(255,51,85,0.26)" }}
+                    >
+                      <Send className="w-[13px] h-[13px]" strokeWidth={2.4} />
+                      Notify All Parents
+                    </button>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <div className="text-[15px] font-bold truncate" style={{ color: dT1, letterSpacing: "-0.2px" }}>{s.name}</div>
-                      <span className="px-[10px] py-[4px] rounded-full text-[9px] font-bold uppercase tracking-[0.08em] text-white"
-                        style={{ background: theme.grad, boxShadow: `0 2px 6px ${theme.color}44` }}>
-                        {s.riskLevel}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: dT3 }}>
-                      <Users className="w-[11px] h-[11px]" strokeWidth={2.5} />
-                      {s.className || "—"}
-                      {s.attPct !== null && ` · Att: ${s.attPct}%`}
-                    </div>
-                  </div>
-                  <div className="w-2 h-2 rounded-full shrink-0 animate-pulse"
-                    style={{ background: theme.color, boxShadow: `0 0 0 3px ${theme.color}33` }} />
-                </button>
-
-                {/* Meta grid */}
-                <div className="grid grid-cols-4">
-                  {[
-                    { label: "Risk Level", val: s.riskLevel.charAt(0) + s.riskLevel.slice(1).toLowerCase(), color: theme.color },
-                    { label: "Days Flagged", val: s.daysFlagged > 0 ? `${s.daysFlagged}d` : "Today", color: s.daysFlagged >= 10 ? dRED : s.daysFlagged >= 5 ? dORANGE : dT1 },
-                    { label: "Factors", val: String(s.riskFactors.length), color: dT1 },
-                    { label: "Assigned", val: s.assignedTo && s.assignedTo !== "—" ? s.assignedTo.split(" ")[0] : "—", color: s.assignedTo && s.assignedTo !== "—" ? dT1 : dT4 },
-                  ].map((cell, i, arr) => (
-                    <div key={cell.label} className="px-4 py-3"
-                      style={{ borderRight: i < arr.length - 1 ? `0.5px solid ${dSEP}` : undefined, borderBottom: `0.5px solid ${dSEP}` }}>
-                      <div className="text-[9px] font-bold uppercase tracking-[0.08em] mb-[5px]" style={{ color: dT4 }}>{cell.label}</div>
-                      <div className="text-[14px] font-bold truncate" style={{ color: cell.color, letterSpacing: "-0.1px" }}>{cell.val}</div>
-                    </div>
-                  ))}
                 </div>
 
-                {/* Risk factors chips */}
-                {s.riskFactors.length > 0 && (
-                  <div className="px-6 py-3 flex flex-wrap gap-1.5" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
-                    {s.riskFactors.slice(0, 4).map((f, i) => (
-                      <span key={i} className="inline-flex items-center px-[10px] py-[4px] rounded-full text-[10px] font-bold"
-                        style={{ background: dRED_S, color: dRED, border: `0.5px solid ${dRED_B}` }}>
-                        {f}
-                      </span>
-                    ))}
-                    {s.riskFactors.length > 4 && (
-                      <span className="inline-flex items-center px-[10px] py-[4px] rounded-full text-[10px] font-bold"
-                        style={{ background: dBG2, color: dT3 }}>
-                        +{s.riskFactors.length - 4} more
-                      </span>
+                {/* Expanded body — paginated student grid */}
+                {!collapsed && (
+                  <div className="p-4 space-y-4">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                      {pagedStudents.map(s => {
+                        const theme = levelThemeD(s.riskLevel);
+                        return (
+                          <div key={`${g.key}::${s.id}`} className="bg-white rounded-[16px] overflow-hidden relative"
+                            style={{ boxShadow: dSH, border: `0.5px solid ${dSEP}` }}>
+                            <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: theme.grad }} />
+
+                            <button onClick={() => setSelectedStudent(s)}
+                              className="w-full flex items-center gap-3 pl-5 pr-4 pt-4 pb-3 text-left hover:bg-[#F8FAFF] transition-colors"
+                              style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                              <div className="w-[44px] h-[44px] rounded-[14px] flex items-center justify-center text-[15px] font-bold text-white shrink-0"
+                                style={{ background: theme.grad, boxShadow: theme.shadow }}>
+                                {getInitialsD(s.name)}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  <div className="text-[14px] font-bold truncate" style={{ color: dT1, letterSpacing: "-0.2px" }}>{s.name}</div>
+                                  <span className="px-[8px] py-[3px] rounded-full text-[9px] font-bold uppercase tracking-[0.08em] text-white"
+                                    style={{ background: theme.grad, boxShadow: `0 2px 6px ${theme.color}44` }}>
+                                    {s.riskLevel}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[10.5px] font-medium" style={{ color: dT3 }}>
+                                  {s.daysFlagged > 0 ? `${s.daysFlagged}d flagged` : "Flagged today"}
+                                  {s.attPct !== null && ` · Att ${s.attPct}%`}
+                                  {s.avgScore !== null && ` · Avg ${s.avgScore}%`}
+                                </div>
+                              </div>
+                              <div className="w-2 h-2 rounded-full shrink-0 animate-pulse"
+                                style={{ background: theme.color, boxShadow: `0 0 0 3px ${theme.color}33` }} />
+                            </button>
+
+                            {s.riskFactors.length > 0 && (
+                              <div className="px-5 py-2.5 flex flex-wrap gap-1.5" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                                {s.riskFactors.slice(0, 3).map((f, i) => (
+                                  <span key={i} className="inline-flex items-center px-[8px] py-[3px] rounded-full text-[10px] font-bold"
+                                    style={{ background: dRED_S, color: dRED, border: `0.5px solid ${dRED_B}` }}>
+                                    {f}
+                                  </span>
+                                ))}
+                                {s.riskFactors.length > 3 && (
+                                  <span className="inline-flex items-center px-[8px] py-[3px] rounded-full text-[10px] font-bold"
+                                    style={{ background: dBG2, color: dT3 }}>
+                                    +{s.riskFactors.length - 3}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Per-student actions */}
+                            <div className="flex gap-2 p-3">
+                              <button onClick={() => setMeetingStudent(s)}
+                                className="flex-1 h-9 rounded-[10px] flex items-center justify-center gap-1.5 text-[11px] font-bold text-white transition-transform hover:scale-[1.02]"
+                                style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: dSH_BTN }}>
+                                <CalendarPlus className="w-[12px] h-[12px]" strokeWidth={2.3} />
+                                Meet
+                              </button>
+                              <button onClick={() => setSelectedStudent(s)}
+                                className="flex-1 h-9 rounded-[10px] flex items-center justify-center gap-1.5 text-[11px] font-bold text-white transition-transform hover:scale-[1.02]"
+                                style={{ background: "linear-gradient(135deg, #001040, #001888)", boxShadow: "0 4px 14px rgba(0,8,64,0.26)" }}>
+                                <ArrowRight className="w-[12px] h-[12px]" strokeWidth={2.3} />
+                                Action
+                              </button>
+                              <button onClick={() => openParentChat(s)}
+                                className="flex-1 h-9 rounded-[10px] flex items-center justify-center gap-1.5 text-[11px] font-bold bg-white transition-transform hover:scale-[1.02]"
+                                style={{ border: `0.5px solid ${dSEP}`, color: dT2, boxShadow: dSH }}>
+                                <MessageSquare className="w-[12px] h-[12px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
+                                Notify Parent
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Class-scoped pagination */}
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between gap-3 pt-2">
+                        <div className="text-[11px] font-medium" style={{ color: dT3 }}>
+                          Showing {startIdx + 1}-{Math.min(startIdx + STUDENTS_PER_CLASS_PAGE, g.students.length)} of {g.students.length}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => goPage(g.key, currentPage - 1)}
+                            disabled={currentPage <= 1}
+                            className="h-8 px-3 rounded-[10px] flex items-center gap-1 text-[11px] font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                            style={{ background: "#fff", color: dT2, border: `0.5px solid ${dSEP}`, boxShadow: dSH }}
+                          >
+                            <ChevronLeft className="w-[12px] h-[12px]" strokeWidth={2.5} />
+                            Prev
+                          </button>
+                          <span className="text-[11px] font-bold px-3 py-1 rounded-full"
+                            style={{ background: "rgba(0,85,255,0.10)", color: dB1 }}>
+                            {currentPage} / {totalPages}
+                          </span>
+                          <button
+                            onClick={() => goPage(g.key, currentPage + 1)}
+                            disabled={currentPage >= totalPages}
+                            className="h-8 px-3 rounded-[10px] flex items-center gap-1 text-[11px] font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                            style={{ background: "#fff", color: dT2, border: `0.5px solid ${dSEP}`, boxShadow: dSH }}
+                          >
+                            Next
+                            <ChevronRight className="w-[12px] h-[12px]" strokeWidth={2.5} />
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
-
-                {/* Score strip */}
-                <div className="grid grid-cols-3">
-                  {[
-                    { label: "Avg Score", val: s.avgScore != null ? `${s.avgScore}%` : "—", color: s.avgScore != null && s.avgScore < 40 ? dRED : s.avgScore != null && s.avgScore < 55 ? dORANGE : dGREEN_D, pct: s.avgScore ?? 0 },
-                    { label: "Attendance", val: s.attPct != null ? `${s.attPct}%` : "—", color: s.attPct != null && s.attPct >= 85 ? dGREEN_D : s.attPct != null && s.attPct >= 70 ? dORANGE : dRED, pct: s.attPct ?? 0 },
-                    { label: "Last Action", val: s.lastAction && s.lastAction !== "—" ? s.lastAction : "None yet", color: s.lastAction && s.lastAction !== "—" ? dT1 : dT4, pct: 0, isText: true },
-                  ].map((cell, i, arr) => (
-                    <div key={cell.label} className="px-4 py-3"
-                      style={{ borderRight: i < arr.length - 1 ? `0.5px solid ${dSEP}` : undefined, borderBottom: `0.5px solid ${dSEP}` }}>
-                      <div className="text-[9px] font-bold uppercase tracking-[0.08em] mb-1" style={{ color: dT4 }}>{cell.label}</div>
-                      <div className={`${cell.isText ? "text-[13px]" : "text-[20px]"} font-bold leading-none ${cell.isText ? "mb-0 truncate" : "mb-1.5"}`}
-                        style={{ color: cell.color, letterSpacing: "-0.3px" }}>{cell.val}</div>
-                      {!cell.isText && (
-                        <div className="h-1 rounded-[2px]" style={{ background: dBG2 }}>
-                          <div className="h-full rounded-[2px]" style={{ width: `${Math.min(100, Math.max(0, cell.pct))}%`, background: cell.color }} />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-2 p-4">
-                  <button onClick={() => setMeetingStudent(s)}
-                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[12px] font-bold text-white transition-transform hover:scale-[1.02] relative overflow-hidden"
-                    style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: dSH_BTN }}>
-                    <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 52%)" }} />
-                    <CalendarPlus className="w-[13px] h-[13px] relative z-10" strokeWidth={2.3} />
-                    <span className="relative z-10">Schedule Meet</span>
-                  </button>
-                  <button onClick={() => setSelectedStudent(s)}
-                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[12px] font-bold text-white transition-transform hover:scale-[1.02]"
-                    style={{ background: "linear-gradient(135deg, #001040, #001888)", boxShadow: "0 4px 14px rgba(0,8,64,0.26)" }}>
-                    <ArrowRight className="w-[13px] h-[13px]" strokeWidth={2.3} />
-                    View Intervention
-                  </button>
-                  <button onClick={() => navigate("/parent-communication")}
-                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02]"
-                    style={{ border: `0.5px solid ${dSEP}`, color: dT2, boxShadow: dSH }}>
-                    <MessageSquare className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
-                    Notify Parent
-                  </button>
-                </div>
               </div>
             );
           })}
@@ -1088,7 +1789,7 @@ const RiskStudents = () => {
               {[
                 { label: "Schedule parent-teacher meeting", sub: "High priority · Within 3 days", Icon: CalendarPlus, grad: `linear-gradient(135deg, ${dB1}, ${dB2})`, onClick: () => setMeetingStudent(topStudentD) },
                 { label: "Assign additional practice work", sub: "Medium priority · This week", Icon: Users, grad: `linear-gradient(135deg, ${dRED}, #FF6688)`, onClick: () => navigate("/assignments") },
-                { label: "Send alert to parent", sub: "Low priority · Optional", Icon: MessageSquare, grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, onClick: () => navigate("/parent-communication") },
+                { label: "Send alert to parent", sub: "Low priority · Optional", Icon: MessageSquare, grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, onClick: () => openParentChat(topStudentD) },
               ].map(({ label, sub, Icon, grad, onClick }) => (
                 <button key={label} onClick={onClick}
                   className="flex items-center gap-3 px-4 py-3 rounded-[14px] transition-transform hover:scale-[1.01] text-left"
@@ -1120,6 +1821,23 @@ const RiskStudents = () => {
           reason: `Risk level: ${meetingStudent.riskLevel}. Factors: ${meetingStudent.riskFactors.join(", ")}`
         } : undefined}
       />
+
+      {/* Class-level bulk-notify modals */}
+      {notifyTeachersFor && (
+        <NotifyClassTeachersModal
+          className={notifyTeachersFor.className}
+          classId={notifyTeachersFor.classId}
+          students={notifyTeachersFor.students}
+          onClose={() => setNotifyTeachersFor(null)}
+        />
+      )}
+      {notifyParentsFor && (
+        <NotifyClassParentsModal
+          className={notifyParentsFor.className}
+          students={notifyParentsFor.students}
+          onClose={() => setNotifyParentsFor(null)}
+        />
+      )}
     </div>
   );
 };

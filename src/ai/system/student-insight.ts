@@ -46,14 +46,17 @@ export interface StudentInsight {
 // avg + attendance — we mine the same raw numbers for additional patterns.
 
 interface DerivedSignals {
-  avgScore: number;
-  attendancePct: number;
+  /** Null when student has no usable score data — consumers MUST guard. */
+  avgScore: number | null;
+  /** Null when student has no attendance records. */
+  attendancePct: number | null;
   testsCount: number;
   hasAttendanceData: boolean;
   hasScoreData: boolean;
   scoreTrend: "improving" | "declining" | "stable" | "unknown";
   scoreVariance: "consistent" | "erratic" | "unknown";
-  recentDropPct: number | null;   // % drop from earlier-half avg to recent-half avg
+  /** Drop in PERCENTAGE POINTS from earlier-half avg to recent-half avg. */
+  recentDropPct: number | null;
   attendanceBand: "excellent" | "good" | "concerning" | "critical" | "unknown";
   scoreBand: "strong" | "stable" | "weak" | "critical" | "unknown";
   category: ClassifiedStudent["category"];
@@ -66,10 +69,21 @@ const computeTrend = (scores: number[]): {
 } => {
   if (scores.length < 3) return { trend: "unknown", recentDropPct: null, variance: "unknown" };
 
-  // Split window: earlier half vs recent half
-  const half = Math.floor(scores.length / 2);
-  const earlier = scores.slice(0, half);
-  const recent = scores.slice(-half);
+  // Split window — earlier half vs recent half. For odd-length arrays the
+  // MIDDLE element used to be silently dropped (slice(0, half) +
+  // slice(-half) leave index `half` in neither slice when length is odd).
+  // Fix: include the middle in the recent slice so trends use ALL data.
+  // Assumes ascending date order — see StudentSignals.scores JSDoc; the
+  // producer is contractually obligated to sort. If you ever debug
+  // "wrong direction trends", check the producer's sort order first.
+  const len = scores.length;
+  const halfFloor = Math.floor(len / 2);
+  const earlier = scores.slice(0, halfFloor);
+  const recent  = scores.slice(halfFloor + (len % 2 === 0 ? 0 : 0)); // recent gets middle when odd
+  // (len%2===0 ? 0 : 0) is intentional clarity — but actually we want the
+  // simpler form: recent always starts AT halfFloor for odd lengths,
+  // ensuring the middle element lands in `recent`. For even lengths,
+  // `slice(halfFloor)` and `slice(-halfFloor)` are equivalent.
 
   const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
   const earlierAvg = avg(earlier);
@@ -81,9 +95,12 @@ const computeTrend = (scores: number[]): {
   else if (delta < -4) trend = "declining";
   else trend = "stable";
 
+  // PERCENTAGE POINTS not relative percent. Copy MUST say "X percentage
+  // points" (or "Xpp") to avoid the reader interpreting 70→60 as a "10%"
+  // drop when it's actually a 14% relative drop.
   const recentDropPct = delta < 0 ? Math.round(Math.abs(delta)) : null;
 
-  // Variance — std-dev as % of mean. >15% absolute → erratic.
+  // Variance — std-dev (NOT as % of mean — comment was wrong). > 12 → erratic.
   const mean = avg(scores);
   const sd = Math.sqrt(avg(scores.map(s => (s - mean) ** 2)));
   const variance: DerivedSignals["scoreVariance"] = sd > 12 ? "erratic" : "consistent";
@@ -91,16 +108,16 @@ const computeTrend = (scores: number[]): {
   return { trend, recentDropPct, variance };
 };
 
-const attendanceBand = (pct: number, hasData: boolean): DerivedSignals["attendanceBand"] => {
-  if (!hasData) return "unknown";
+const attendanceBand = (pct: number | null, hasData: boolean): DerivedSignals["attendanceBand"] => {
+  if (!hasData || pct === null) return "unknown";
   if (pct >= 90) return "excellent";
   if (pct >= 75) return "good";
   if (pct >= 60) return "concerning";
   return "critical";
 };
 
-const scoreBand = (avg: number, hasData: boolean): DerivedSignals["scoreBand"] => {
-  if (!hasData) return "unknown";
+const scoreBand = (avg: number | null, hasData: boolean): DerivedSignals["scoreBand"] => {
+  if (!hasData || avg === null) return "unknown";
   if (avg >= 75) return "strong";
   if (avg >= 60) return "stable";
   if (avg >= 40) return "weak";
@@ -109,8 +126,11 @@ const scoreBand = (avg: number, hasData: boolean): DerivedSignals["scoreBand"] =
 
 const deriveSignals = (s: ClassifiedStudent): DerivedSignals => {
   const validScores = s.scores.filter((n) => Number.isFinite(n));
-  const hasScoreData = validScores.length > 0;
-  const hasAttendanceData = s.totalAttendance > 0;
+  // Prefer the classifier's flags over re-computing from raw — single source
+  // of truth. Falls back to local check for legacy callers that may pass a
+  // ClassifiedStudent without the flags.
+  const hasScoreData = s.hasScoreData ?? (validScores.length > 0);
+  const hasAttendanceData = s.hasAttendanceData ?? (s.totalAttendance > 0);
   const { trend, recentDropPct, variance } = computeTrend(validScores);
 
   return {

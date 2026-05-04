@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Loader2, MessageSquare, Search, Send, User, ChevronLeft, CheckCheck, Users, Mail, Smile, Plus, MoreVertical, Sparkles, Check, Paperclip, Phone, Video, Lock } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import CommunicationIntelligence from "@/components/CommunicationIntelligence";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
@@ -10,6 +11,12 @@ import { useIsMobile } from "@/hooks/use-mobile";
 const ParentCommunication = () => {
   const { userData } = useAuth();
   const isMobile = useIsMobile();
+  // Deep-link state: { studentId, studentEmail?, prefillMessage? }
+  // RiskStudents page passes this when a principal clicks "Notify Parent"
+  // so the chat opens directly to that parent with a pre-generated draft.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const deepLink = (location.state || {}) as { studentId?: string; studentEmail?: string; prefillMessage?: string };
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [allMessages, setAllMessages]         = useState<any[]>([]);
   const [students, setStudents]               = useState<any[]>([]);
@@ -17,7 +24,31 @@ const ParentCommunication = () => {
   const [studentsLoading, setStudentsLoading] = useState(true);
   const [searchQuery, setSearchQuery]         = useState("");
   const [messageContent, setMessageContent]   = useState("");
+  // Honor deep-link prefill exactly once — subsequent renders keep user edits.
+  const deepLinkApplied = useRef(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // After students load, if a deep-link target was passed, auto-open that
+  // chat thread + prefill the draft message. Runs once per navigation.
+  useEffect(() => {
+    if (deepLinkApplied.current) return;
+    if (studentsLoading) return;
+    if (!deepLink?.studentId && !deepLink?.studentEmail) return;
+    const wantedId = (deepLink.studentId || "").trim();
+    const wantedEmail = (deepLink.studentEmail || "").trim().toLowerCase();
+    const match = students.find(s => {
+      const sid = (s.studentId || s.id || "").trim();
+      const sem = (s.studentEmail || s.email || "").trim().toLowerCase();
+      return (wantedId && sid === wantedId) || (wantedEmail && sem === wantedEmail);
+    });
+    if (match) {
+      setSelectedStudent(match);
+      if (deepLink.prefillMessage) setMessageContent(deepLink.prefillMessage);
+      deepLinkApplied.current = true;
+      // Clear router state so a manual refresh doesn't re-trigger the prefill.
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [studentsLoading, students, deepLink, navigate, location.pathname]);
 
   useEffect(() => {
     if (!userData?.schoolId) return;

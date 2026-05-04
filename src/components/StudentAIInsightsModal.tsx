@@ -67,7 +67,11 @@ export default function StudentAIInsightsModal({ student, onClose }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [student.studentId, userData?.schoolId]);
+    // Include `category` so re-classification (after a fresh score upload
+    // flips the band) invalidates the local fetch and re-pulls the insight.
+    // The cache itself respects category via the `_category` field but the
+    // modal would otherwise show the OLD-tier insight until manual regen.
+  }, [student.studentId, student.category, userData?.schoolId]);
 
   const handleRegenerate = async () => {
     if (!userData?.schoolId) return;
@@ -89,10 +93,15 @@ export default function StudentAIInsightsModal({ student, onClose }: Props) {
   const urgency    = insight?.urgency    ? URGENCY_META[insight.urgency]    : null;
   const confidence = insight?.confidence ? CONFIDENCE_META[insight.confidence] : null;
 
-  // Cache age (only shown when result is from cache)
-  const cacheAgeHrs = insight?._fromCache && insight._cachedAt
-    ? Math.floor((Date.now() - insight._cachedAt.toMillis()) / 3_600_000)
-    : null;
+  // Cache age (only shown when result is from cache). Guard `.toMillis`
+  // because an older cache doc could have stored `_cachedAt` as something
+  // other than a Firestore Timestamp (string / number / null), and
+  // calling .toMillis on a non-Timestamp value crashes the modal.
+  const cacheAgeHrs = (() => {
+    if (!insight?._fromCache || !insight._cachedAt) return null;
+    if (typeof insight._cachedAt.toMillis !== "function") return null;
+    return Math.floor((Date.now() - insight._cachedAt.toMillis()) / 3_600_000);
+  })();
 
   return (
     <div
