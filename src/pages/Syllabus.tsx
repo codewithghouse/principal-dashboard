@@ -2,17 +2,30 @@ import { useState, useEffect, useMemo } from "react";
 import {
   Library, FileText, Trash2, Eye, Building2, Calendar,
   Search, Loader2, BookOpen, Upload, Download, Sparkles,
-  CheckCircle2, Clock
+  CheckCircle2, Clock, X, Plus, FileUp
 } from "lucide-react";
 import { toast } from "sonner";
 import { db, storage } from "@/lib/firebase";
 import {
   collection, query, where, onSnapshot,
-  deleteDoc, doc
+  deleteDoc, doc, addDoc, serverTimestamp
 } from "firebase/firestore";
-import { ref, deleteObject } from "firebase/storage";
+import { ref, deleteObject, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
+
+// ─── Upload constraints ───────────────────────────────────────────────────────
+const MAX_FILE_SIZE = 30 * 1024 * 1024; // 30MB
+const ALLOWED_FILE_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "image/jpeg",
+  "image/png",
+];
+const ALLOWED_EXT_HINT = ".pdf, .doc, .docx, .ppt, .pptx, .jpg, .png";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SyllabusDoc {
@@ -115,6 +128,21 @@ const Syllabus = () => {
   const [searchQuery,   setSearchQuery]   = useState("");
   const [deletingId,    setDeletingId]    = useState<string | null>(null);
 
+  // ── Upload state ──────────────────────────────────────────────────────────
+  // Principal-authored upload flow. Class list comes from a live `classes`
+  // listener so the dropdown stays current without refresh.
+  const [classes,       setClasses]       = useState<{ id: string; name: string; grade?: string; section?: string }[]>([]);
+  const [uploadOpen,    setUploadOpen]    = useState(false);
+  const [uploadForm,    setUploadForm]    = useState<{
+    classId: string;
+    subject: string;
+    title: string;
+    academicYear: string;
+    file: File | null;
+  }>({ classId: "", subject: "", title: "", academicYear: "", file: null });
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploading,     setUploading]     = useState(false);
+
   // ── Real-time syllabi listener ───────────────────────────────────────────
   useEffect(() => {
     if (!userData) {
@@ -163,6 +191,36 @@ const Syllabus = () => {
       unsub();
     };
   }, [userData]);
+
+  // ── Classes listener (for upload modal dropdown) ──────────────────────────
+  useEffect(() => {
+    const schoolId = userData?.schoolId;
+    if (!schoolId) return;
+    // schoolId-only server-side; branchId in-memory (memory:
+    // branchid_inference_lag — server-side branchId would silently hide
+    // freshly-created classes).
+    const branchId = userData?.branchId || "";
+    const inBranch = (raw: any): boolean =>
+      !branchId || !raw?.branchId || raw.branchId === branchId;
+    const unsub = onSnapshot(
+      query(collection(db, "classes"), where("schoolId", "==", schoolId)),
+      (snap) => {
+        const list = snap.docs
+          .map(d => ({ id: d.id, ...(d.data() as any) }))
+          .filter(inBranch)
+          .map(c => ({
+            id: c.id,
+            name: c.name || `${c.grade || ""}${c.section || ""}`.trim() || "Class",
+            grade: c.grade,
+            section: c.section,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        setClasses(list);
+      },
+      (err) => console.warn("[Syllabus] classes listener failed:", err),
+    );
+    return () => unsub();
+  }, [userData?.schoolId, userData?.branchId]);
 
   // ── Derived data ─────────────────────────────────────────────────────────
   const classOptions = useMemo(() => {
@@ -243,6 +301,460 @@ const Syllabus = () => {
       setDeletingId(null);
     }
   };
+
+  // ── Upload handler ───────────────────────────────────────────────────────
+  // Validates file type + size, uploads to Firebase Storage at
+  // `syllabi/{schoolId}/{classId}/{auto}.ext`, then writes Firestore doc
+  // tagged with classId + className so teacher- and parent-dashboards can
+  // filter by class via their existing readers.
+  const resetUploadForm = () => {
+    setUploadForm({ classId: "", subject: "", title: "", academicYear: "", file: null });
+    setUploadProgress(0);
+  };
+
+  const handleUpload = async () => {
+    const schoolId = userData?.schoolId;
+    if (!schoolId) {
+      toast.error("School context missing — please re-login.");
+      return;
+    }
+    const { classId, subject, title, academicYear, file } = uploadForm;
+    if (!classId) { toast.error("Please select a class."); return; }
+    if (!title.trim()) { toast.error("Please enter a title."); return; }
+    if (!file) { toast.error("Please choose a file to upload."); return; }
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(`File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max 30MB.`);
+      return;
+    }
+    if (file.type && !ALLOWED_FILE_TYPES.includes(file.type)) {
+      toast.error(`File type not supported. Allowed: ${ALLOWED_EXT_HINT}`);
+      return;
+    }
+
+    const cls = classes.find(c => c.id === classId);
+    if (!cls) { toast.error("Selected class no longer exists."); return; }
+
+    const branchId = userData?.branchId || null;
+    const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+    // Storage path matches the existing 5-segment layout used by the teacher
+    // dashboard: `syllabi/{schoolId}/{branchId}/{classId}/{authorBucket}/{file}`.
+    // Principal uploads use the literal "principal" bucket; teacher uploads
+    // use a title-slug. Storage rules require this exact shape — see
+    // parent-dashboard/storage.rules. branchId falls back to "_default" so
+    // single-branch tenants still produce a valid path.
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
+    const branchSeg = branchId || "_default";
+    const filePath = `syllabi/${schoolId}/${branchSeg}/${classId}/principal/${Date.now()}_${safeName}`;
+    const storageRef = ref(storage, filePath);
+
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      const task = uploadBytesResumable(storageRef, file, { contentType: file.type || `application/${ext}` });
+      await new Promise<void>((resolve, reject) => {
+        task.on(
+          "state_changed",
+          (snap) => {
+            const pct = snap.totalBytes > 0
+              ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100)
+              : 0;
+            setUploadProgress(pct);
+          },
+          (err) => reject(err),
+          () => resolve(),
+        );
+      });
+      const fileUrl = await getDownloadURL(task.snapshot.ref);
+
+      await addDoc(collection(db, "syllabi"), {
+        // Class scope — what teacher- and parent-dashboards filter by.
+        classId,
+        className: cls.name,
+        // Subject + academic year metadata.
+        subject: subject.trim() || null,
+        academicYear: academicYear.trim() || null,
+        // Title shown in card header. Defaults to file name if blank.
+        title: title.trim(),
+        // File metadata.
+        fileUrl,
+        filePath,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type || `application/${ext}`,
+        // Authorship — distinguishes principal-authored vs teacher-uploaded
+        // (legacy). Parent/teacher dashboards don't filter on this; it's
+        // kept for audit + future principal-only filtering.
+        uploadedBy: userData?.id || "",
+        uploadedByName: (userData as any)?.fullName || (userData as any)?.name || "Principal",
+        uploadedByRole: "principal",
+        // Tenant scope (memory: bug_pattern_unscoped_collection_reads —
+        // every write must include schoolId for cross-tenant isolation).
+        schoolId,
+        branchId,
+        // Lifecycle.
+        isActive: true,
+        uploadedAt: serverTimestamp(),
+      });
+
+      toast.success(`Syllabus uploaded for ${cls.name}!`);
+      setUploadOpen(false);
+      resetUploadForm();
+    } catch (err: any) {
+      console.error("[Syllabus] upload failed:", err);
+      // Roll back the storage object if Firestore write failed (best effort)
+      try { await deleteObject(storageRef); } catch { /* swallow */ }
+      toast.error(`Upload failed: ${err?.message || "Unknown error"}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ── Upload Modal (shared between mobile + desktop) ───────────────────────
+  // Centred overlay; same colour palette as the desktop hero. State lives on
+  // the parent component so opening from either layout reuses one form.
+  const UploadModal = uploadOpen ? (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,16,64,0.55)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        fontFamily: "'DM Sans', -apple-system, sans-serif",
+      }}
+      onClick={() => { if (!uploading) { setUploadOpen(false); resetUploadForm(); } }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#fff",
+          borderRadius: 22,
+          width: "100%",
+          maxWidth: 520,
+          maxHeight: "92vh",
+          overflowY: "auto",
+          boxShadow: "0 24px 80px rgba(0,16,64,0.32), 0 0 0 0.5px rgba(0,85,255,0.18)",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: "20px 22px 16px",
+            borderBottom: "0.5px solid rgba(0,85,255,0.10)",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 13,
+              background: "linear-gradient(135deg, #0055FF, #1166FF)",
+              boxShadow: "0 6px 18px rgba(0,85,255,0.30)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <FileUp size={22} color="#fff" strokeWidth={2.3} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: "#001040", letterSpacing: "-0.3px" }}>
+              Upload Syllabus
+            </div>
+            <div style={{ fontSize: 12, color: "#5070B0", marginTop: 2 }}>
+              Pick a class — teachers and students get instant access.
+            </div>
+          </div>
+          <button
+            onClick={() => { if (!uploading) { setUploadOpen(false); resetUploadForm(); } }}
+            disabled={uploading}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+              background: "rgba(0,85,255,0.06)",
+              border: "0.5px solid rgba(0,85,255,0.14)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: uploading ? "not-allowed" : "pointer",
+              opacity: uploading ? 0.5 : 1,
+            }}
+            aria-label="Close"
+          >
+            <X size={16} color="#002080" strokeWidth={2.3} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Class */}
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "#002080", letterSpacing: "0.04em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+              Class <span style={{ color: "#FF3355" }}>*</span>
+            </label>
+            <select
+              value={uploadForm.classId}
+              onChange={(e) => setUploadForm(f => ({ ...f, classId: e.target.value }))}
+              disabled={uploading}
+              style={{
+                width: "100%",
+                height: 44,
+                padding: "0 14px",
+                background: "#fff",
+                borderRadius: 12,
+                border: "0.5px solid rgba(0,85,255,0.18)",
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#001040",
+                outline: "none",
+                cursor: uploading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <option value="">— Select a class —</option>
+              {classes.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            {classes.length === 0 && (
+              <div style={{ fontSize: 11, color: "#FF3355", marginTop: 6, fontWeight: 600 }}>
+                No classes found. Create classes in Classes &amp; Sections first.
+              </div>
+            )}
+          </div>
+
+          {/* Title */}
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "#002080", letterSpacing: "0.04em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+              Title <span style={{ color: "#FF3355" }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={uploadForm.title}
+              onChange={(e) => setUploadForm(f => ({ ...f, title: e.target.value }))}
+              placeholder="e.g. Class 10 Mathematics — Term 1 Syllabus"
+              disabled={uploading}
+              maxLength={120}
+              style={{
+                width: "100%",
+                height: 44,
+                padding: "0 14px",
+                background: "#fff",
+                borderRadius: 12,
+                border: "0.5px solid rgba(0,85,255,0.18)",
+                fontSize: 13,
+                fontWeight: 500,
+                color: "#001040",
+                outline: "none",
+                fontFamily: "inherit",
+              }}
+            />
+          </div>
+
+          {/* Subject + Academic Year */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "#002080", letterSpacing: "0.04em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+                Subject
+              </label>
+              <input
+                type="text"
+                value={uploadForm.subject}
+                onChange={(e) => setUploadForm(f => ({ ...f, subject: e.target.value }))}
+                placeholder="e.g. Mathematics"
+                disabled={uploading}
+                maxLength={60}
+                style={{
+                  width: "100%",
+                  height: 44,
+                  padding: "0 14px",
+                  background: "#fff",
+                  borderRadius: 12,
+                  border: "0.5px solid rgba(0,85,255,0.18)",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "#001040",
+                  outline: "none",
+                  fontFamily: "inherit",
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "#002080", letterSpacing: "0.04em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+                Academic Year
+              </label>
+              <input
+                type="text"
+                value={uploadForm.academicYear}
+                onChange={(e) => setUploadForm(f => ({ ...f, academicYear: e.target.value }))}
+                placeholder="e.g. 2025-26"
+                disabled={uploading}
+                maxLength={20}
+                style={{
+                  width: "100%",
+                  height: 44,
+                  padding: "0 14px",
+                  background: "#fff",
+                  borderRadius: 12,
+                  border: "0.5px solid rgba(0,85,255,0.18)",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "#001040",
+                  outline: "none",
+                  fontFamily: "inherit",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* File picker */}
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "#002080", letterSpacing: "0.04em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+              File <span style={{ color: "#FF3355" }}>*</span>
+            </label>
+            <label
+              htmlFor="syllabus-file-input"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: 14,
+                borderRadius: 12,
+                border: "1px dashed rgba(0,85,255,0.32)",
+                background: "rgba(0,85,255,0.04)",
+                cursor: uploading ? "not-allowed" : "pointer",
+                opacity: uploading ? 0.6 : 1,
+              }}
+            >
+              <div
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, #0055FF, #1166FF)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Plus size={20} color="#fff" strokeWidth={2.4} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#001040", letterSpacing: "-0.2px" }}>
+                  {uploadForm.file ? uploadForm.file.name : "Choose a file"}
+                </div>
+                <div style={{ fontSize: 11, color: "#5070B0", marginTop: 2 }}>
+                  {uploadForm.file
+                    ? `${(uploadForm.file.size / 1024 / 1024).toFixed(2)} MB`
+                    : `Max 30 MB · ${ALLOWED_EXT_HINT}`}
+                </div>
+              </div>
+            </label>
+            <input
+              id="syllabus-file-input"
+              type="file"
+              accept={ALLOWED_EXT_HINT}
+              disabled={uploading}
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0] || null;
+                setUploadForm(prev => ({ ...prev, file: f }));
+                e.target.value = ""; // allow re-pick of same file
+              }}
+            />
+          </div>
+
+          {/* Progress */}
+          {uploading && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#002080" }}>Uploading…</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#0055FF" }}>{uploadProgress}%</span>
+              </div>
+              <div style={{ width: "100%", height: 8, background: "rgba(0,85,255,0.10)", borderRadius: 100, overflow: "hidden" }}>
+                <div
+                  style={{
+                    width: `${uploadProgress}%`,
+                    height: "100%",
+                    background: "linear-gradient(90deg, #0055FF, #1166FF)",
+                    transition: "width 0.18s ease",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            padding: "16px 22px 22px",
+            borderTop: "0.5px solid rgba(0,85,255,0.10)",
+            display: "flex",
+            gap: 10,
+            background: "rgba(238,244,255,0.50)",
+          }}
+        >
+          <button
+            onClick={() => { if (!uploading) { setUploadOpen(false); resetUploadForm(); } }}
+            disabled={uploading}
+            style={{
+              flex: 1,
+              height: 44,
+              borderRadius: 12,
+              background: "#fff",
+              color: "#002080",
+              fontSize: 13,
+              fontWeight: 700,
+              border: "0.5px solid rgba(0,85,255,0.20)",
+              cursor: uploading ? "not-allowed" : "pointer",
+              opacity: uploading ? 0.5 : 1,
+              fontFamily: "inherit",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleUpload}
+            disabled={uploading || !uploadForm.classId || !uploadForm.title.trim() || !uploadForm.file}
+            style={{
+              flex: 1.4,
+              height: 44,
+              borderRadius: 12,
+              background: "linear-gradient(135deg, #0055FF, #1166FF)",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              border: "none",
+              cursor: uploading ? "not-allowed" : "pointer",
+              boxShadow: "0 6px 22px rgba(0,85,255,0.40)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              opacity: (uploading || !uploadForm.classId || !uploadForm.title.trim() || !uploadForm.file) ? 0.6 : 1,
+              fontFamily: "inherit",
+            }}
+          >
+            {uploading
+              ? <Loader2 size={15} className="animate-spin" />
+              : <Upload size={15} strokeWidth={2.5} />}
+            {uploading ? "Uploading…" : "Upload Syllabus"}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   // ── Unauthed state ───────────────────────────────────────────────────────
   if (!userData) {
@@ -330,12 +842,6 @@ const Syllabus = () => {
 
     const recentThreshold = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
-    const handleUploadInfo = () => {
-      toast.info("Teachers upload syllabi from their own dashboard.", {
-        description: "Principals can view, download, and remove uploaded files.",
-      });
-    };
-
     const handleDownload = (s: SyllabusDoc) => {
       if (!s.fileUrl) {
         toast.error("File URL is missing.");
@@ -371,7 +877,7 @@ const Syllabus = () => {
             </div>
           </div>
           <button
-            onClick={handleUploadInfo}
+            onClick={() => setUploadOpen(true)}
             style={{
               height: 40,
               padding: "0 14px",
@@ -707,9 +1213,32 @@ const Syllabus = () => {
             </div>
             <div style={{ fontSize: 12, color: T3, textAlign: "center", maxWidth: 220, lineHeight: 1.6, fontWeight: 400 }}>
               {syllabi.length === 0
-                ? "Teachers can upload syllabi from their own dashboard. They will appear here once uploaded."
+                ? "Tap Upload to share a syllabus with a class — students and the assigned teacher will see it instantly."
                 : "Try clearing filters or changing your search."}
             </div>
+            {syllabi.length === 0 && (
+              <button
+                onClick={() => setUploadOpen(true)}
+                style={{
+                  marginTop: 6,
+                  padding: "9px 18px",
+                  borderRadius: 12,
+                  background: `linear-gradient(135deg, ${B1}, ${B2})`,
+                  color: "#fff",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  boxShadow: "0 6px 22px rgba(0,85,255,.40)",
+                }}
+              >
+                <Upload className="w-3.5 h-3.5" strokeWidth={2.5} />
+                Upload First Syllabus
+              </button>
+            )}
             {syllabi.length > 0 && (
               <button
                 onClick={() => { setClassFilter(""); setSubjectFilter(""); setSearchQuery(""); }}
@@ -1109,6 +1638,8 @@ const Syllabus = () => {
 
         <div style={{ height: 20 }} />
         <span style={{ display: "none" }}>{initials}</span>
+
+        {UploadModal}
       </div>
     );
   }
@@ -1137,10 +1668,24 @@ const Syllabus = () => {
           style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 6px 18px rgba(0,85,255,0.28)" }}>
           <Library className="w-[22px] h-[22px] text-white" strokeWidth={2.4} />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <div className="text-[24px] font-bold leading-none" style={{ color: dT1, letterSpacing: "-0.6px" }}>Syllabus</div>
-          <div className="text-[12px] mt-1" style={{ color: dT3 }}>View and manage syllabi uploaded by teachers for your branch</div>
+          <div className="text-[12px] mt-1" style={{ color: dT3 }}>Upload class-tagged syllabi for teachers and students to access</div>
         </div>
+        <button
+          onClick={() => setUploadOpen(true)}
+          className="h-11 px-5 rounded-[14px] flex items-center gap-2 text-[13px] font-bold text-white shrink-0 transition-transform hover:scale-[1.02]"
+          style={{
+            background: `linear-gradient(135deg, ${dB1}, ${dB2})`,
+            boxShadow: "0 6px 22px rgba(0,85,255,0.40), 0 2px 5px rgba(0,85,255,0.20)",
+            border: "none",
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          <Upload className="w-[15px] h-[15px]" strokeWidth={2.5} />
+          Upload Syllabus
+        </button>
       </div>
 
       {/* Dark Hero */}
@@ -1330,7 +1875,23 @@ const Syllabus = () => {
           {syllabi.length === 0 ? (
             <>
               <p className="text-[14px] font-bold" style={{ color: dT1 }}>No syllabi uploaded yet</p>
-              <p className="text-[11px] max-w-[280px]" style={{ color: dT4 }}>Teachers can upload syllabi from their dashboard.</p>
+              <p className="text-[11px] max-w-[300px]" style={{ color: dT4 }}>
+                Click <strong>Upload Syllabus</strong> to share a class-tagged document — teachers and students will see it instantly.
+              </p>
+              <button
+                onClick={() => setUploadOpen(true)}
+                className="mt-2 h-10 px-5 rounded-[12px] flex items-center gap-2 text-[12px] font-bold text-white"
+                style={{
+                  background: `linear-gradient(135deg, ${dB1}, ${dB2})`,
+                  boxShadow: "0 6px 22px rgba(0,85,255,0.40)",
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                <Upload className="w-[14px] h-[14px]" strokeWidth={2.5} />
+                Upload First Syllabus
+              </button>
             </>
           ) : (
             <>
@@ -1452,6 +2013,8 @@ const Syllabus = () => {
           </div>
         </div>
       )}
+
+      {UploadModal}
     </div>
   );
 };
