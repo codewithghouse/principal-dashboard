@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   GraduationCap, TrendingUp, TrendingDown, Minus,
   BarChart3, ChevronRight, Loader2,
@@ -14,14 +14,25 @@ import { useNavigate } from "react-router-dom";
 import { pctOfDoc } from "@/lib/scoreUtils";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+// Letter grade from a 0-100 percentage. Used by the avatar/chip to show
+// A / B / C / D at a glance.
 const grade = (pct: number) => pct >= 85 ? "A" : pct >= 75 ? "B" : pct >= 60 ? "C" : "D";
-const gradeColor = (g: string) => g === "A" ? "text-green-600 bg-green-50" : g === "B" ? "text-blue-600 bg-blue-50" : g === "C" ? "text-amber-600 bg-amber-50" : "text-red-600 bg-red-50";
+// (`gradeColor()` removed — was defined but never called anywhere.)
 
 // Robust score parser — uses shared `pctOfDoc` which returns null on missing
 // data (was: a local impl that returned 0 → fed false low scores into avgs
 // and biased school average up after `filter(n>0)` dropped them entirely;
 // memory: bug_pattern_score_zero_no_data).
 const getScoreOrNull = (r: any): number | null => pctOfDoc(r);
+
+// Robust initials — "Aamir Khan" → "AK", "Aamir" → "A", "" → "??". Was:
+// `name.substring(0, 2)` which produced "AA" for single-name teachers.
+const safeInitials = (name: string | null | undefined): string => {
+  const parts = (name || "").split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "??";
+  if (parts.length === 1) return parts[0][0]!.toUpperCase();
+  return (parts[0][0]! + parts[parts.length - 1][0]!).toUpperCase();
+};
 
 const toDate = (v: any): Date | null => {
   if (!v) return null;
@@ -44,7 +55,10 @@ interface TeacherStat {
   classCount: number;
   topSubject: string;
   weakSubject: string;
-  monthlyScores: { month: string; avg: number }[];
+  // `avg` is null when the month has no recorded scores — matches the
+  // comment on the producer below. Was typed as `number` while the producer
+  // documented null behaviour but actually emitted 0 (silent lie).
+  monthlyScores: { month: string; avg: number | null }[];
   vsSchoolAvg: number | null;
   // activity & feedback
   testsCreated: number;
@@ -236,28 +250,39 @@ const TeacherPerformance = () => {
             const d = new Date(now.getFullYear(), now.getMonth()-3+i, 1);
             return { label: MONTH_NAMES[d.getMonth()], month: d.getMonth(), year: d.getFullYear() };
           });
-          const monthlyScores = months.map(({ label, month, year }) => {
+          const monthlyScores: { month: string; avg: number | null }[] = months.map(({ label, month, year }) => {
             const mScores = tScores.filter(({ row: s }) => {
               const ts = toDate(s.createdAt || s.timestamp || s.date || s.uploadedAt);
               return ts && ts.getMonth() === month && ts.getFullYear() === year;
             });
-            return { month: label, avg: mScores.length ? Math.round(mScores.reduce((a, b) => a + b.pct, 0) / mScores.length) : 0 };
+            // Null (not 0) for empty months — fixes the silent contradiction
+            // between this comment and the previous return value.
+            return {
+              month: label,
+              avg: mScores.length
+                ? Math.round(mScores.reduce((a, b) => a + b.pct, 0) / mScores.length)
+                : null,
+            };
           });
 
           // Per-subject breakdown. Drops scores with no subject (was:
           // fabricated "General" / first-of-teacher's-subjects attribution
           // which inflated whichever subject happened to come first).
-          const subjectMap: Record<string, number[]> = {};
+          // Subject names are bucketed CASE-INSENSITIVELY — "Math" and
+          // "math" used to count as separate subjects. We keep the first
+          // capitalisation we see for display.
+          const subjectBuckets = new Map<string, { display: string; vals: number[] }>();
           tScores.forEach(({ row: s, pct }) => {
             const subRaw = s.subjectName || s.subject || "";
             const sub = String(subRaw || "").trim();
             if (!sub) return; // skip — don't attribute to a guessed subject
-            if (!subjectMap[sub]) subjectMap[sub] = [];
-            subjectMap[sub].push(pct);
+            const key = sub.toLowerCase();
+            if (!subjectBuckets.has(key)) subjectBuckets.set(key, { display: sub, vals: [] });
+            subjectBuckets.get(key)!.vals.push(pct);
           });
-          const subjectBreakdown = Object.entries(subjectMap)
-            .map(([subject, vals]) => ({
-              subject,
+          const subjectBreakdown = Array.from(subjectBuckets.values())
+            .map(({ display, vals }) => ({
+              subject: display,
               count: vals.length,
               avg: Math.round(vals.reduce((a,b)=>a+b,0)/vals.length),
             }))
@@ -279,18 +304,35 @@ const TeacherPerformance = () => {
           const lessonPlansCount   = lessonDocs.filter((d: any) => d.teacherId === t.id).length;
           const parentNotesCount   = noteDocs.filter((d: any) => d.teacherId === t.id).length;
 
-          // Ratings & reviews
+          // Ratings & reviews — dual-key match: prefer teacherId, fall back
+          // to teacherEmail (legacy reviews missing teacherId). Was:
+          // teacherId-only filter silently dropped legacy data.
           const tReviews = reviewDocs
-            .filter((r: any) => r.teacherId === t.id)
+            .filter((r: any) =>
+              r.teacherId === t.id ||
+              (tEmail && String(r.teacherEmail || "").toLowerCase() === tEmail),
+            )
             .sort((a: any, b: any) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
-          const ratingVals = tReviews.map((r: any) => Number(r.rating)).filter(n => !isNaN(n) && n > 0);
+          // Keep 0-star ratings — was filtered out (n > 0) so a real "0
+          // stars" submission was silently dropped from the average.
+          const ratingVals = tReviews.map((r: any) => Number(r.rating)).filter(n => !isNaN(n) && n >= 0);
+          // Falsy guard would treat a literal `t.rating === 0` (poor rating)
+          // as no-rating-data. Use `!= null` + isFinite so a real 0 stays 0.
+          const fallbackRating = (() => {
+            if (t.rating == null) return null;
+            const n = Number(t.rating);
+            return Number.isFinite(n) ? n : null;
+          })();
           const rating = ratingVals.length
             ? Math.round((ratingVals.reduce((a,b)=>a+b,0) / ratingVals.length) * 10) / 10
-            : (t.rating ? Number(t.rating) : null);
+            : fallbackRating;
 
           return {
             id: t.id,
-            name: t.name || t.teacherName || "Unknown",
+            // "Unnamed Teacher" placeholder so principal can SEE that the
+            // teacher exists and fix the data. Was: filtered out below by
+            // `t.name !== "Unknown"` — silently hid teachers entirely.
+            name: t.name || t.teacherName || "Unnamed Teacher",
             raw: t,
             subjects,
             classes,
@@ -302,7 +344,10 @@ const TeacherPerformance = () => {
             topSubject,
             weakSubject,
             monthlyScores,
-            vsSchoolAvg: avgScore != null ? avgScore - overallAvg : null,
+            // vsSchoolAvg is meaningless when school-wide avg is 0 (no
+            // scores anywhere). Was: a teacher with avg 85 in such a school
+            // showed "+85% vs school" — bogus signal.
+            vsSchoolAvg: (avgScore != null && overallAvg > 0) ? avgScore - overallAvg : null,
             testsCreated,
             assignmentsCreated,
             lessonPlansCount,
@@ -314,17 +359,26 @@ const TeacherPerformance = () => {
           };
         });
 
-        setTeachers(stats.filter(t => t.name !== "Unknown"));
+        // No more silent filter on "Unknown" — using "Unnamed Teacher"
+        // placeholder above so missing-name records remain visible.
+        setTeachers(stats);
         setLoading(false);
       }
     );
     return () => tUnsub();
   }, [userData?.schoolId, userData?.branchId]);
 
-  const filtered = teachers.filter(t =>
-    !search || t.name.toLowerCase().includes(search.toLowerCase()) ||
-    t.subjects.some(s => s.toLowerCase().includes(search.toLowerCase()))
-  );
+  // useMemo so the filter doesn't recompute on every unrelated re-render —
+  // search isn't a hot path but the loop runs across every teacher and their
+  // subjects, so memoising avoids needless work when scrolling/clicking.
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    if (!q) return teachers;
+    return teachers.filter(t =>
+      t.name.toLowerCase().includes(q) ||
+      t.subjects.some(s => s.toLowerCase().includes(q)),
+    );
+  }, [teachers, search]);
 
   const trend = (t: TeacherStat) => {
     if (t.avgScore == null || t.prevAvgScore == null) return null;
@@ -744,7 +798,7 @@ const TeacherPerformance = () => {
                 const tLetter = hasScoreData ? grade(t.avgScore!) : "—";
                 const primarySubject = t.subjects[0] || "Teacher";
                 const subjStyle = subjectTagStyle(primarySubject);
-                const initText = t.name.substring(0, 2).toUpperCase();
+                const initText = safeInitials(t.name);
 
                 const avgBarColor = !hasScoreData
                   ? `linear-gradient(90deg, ${ORANGE}, #FFCC22)`
@@ -1085,7 +1139,16 @@ const TeacherPerformance = () => {
                         View Details
                       </button>
                       <button
-                        onClick={() => navigate("/teacher-notes")}
+                        // Deep-link to the teacher-notes chat with this
+                        // teacher's chat auto-opened. TeacherNotes accepts
+                        // `{ teacherId, prefillMessage? }` via router state
+                        // (same pattern ParentCommunication uses for parent
+                        // deep-links). Was: bare navigate(...) dumped the
+                        // user on the page with no teacher selected, so they
+                        // had to find this teacher again manually.
+                        onClick={() => navigate("/teacher-notes", {
+                          state: { teacherId: t.id },
+                        })}
                         style={{
                           flex: 1,
                           height: 40,
@@ -1469,7 +1532,7 @@ const TeacherPerformance = () => {
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-[11px] flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0"
                             style={{ background: "linear-gradient(135deg, #0044EE, #2277FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.24)" }}>
-                            {t.name.substring(0, 2).toUpperCase()}
+                            {safeInitials(t.name)}
                           </div>
                           <span className="text-[13px] font-bold tracking-[-0.2px]" style={{ color: "#001040" }}>{t.name}</span>
                         </div>

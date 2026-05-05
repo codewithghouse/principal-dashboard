@@ -1,15 +1,16 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
-  ChevronLeft, CalendarCheck, BookOpen, Bell, UserCog,
-  Loader2, Send, CheckCircle2, AlertCircle, Clock, X,
+  ChevronLeft, CalendarCheck, Bell,
+  Loader2, CheckCircle2, AlertCircle, Clock,
 } from "lucide-react";
 import { db } from "@/lib/firebase";
 import {
   collection, query, where, onSnapshot,
-  serverTimestamp, orderBy, writeBatch, doc, getDoc, getDocs, limit,
+  serverTimestamp, orderBy, writeBatch, doc,
 } from "firebase/firestore";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { ymdLocal } from "@/lib/scoreUtils";
 
 interface RiskStudent {
@@ -44,63 +45,95 @@ interface Props {
   onBack: () => void;
 }
 
+// "Assign Remedial Class" + "Escalate to Counselor" removed by request —
+// they triggered modals that wrote to interventions/student_flags but had
+// no downstream consumer in any dashboard, so the principal saw the toast
+// but nothing actually happened. Remaining 2 actions both deep-link into
+// the appropriate chat (Parent Communication / Teacher Notes) where the
+// principal can edit the prefilled message before sending.
 const ACTIONS = [
   {
     id: "meeting",
     title: "Schedule Parent Meeting",
-    desc: "Book appointment with guardian",
+    desc: "Open chat with prefilled meeting request",
     icon: CalendarCheck,
     color: "text-blue-600",
     bg: "bg-blue-50",
   },
   {
-    id: "remedial",
-    title: "Assign Remedial Class",
-    desc: "Enroll in after-school support",
-    icon: BookOpen,
-    color: "text-emerald-600",
-    bg: "bg-emerald-50",
-  },
-  {
     id: "teacher",
     title: "Notify Class Teacher",
-    desc: `Alert assigned faculty member`,
+    desc: "Open chat with the assigned faculty",
     icon: Bell,
     color: "text-amber-600",
     bg: "bg-amber-50",
-  },
-  {
-    id: "counselor",
-    title: "Escalate to Counselor",
-    desc: "Refer for professional support",
-    icon: UserCog,
-    color: "text-purple-600",
-    bg: "bg-purple-50",
   },
 ];
 
 const RiskIntervention = ({ student, onBack }: Props) => {
   const { userData } = useAuth();
+  const navigate = useNavigate();
 
   const [history, setHistory]         = useState<any[]>([]);
   const [histLoading, setHistLoading] = useState(true);
-  const [saving, setSaving]           = useState(false);
-  const [notifying, setNotifying]     = useState(false);
 
   // Follow-up form
   const [followUp, setFollowUp] = useState({ date: "", assignTo: "", notes: "" });
   const [savingFollowUp, setSavingFollowUp] = useState(false);
 
-  // Action modal
-  const [actionModal, setActionModal]   = useState(false);
-  const [selectedAction, setSelectedAction] = useState<(typeof ACTIONS)[number] | null>(null);
-  const [actionNotes, setActionNotes]   = useState("");
-  const [actionDate, setActionDate]     = useState("");
-  const [counselorName, setCounselorName] = useState("");
-  // Lock to prevent rapid double-click of "Notify Teacher" sending two emails
-  // before setNotifying lands (iOS/keyboard bounce — Resend rate-limit risk).
-  const notifyingRef = useRef(false);
+  // Risk-summary lines reused in both prefill messages so the recipient
+  // sees the same context the principal sees on the dashboard.
+  const summaryLines = (() => {
+    const lines: string[] = [];
+    lines.push(`Risk Level: ${student.riskLevel}`);
+    if (student.riskFactors.length > 0) lines.push(`Risk Factors: ${student.riskFactors.join(", ")}`);
+    if (student.daysFlagged > 0) lines.push(`Days flagged: ${student.daysFlagged}`);
+    if (student.attPct !== null) lines.push(`Attendance: ${student.attPct}%`);
+    if (student.avgScore !== null) lines.push(`Academic average: ${student.avgScore}%`);
+    return lines.join("\n");
+  })();
 
+  // Open Parent Communication chat with a meeting-request draft pre-filled.
+  const openParentChatForMeeting = () => {
+    const principalName = (userData as any)?.name || "Principal";
+    const childRef = student.name?.trim() || "your child";
+    const prefill =
+      `Assalamualaikum,\n\n` +
+      `I'd like to schedule a parent meeting for ${childRef} regarding their recent academic and attendance trends. ` +
+      `The meeting will help us discuss support options together.\n\n` +
+      `${summaryLines}\n\n` +
+      `Please reply with a convenient date and time.\n\n` +
+      `${principalName}`;
+    navigate("/parent-communication", {
+      state: {
+        studentId: student.id,
+        studentEmail: student.email,
+        prefillMessage: prefill,
+      },
+    });
+  };
+
+  // Open Teacher Notes chat with a risk alert draft pre-filled.
+  const openTeacherChatForAlert = () => {
+    if (!student.teacherId) {
+      toast.error(`No assigned teacher on file for ${student.name}. Please assign a class teacher first.`);
+      return;
+    }
+    const principalName = (userData as any)?.name || "Principal";
+    const teacherRef = student.teacherName?.trim() || "Teacher";
+    const prefill =
+      `Assalamualaikum ${teacherRef},\n\n` +
+      `${student.name} (${student.className}) has been flagged on the Risk Dashboard.\n\n` +
+      `${summaryLines}\n\n` +
+      `Please monitor closely and share any classroom observations.\n\n` +
+      `${principalName}`;
+    navigate("/teacher-notes", {
+      state: {
+        teacherId: student.teacherId,
+        prefillMessage: prefill,
+      },
+    });
+  };
   const initials = student.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
   // ── Risk factor bars (P1-M + P1-N + CF-4 fixes) ──────────────────────────
@@ -234,216 +267,13 @@ const RiskIntervention = ({ student, onBack }: Props) => {
     return () => { unsub(); unsub2?.(); };
   }, [student.id, student.email, userData?.schoolId, userData?.branchId]);
 
-  // ── Save action ──────────────────────────────────────────────────────────────
-  const handleSaveAction = async () => {
-    if (!selectedAction) return;
-    if (!actionNotes.trim()) return toast.error("Please add notes for this action.");
-
-    // P0-E: REJECT writes when schoolId can't be resolved. Empty-string
-    // schoolId orphans the doc — invisible to scoped queries forever.
-    const schoolId = student.schoolId || userData?.schoolId;
-    if (!schoolId) {
-      toast.error("Session expired — please re-login.");
-      return;
-    }
-    const branchId = student.branchId || userData?.branchId || null;
-
-    // Counselor escalation requires a real assignee — "TBD" silently
-    // showed as "Assigned: TBD" forever in RiskStudents' Assigned-To cell.
-    if (selectedAction.id === "counselor" && !counselorName.trim()) {
-      toast.error("Please enter the counselor's name.");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      // P1-Q: Single atomic batch instead of sequential addDocs. The previous
-      // version could leave an orphan `interventions` doc if the second
-      // `parent_meetings` / `student_flags` write failed.
-      const batch = writeBatch(db);
-      const dateStr = actionDate || ymdLocal(new Date());
-
-      const interventionRef = doc(collection(db, "interventions"));
-      batch.set(interventionRef, {
-        studentId: student.id,
-        studentName: student.name,
-        studentEmail: student.email,
-        actionId: selectedAction.id,
-        actionTitle: selectedAction.title,
-        notes: actionNotes.trim(),
-        date: dateStr,
-        status: "Applied",
-        schoolId,
-        branchId,
-        createdAt: serverTimestamp(),
-      });
-
-      if (selectedAction.id === "meeting" && actionDate) {
-        const meetingRef = doc(collection(db, "parent_meetings"));
-        batch.set(meetingRef, {
-          studentId: student.id,
-          studentName: student.name,
-          studentEmail: student.email,
-          purpose: actionNotes.trim(),
-          date: actionDate,
-          status: "scheduled",
-          schoolId,
-          branchId,
-          createdAt: serverTimestamp(),
-        });
-      }
-
-      if (selectedAction.id === "counselor") {
-        const flagRef = doc(collection(db, "student_flags"));
-        batch.set(flagRef, {
-          studentId: student.id,
-          studentName: student.name,
-          studentEmail: student.email,
-          type: "counselor_assigned",
-          counselorName: counselorName.trim(),
-          notes: actionNotes.trim(),
-          status: "active",
-          schoolId,
-          branchId,
-          createdAt: serverTimestamp(),
-        });
-      }
-
-      await batch.commit();
-
-      toast.success(`${selectedAction.title} saved!`);
-      setActionModal(false);
-      setActionNotes("");
-      setActionDate("");
-      setCounselorName("");
-    } catch (err) {
-      // P3: log the actual error so production rule denials are debuggable.
-      console.error("[RiskIntervention] save failed:", err);
-      toast.error("Could not save action.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ── Notify teacher ───────────────────────────────────────────────────────────
-  // 🔴 PRIVACY-CRITICAL: previously emailed `student.email` (the STUDENT)
-  // with a "Risk Alert: you need attention" subject. Now resolves the
-  // teacher's actual email via teacherId → teachers doc → email field.
-  // If we can't resolve the teacher email, REFUSE TO SEND rather than
-  // fall back to the student's address.
-  const handleNotifyTeacher = async () => {
-    // Double-click guard — iOS/keyboard can fire twice before setNotifying
-    // lands. ref-based lock fires synchronously.
-    if (notifyingRef.current) return;
-    notifyingRef.current = true;
-
-    const schoolId = student.schoolId || userData?.schoolId;
-    if (!schoolId) {
-      toast.error("Session expired — please re-login.");
-      notifyingRef.current = false;
-      return;
-    }
-    const branchId = student.branchId || userData?.branchId || null;
-
-    setNotifying(true);
-    try {
-      // Resolve teacher email — try teacherId first (canonical), fall back
-      // to looking up via the class doc if needed.
-      let teacherEmail = "";
-      let resolvedTeacherName = student.teacherName || "Teacher";
-      if (student.teacherId) {
-        try {
-          const tSnap = await getDoc(doc(db, "teachers", student.teacherId));
-          if (tSnap.exists()) {
-            const t = tSnap.data() as any;
-            teacherEmail = String(t.email || "").trim();
-            if (t.name) resolvedTeacherName = t.name;
-          }
-        } catch (err) {
-          console.warn("[RiskIntervention] teacher lookup by id failed:", err);
-        }
-      }
-      // Class-fallback: if no teacherId or teacher doc had no email
-      if (!teacherEmail && student.classId) {
-        try {
-          const taSnap = await getDocs(query(
-            collection(db, "teaching_assignments"),
-            where("schoolId", "==", schoolId),
-            where("classId", "==", student.classId),
-            limit(1),
-          ));
-          const taTeacherId = taSnap.docs[0]?.data()?.teacherId;
-          if (taTeacherId) {
-            const tSnap = await getDoc(doc(db, "teachers", taTeacherId));
-            if (tSnap.exists()) {
-              const t = tSnap.data() as any;
-              teacherEmail = String(t.email || "").trim();
-              if (t.name) resolvedTeacherName = t.name;
-            }
-          }
-        } catch (err) {
-          console.warn("[RiskIntervention] teacher lookup by class failed:", err);
-        }
-      }
-
-      if (!teacherEmail) {
-        toast.error(`No email on file for ${resolvedTeacherName}. Add it in Teachers settings to enable alerts.`);
-        return;
-      }
-
-      // P0-D: actually CHECK the response. Previously HTTP 4xx/5xx was
-      // silently logged as "Teacher notified!" — principal trusted a lie.
-      // Build redacted subject (P3 polish — student name out of inbox preview).
-      const schoolName = (userData as any)?.schoolName || (userData as any)?.branchName || "your school";
-      const res = await fetch("/api/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: teacherEmail,
-          subject: `Risk alert from ${schoolName}`,
-          html: `<div style="font-family:sans-serif;padding:24px">
-            <h2 style="color:#1e3a8a">Risk Alert — ${student.name}</h2>
-            <p>Risk Level: <strong>${student.riskLevel}</strong></p>
-            <p>Factors: ${student.riskFactors.join(", ")}</p>
-            ${student.attPct !== null ? `<p>Attendance: ${student.attPct}%</p>` : ""}
-            ${student.avgScore !== null ? `<p>Academic Average: ${student.avgScore}%</p>` : ""}
-            <p style="color:#888;font-size:12px">Please take appropriate action.</p>
-          </div>`,
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        console.error("[RiskIntervention] email API failed:", res.status, errBody);
-        toast.error(`Email failed (${res.status}). Try again or check console.`);
-        return;
-      }
-
-      // Only log the intervention AFTER email succeeded — no false positives.
-      const batch = writeBatch(db);
-      batch.set(doc(collection(db, "interventions")), {
-        studentId: student.id,
-        studentName: student.name,
-        studentEmail: student.email,
-        actionId: "teacher",
-        actionTitle: "Notify Class Teacher",
-        notes: `Email sent to ${resolvedTeacherName} (${teacherEmail}) regarding ${student.riskLevel} risk.`,
-        date: ymdLocal(new Date()),
-        status: "Applied",
-        schoolId,
-        branchId,
-        createdAt: serverTimestamp(),
-      });
-      await batch.commit();
-
-      toast.success(`Teacher (${resolvedTeacherName}) notified via email!`);
-    } catch (err) {
-      console.error("[RiskIntervention] notify teacher failed:", err);
-      toast.error("Notification failed.");
-    } finally {
-      setNotifying(false);
-      notifyingRef.current = false;
-    }
-  };
+  // `handleSaveAction` + `handleNotifyTeacher` removed — they wrote to
+  // `interventions` / `parent_meetings` / `student_flags` collections that
+  // weren't read by any other dashboard, OR sent emails that bypassed the
+  // in-app messaging system. The 2 remaining actions both navigate to the
+  // appropriate chat (Parent Communication / Teacher Notes) where the
+  // principal edits the prefilled message and uses the chat as the canonical
+  // delivery channel + audit trail.
 
   // ── Schedule follow-up ───────────────────────────────────────────────────────
   const handleScheduleFollowUp = async () => {
@@ -630,29 +460,19 @@ const RiskIntervention = ({ student, onBack }: Props) => {
                 <button
                   key={i}
                   onClick={() => {
-                    if (action.id === "teacher") {
-                      handleNotifyTeacher();
-                    } else {
-                      setSelectedAction(action);
-                      setActionNotes("");
-                      setActionDate("");
-                      setActionModal(true);
-                    }
+                    if (action.id === "meeting") openParentChatForMeeting();
+                    else if (action.id === "teacher") openTeacherChatForAlert();
                   }}
-                  disabled={action.id === "teacher" && notifying}
                   className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left ${
                     i === 0
                       ? "bg-[#1e3a8a] border-[#1e3a8a] hover:bg-[#1e4fc0] text-white shadow-md"
                       : "bg-white border-slate-100 hover:bg-slate-50 hover:border-slate-200"
-                  } disabled:opacity-60`}
+                  }`}
                 >
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                     i === 0 ? "bg-white/20" : action.bg
                   }`}>
-                    {action.id === "teacher" && notifying
-                      ? <Loader2 className="w-5 h-5 animate-spin text-amber-600" />
-                      : <action.icon className={`w-5 h-5 ${i === 0 ? "text-white" : action.color}`} />
-                    }
+                    <action.icon className={`w-5 h-5 ${i === 0 ? "text-white" : action.color}`} />
                   </div>
                   <div className="flex-1">
                     <p className={`text-sm font-bold ${i === 0 ? "text-white" : "text-slate-800"}`}>{action.title}</p>
@@ -708,85 +528,8 @@ const RiskIntervention = ({ student, onBack }: Props) => {
         </div>
       </div>
 
-      {/* ── Action Modal ── */}
-      {actionModal && selectedAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${selectedAction.bg}`}>
-                  <selectedAction.icon className={`w-5 h-5 ${selectedAction.color}`} />
-                </div>
-                <h3 className="text-base font-bold text-slate-900">{selectedAction.title}</h3>
-              </div>
-              <button onClick={() => setActionModal(false)} className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center">
-                <X className="w-4 h-4 text-slate-600" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              {/* Date input — meetings need a scheduled date; remedial &
-                  counselor benefit from one too. The dead "followup" branch
-                  (which had no matching ACTIONS entry) was removed. */}
-              {(selectedAction.id === "meeting" || selectedAction.id === "remedial" || selectedAction.id === "counselor") && (
-                <div>
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">
-                    {selectedAction.id === "meeting" ? "Meeting Date" : "Start Date"}
-                  </label>
-                  <input
-                    type="date"
-                    value={actionDate}
-                    onChange={e => setActionDate(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
-                  />
-                </div>
-              )}
-              {/* P1-O: Real counselor-name input replaces the "TBD" literal
-                  that used to be hardcoded on every escalation write. */}
-              {selectedAction.id === "counselor" && (
-                <div>
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Counselor Name *</label>
-                  <input
-                    type="text"
-                    value={counselorName}
-                    onChange={e => setCounselorName(e.target.value)}
-                    placeholder="e.g. Mr. Anand Verma"
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
-                  />
-                </div>
-              )}
-              <div>
-                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Notes / Reason *</label>
-                <textarea
-                  value={actionNotes}
-                  onChange={e => setActionNotes(e.target.value)}
-                  placeholder={`Details for ${selectedAction.title.toLowerCase()}...`}
-                  className="w-full h-28 px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium resize-none focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
-                />
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setActionModal(false)}
-                  className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveAction}
-                  disabled={saving}
-                  className={`flex-1 py-3 rounded-xl text-white text-sm font-bold transition-all disabled:opacity-60 flex items-center justify-center gap-2 ${
-                    selectedAction.id === "counselor" ? "bg-purple-600 hover:bg-purple-700" :
-                    selectedAction.id === "remedial"  ? "bg-emerald-600 hover:bg-emerald-700" :
-                    "bg-[#1e3a8a] hover:bg-[#1e4fc0]"
-                  }`}
-                >
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  Confirm
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Action Modal removed — both remaining actions deep-link directly
+          to chat. Principal edits the prefilled message there before sending. */}
     </div>
   );
 };

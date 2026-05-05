@@ -22,6 +22,9 @@ export interface AssignmentMarksMobileProps {
   loading: boolean;
   groups: AssignmentGroupMobile[];
   filtered: AssignmentGroupMobile[];
+  // Pre-grouped class-wise list from parent (parent owns the grouping +
+  // pagination state so desktop and mobile share one source of truth).
+  groupedByClass: { className: string; items: AssignmentGroupMobile[] }[];
   stats: {
     totalAssignments: number;
     totalGraded: number;
@@ -31,6 +34,12 @@ export interface AssignmentMarksMobileProps {
   classes: string[];
   classFilter: string;
   setClassFilter: (c: string) => void;
+  searchQuery: string;
+  setSearchQuery: (s: string) => void;
+  // Per-class page-number pagination state from parent (mirrors RiskStudents).
+  classPages: Record<string, number>;
+  goPage: (cls: string, page: number) => void;
+  perClassPageSize: number;
   selectedGroup: AssignmentGroupMobile | null;
   onSelectGroup: (g: AssignmentGroupMobile) => void;
   onBackFromDetail: () => void;
@@ -57,31 +66,13 @@ const scoreLetter = (s: number) => {
   return          { letter: "D", bg: "rgba(255,51,85,0.10)", color: RED,       bdr: "rgba(255,51,85,0.22)",  fill: `linear-gradient(90deg, ${RED}, #FF88AA)` };
 };
 
-const aiFeedback = (score: number, studentName: string, title: string): string => {
-  const first = (studentName || "Student").split(" ")[0];
-  const v = Math.floor(score) % 3;
-  if (score >= 90) return [
-    `Outstanding performance, ${first}! Demonstrates excellent mastery of ${title}.`,
-    `Exceptional work! ${first} has shown a thorough understanding of all concepts in ${title}.`,
-    `Brilliant submission, ${first}. Keep this level of excellence — you're a top performer!`,
-  ][v];
-  if (score >= 75) return [
-    `Good job, ${first}! Solid understanding shown. A bit more depth could push you to the top.`,
-    `Well done, ${first}. Key concepts covered well — revisit the finer details to excel further.`,
-    `Nice work on ${title}, ${first}. You're on the right track; refine your approach to reach the top.`,
-  ][v];
-  if (score >= 60) return [
-    `Decent effort, ${first}. Focus on the weaker areas of ${title} to improve your score.`,
-    `You have a fair grasp, ${first}. Revisiting the core concepts will help you score higher.`,
-    `Average performance. Consistent practice and revision of ${title} is recommended, ${first}.`,
-  ][v];
-  if (score >= 40) return [
-    `${first} needs more effort. Review the ${title} material thoroughly and seek teacher guidance.`,
-    `Below average performance. ${first} should revisit ${title} concepts and practice regularly.`,
-    `More practice needed, ${first}. Focus on understanding the fundamentals before the next test.`,
-  ][v];
-  return `${first} requires immediate attention and support. Please review ${title} with extra guidance from the teacher.`;
-};
+// `aiFeedback()` removed — fabricated AI per the no-fake-AI policy. Was a
+// hardcoded template-string generator labelled "[AI]" / "AI Feedback" with
+// violet Sparkles badge — not real AI. Desktop file removed this in the
+// previous pass; mobile was missed (super-senior pass found it). UI now
+// shows an honest "Awaiting teacher feedback" hint when no real feedback
+// is recorded — principals can see at a glance which submissions still
+// need real review.
 
 const fmtDate = (val: any): string => {
   if (!val) return "—";
@@ -121,7 +112,8 @@ const exportCSV = (group: AssignmentGroupMobile) => {
   const rows = group.results.map(r => {
     const sc = r.score !== null && r.score !== undefined ? parseFloat(r.score) : null;
     const graded = sc !== null && !isNaN(sc);
-    const fb = r.feedback || (graded ? aiFeedback(sc!, r.studentName || "", group.title) + " [AI]" : "");
+    // Only the teacher's real feedback in the CSV. No fabricated [AI] templates.
+    const fb = r.feedback || "";
     return [
       r.studentName || "",
       r.score ?? "—",
@@ -145,6 +137,7 @@ const exportCSV = (group: AssignmentGroupMobile) => {
 const AssignmentMarksMobile = ({
   loading, groups, filtered, stats,
   classes, classFilter, setClassFilter,
+  searchQuery, setSearchQuery,
   selectedGroup, onSelectGroup, onBackFromDetail,
 }: AssignmentMarksMobileProps) => {
 
@@ -271,9 +264,13 @@ const AssignmentMarksMobile = ({
               const graded = sc !== null && !isNaN(sc);
               const letter = graded ? scoreLetter(sc!) : null;
               const name = r.studentName || "Unknown";
+              // Only real teacher feedback. Was: fell through to fabricated
+              // template strings labelled "AI Feedback" — pure no-fake-AI
+              // policy violation. Honest fallbacks instead.
               const fb = graded
-                ? (r.feedback || aiFeedback(sc!, name, g.title))
+                ? (r.feedback || "Awaiting teacher feedback.")
                 : "Not yet graded.";
+              const hasRealFeedback = !!r.feedback;
               const needsAttention = graded && sc! < 40;
               return (
                 <div key={r.id || i} className="flex flex-col"
@@ -312,11 +309,17 @@ const AssignmentMarksMobile = ({
                   </div>
                   <div className="px-[18px] pt-[10px] pb-[14px]"
                     style={{ background: needsAttention ? "rgba(255,51,85,0.04)" : "rgba(0,85,255,0.04)", borderTop: `0.5px solid ${SEP}` }}>
+                    {/* Was: "AI Feedback" badge (with violet Sparkles) over a
+                        fabricated template string. Now an honest "Teacher
+                        Feedback" / "Awaiting Feedback" tag based on whether
+                        the teacher has actually written something. */}
                     <div className="flex items-center gap-[5px] text-[9px] font-bold uppercase tracking-[0.10em] mb-[6px]"
-                      style={{ color: needsAttention ? RED : VIOLET }}>
+                      style={{ color: needsAttention ? RED : (hasRealFeedback ? B1 : T4) }}>
                       {needsAttention
-                        ? <><AlertTriangle className="w-[11px] h-[11px]" strokeWidth={2.3} /> AI Feedback · Needs Attention</>
-                        : <><Sparkles className="w-[11px] h-[11px]" strokeWidth={2.3} /> AI Feedback</>}
+                        ? <><AlertTriangle className="w-[11px] h-[11px]" strokeWidth={2.3} /> Needs Attention</>
+                        : hasRealFeedback
+                          ? <><Sparkles className="w-[11px] h-[11px]" strokeWidth={2.3} /> Teacher Feedback</>
+                          : <><Clock className="w-[11px] h-[11px]" strokeWidth={2.3} /> Awaiting Feedback</>}
                     </div>
                     <div className="text-[12px] leading-[1.65] font-normal" style={{ color: T3 }}>
                       {fb}
@@ -469,6 +472,38 @@ const AssignmentMarksMobile = ({
           </div>
         ))}
       </div>
+
+      {/* Search input — narrows by title / teacher / class. */}
+      {groups.length > 0 && (
+        <div className="px-5 pt-3.5 relative">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search assignment, teacher, or class…"
+            className="w-full h-[42px] pl-10 pr-9 rounded-[13px] text-[13px] font-medium outline-none"
+            style={{
+              background: "#fff",
+              border: "0.5px solid rgba(0,85,255,0.12)",
+              color: T1,
+              boxShadow: SHADOW_SM,
+              fontFamily: "inherit",
+            }}
+          />
+          <FileText className="absolute left-9 top-1/2 -translate-y-1/2 w-4 h-4 mt-[7px]"
+            style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-9 top-1/2 -translate-y-1/2 mt-[7px] w-6 h-6 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(0,85,255,0.10)", color: B1 }}
+              aria-label="Clear search"
+            >
+              <span style={{ fontSize: 14, fontWeight: 700 }}>×</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Filter chips */}
       {classes.length > 1 && (

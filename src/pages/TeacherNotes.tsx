@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Loader2, MessageSquare, Search, Send, User, ChevronLeft, CheckCheck, Mail, Smile, GraduationCap, Plus, MoreVertical, Phone, Sparkles, Check, Clock, FileText, Paperclip, Video, Lock } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, writeBatch } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
@@ -9,6 +10,14 @@ import { useIsMobile } from "@/hooks/use-mobile";
 const TeacherNotes = () => {
   const { userData } = useAuth();
   const isMobile = useIsMobile();
+  // Deep-link state: { teacherId, prefillMessage? }
+  // RiskIntervention's "Notify Class Teacher" passes this to auto-open the
+  // chat with the assigned teacher and pre-fill a risk-alert draft.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const deepLink = (location.state || {}) as { teacherId?: string; prefillMessage?: string };
+  const deepLinkApplied = useRef(false);
+
   const [selectedTeacher, setSelectedTeacher]   = useState<any>(null);
   const [allMessages, setAllMessages]           = useState<any[]>([]);
   const [teachers, setTeachers]                 = useState<any[]>([]);
@@ -17,6 +26,24 @@ const TeacherNotes = () => {
   const [searchQuery, setSearchQuery]           = useState("");
   const [messageContent, setMessageContent]     = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Apply deep-link once teachers list has loaded — find the matching
+  // teacher, open the chat, prefill the draft. Mirrors the same pattern
+  // ParentCommunication uses for student deep-links.
+  useEffect(() => {
+    if (deepLinkApplied.current) return;
+    if (teachersLoading) return;
+    if (!deepLink?.teacherId) return;
+    const wantedId = deepLink.teacherId.trim();
+    const match = teachers.find(t => t.id === wantedId);
+    if (match) {
+      setSelectedTeacher(match);
+      if (deepLink.prefillMessage) setMessageContent(deepLink.prefillMessage);
+      deepLinkApplied.current = true;
+      // Clear router state so a manual refresh doesn't re-trigger the prefill.
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [teachersLoading, teachers, deepLink, navigate, location.pathname]);
 
   useEffect(() => {
     if (!userData?.schoolId) return;

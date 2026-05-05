@@ -2,20 +2,44 @@ import { useState, useEffect, useMemo } from "react";
 import {
   FileText, Users, TrendingUp, Trophy, ChevronRight, ChevronLeft,
   Loader2, AlertTriangle, Check, Clock, X, BookOpen, Download,
-  Sparkles, Upload, ArrowRight, Star
+  Sparkles, Upload, ArrowRight, Star, Search, ChevronDown, ChevronUp
 } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, getDocs, where } from "firebase/firestore";
+import { collection, query, onSnapshot, where } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
 import AssignmentMarksMobile from "@/components/dashboard/AssignmentMarksMobile";
+import { pctOfDoc } from "@/lib/scoreUtils";
 
 /* ── helpers ─────────────────────────────────────────────────── */
-function chunk<T>(arr: T[], n: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-  return out;
+// `chunk()` removed — was used to batch `where("__name__", "in", ids)`
+// queries against the assignments collection. After the cross-dashboard
+// fix the page reads the whole assignments collection live, so chunking
+// is no longer needed.
+
+// Robust initials — "Aamir Khan" → "AK", "Aamir" → "A", "" → "??". Was:
+// `name.substring(0, 2)` which produced "AA" for single-name students.
+function safeInitials(name: string | null | undefined): string {
+  const parts = (name || "").split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "??";
+  if (parts.length === 1) return parts[0][0]!.toUpperCase();
+  return (parts[0][0]! + parts[parts.length - 1][0]!).toUpperCase();
+}
+
+// Score normaliser — uses shared `pctOfDoc` (handles `percentage` /
+// `marks/totalMarks` / `score/maxScore` schemas, returns null on missing).
+// Was: `parseFloat(r.score)` only — silently dropped marks-format
+// submissions (which only have marksObtained/totalMarks, no `score` field).
+function getPct(r: any): number | null {
+  return pctOfDoc(r);
+}
+
+// Proper CSV field escaping per RFC 4180 — wrap in `"..."` and double up
+// any internal `"`. Was: `'"${c}"'` which broke on names containing `"`.
+function csvField(v: unknown): string {
+  const s = v === null || v === undefined ? "" : String(v);
+  return `"${s.replace(/"/g, '""')}"`;
 }
 
 function scoreLetter(s: number) {
@@ -61,27 +85,36 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
   const handleDownload = () => {
     const headers = ["Student Name", "Score /100", "Grade", "Feedback"];
     const rows = group.results.map(r => {
-      const sc = r.score !== null && r.score !== undefined ? parseFloat(r.score) : null;
-      const graded = sc !== null && !isNaN(sc);
-      // CSV: only the teacher's real feedback. No fabricated "[AI]" templates.
+      const sc = getPct(r); // handles all 4 score schemas, null on missing
+      const graded = sc !== null;
       const fb = r.feedback || "";
       return [
         r.studentName || "",
-        r.score ?? "—",
-        graded ? scoreLetter(sc!).letter : "—",
+        graded ? Math.round(sc) : "—",
+        graded ? scoreLetter(sc).letter : "—",
         fb,
       ];
     });
-    const csv = [headers, ...rows].map(row => row.map(c => `"${c}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
+    // RFC 4180 CSV escaping + Excel UTF-8 BOM + CRLF line endings.
+    const csvText = "﻿" + [headers, ...rows].map(row => row.map(csvField).join(",")).join("\r\n");
+    const blob = new Blob([csvText], { type: "text/csv;charset=utf-8" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
-    a.href = url; a.download = `${group.title}_${group.className}_Marks.csv`; a.click();
+    a.href = url;
+    a.download = `${group.title.replace(/[^a-z0-9]+/gi, "_")}_${group.className.replace(/[^a-z0-9]+/gi, "_")}_Marks.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast.success("Marks downloaded!");
   };
 
-  const sorted = [...group.results].sort((a, b) => (parseFloat(b.score) || 0) - (parseFloat(a.score) || 0));
+  // Sort by normalised percentage. Ungraded rows (`null`) fall to bottom.
+  // Was: `parseFloat(b.score) || 0` which (a) missed marks-format rows and
+  // (b) tied a real-zero score with ungraded — `??` semantics not `||`.
+  const sorted = [...group.results].sort((a, b) => {
+    const pa = getPct(a);
+    const pb = getPct(b);
+    return (pb ?? -1) - (pa ?? -1);
+  });
 
   // ───────────────────────── MOBILE DETAIL ─────────────────────────────────
   if (isMobile) {
@@ -373,8 +406,8 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
             </div>
           ) : (
             sorted.map((r, i) => {
-              const score = r.score !== null && r.score !== undefined ? parseFloat(r.score) : null;
-              const graded = score !== null && !isNaN(score);
+              const score = getPct(r);            // handles all schemas, null-safe
+              const graded = score !== null;
               const gradeInfo = graded
                 ? score! >= 80
                   ? { letter: "A", bg: "rgba(0,200,83,.10)", color: "#007830", border: "0.5px solid rgba(0,200,83,.22)", barFrom: GREEN, barTo: "#66EE88" }
@@ -390,7 +423,13 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
               const isLast = i === sorted.length - 1;
 
               return (
-                <div key={r.studentId || i} style={{ display: "flex", flexDirection: "column", borderBottom: isLast ? "none" : `0.5px solid ${SEP}` }}>
+                <div
+                  // Stable React key — prefer studentId, fall back through
+                  // studentEmail, then `row-${index}`. Was: `r.studentId || i`
+                  // — multiple no-id rows would all use index-only keys,
+                  // causing React reconciler to mis-shuffle on re-render.
+                  key={r.studentId || r.studentEmail || `row-${i}`}
+                  style={{ display: "flex", flexDirection: "column", borderBottom: isLast ? "none" : `0.5px solid ${SEP}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "14px 18px" }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: T4, width: 18, textAlign: "center", flexShrink: 0 }}>
                       {i + 1}
@@ -411,7 +450,8 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
                         boxShadow: "0 3px 10px rgba(0,85,255,.24)",
                       }}
                     >
-                      {(r.studentName || "ST").substring(0, 2).toUpperCase()}
+                      {/* Was: substring(0, 2) — gave "AA" for single-name students. */}
+                      {safeInitials(r.studentName)}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: T1, letterSpacing: "-0.2px", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -858,11 +898,28 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
 export default function AssignmentMarks() {
   const { userData } = useAuth();
   const isMobile = useIsMobile();
-  const [allResults,    setAllResults]    = useState<any[]>([]);
-  const [assignMap,     setAssignMap]     = useState<Map<string, any>>(new Map());
+  const [allResults,     setAllResults]     = useState<any[]>([]);
+  // Canonical list of all assignment definitions (was: only fetched
+  // selectively via `where __name__ in [hwIds derived from results]`, which
+  // meant brand-new assignments without any graded submissions yet were
+  // INVISIBLE on this page. Now a live listener over the whole collection
+  // surfaces every assignment as soon as the teacher creates it.
+  const [allAssignments, setAllAssignments] = useState<any[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [selectedGroup, setSelectedGroup] = useState<AssignmentGroup | null>(null);
   const [classFilter,   setClassFilter]   = useState("All");
+  // Search across title / teacher / className (case-insensitive). Wired into
+  // the `filtered` memo below so a single text box scoped to whichever class
+  // tab is active.
+  const [searchQuery,   setSearchQuery]   = useState("");
+  // Per-class current page (1-indexed). Mirrors RiskStudents' pattern.
+  // Each class paginates independently — switching pages on Class 9A
+  // doesn't affect Class 10B.
+  const [classPages, setClassPages] = useState<Record<string, number>>({});
+  const PER_CLASS_PAGE_SIZE = 5;
+  const goPage = (cls: string, page: number) =>
+    setClassPages(prev => ({ ...prev, [cls]: Math.max(1, page) }));
+  const pageOf = (cls: string) => classPages[cls] || 1;
 
   /* ── fetch ──
      - schoolId-only server-side; branchId in-memory (memory:
@@ -879,71 +936,118 @@ export default function AssignmentMarks() {
     const inBranch = (raw: any): boolean =>
       !branchId || !raw?.branchId || raw.branchId === branchId;
 
-    const go = async () => {
-      try {
-        /* 1. results — schoolId only, branch in-memory */
-        const rSnap = await getDocs(
-          query(collection(db, "results"), where("schoolId", "==", schoolId)),
-        );
-        const results = rSnap.docs
+    // Two live listeners — assignments (canonical) + results (grading data).
+    // Was: one-shot getDocs that (a) didn't update when teacher added new
+    // assignments / graded submissions and (b) skipped any assignment with
+    // zero submissions (so newly-created homework was invisible until first
+    // grading). Now both sources stream live, merged in the `groups` memo.
+    let assignmentsLoaded = false;
+    let resultsLoaded = false;
+    const maybeFinishLoading = () => {
+      if (assignmentsLoaded && resultsLoaded) setLoading(false);
+    };
+
+    const unsubAssignments = onSnapshot(
+      query(collection(db, "assignments"), where("schoolId", "==", schoolId)),
+      (snap) => {
+        const list = snap.docs
           .map(d => ({ id: d.id, ...d.data() } as any))
           .filter(inBranch);
-        setAllResults(results);
+        setAllAssignments(list);
+        assignmentsLoaded = true;
+        maybeFinishLoading();
+      },
+      (err) => {
+        console.error("[AssignmentMarks] assignments listener failed:", err);
+        toast.error("Failed to load assignments.");
+        assignmentsLoaded = true;
+        maybeFinishLoading();
+      },
+    );
 
-        /* 2. fetch assignments metadata by homeworkId (max 10 per "in" query) */
-        const hwIds = [...new Set(results.map((r: any) => r.homeworkId).filter(Boolean))] as string[];
-        const aMap  = new Map<string, any>();
-        for (const ids of chunk(hwIds, 10)) {
-          if (!ids.length) continue;
-          const aSnap = await getDocs(
-            query(collection(db, "assignments"), where("__name__", "in", ids))
-          );
-          aSnap.docs.forEach(d => aMap.set(d.id, { id: d.id, ...d.data() }));
-        }
-        setAssignMap(aMap);
-      } catch (e) {
-        console.error("[AssignmentMarks] fetch failed:", e);
-        toast.error("Failed to load assignment marks. Please refresh.");
-      }
-      setLoading(false);
-    };
-    go();
+    const unsubResults = onSnapshot(
+      query(collection(db, "results"), where("schoolId", "==", schoolId)),
+      (snap) => {
+        const list = snap.docs
+          .map(d => ({ id: d.id, ...d.data() } as any))
+          .filter(inBranch);
+        setAllResults(list);
+        resultsLoaded = true;
+        maybeFinishLoading();
+      },
+      (err) => {
+        console.error("[AssignmentMarks] results listener failed:", err);
+        toast.error("Failed to load grading data.");
+        resultsLoaded = true;
+        maybeFinishLoading();
+      },
+    );
+
+    return () => { unsubAssignments(); unsubResults(); };
   }, [userData?.schoolId, userData?.branchId]);
 
-  /* ── build assignment groups ── */
+  /* ── build assignment groups ──
+     Union of two sources:
+       - `allAssignments` (canonical): every assignment definition the
+         teacher has uploaded, even ones with zero submissions yet.
+       - `allResults` (graded data): join key is `homeworkId === assignment.id`
+         (verified — teacher writes `homeworkId: assignment.id` in
+         GradeAssignment.tsx).
+     We also keep orphan result-only groups (assignment doc deleted but
+     grade data remains) so historical scores never silently disappear. */
   const groups = useMemo<AssignmentGroup[]>(() => {
-    const map = new Map<string, any[]>();
+    // Index results by their homeworkId.
+    const resultsByHw = new Map<string, any[]>();
     allResults.forEach(r => {
-      const key = r.homeworkId || r.assignmentTitle || "unknown";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(r);
+      const k = r.homeworkId || "";
+      if (!k) return;
+      if (!resultsByHw.has(k)) resultsByHw.set(k, []);
+      resultsByHw.get(k)!.push(r);
     });
 
-    return Array.from(map.entries()).map(([hwId, results]) => {
-      const aData   = assignMap.get(hwId) || {};
-      const graded  = results.filter(r => r.score !== null && r.score !== undefined && r.score !== "");
-      const scores  = graded.map(r => parseFloat(r.score)).filter(n => !isNaN(n));
-      const avg     = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-      const top     = scores.length ? Math.max(...scores) : 0;
-      const topR    = graded.find(r => parseFloat(r.score) === top);
+    // Index assignments by id.
+    const assignmentsById = new Map<string, any>();
+    allAssignments.forEach(a => assignmentsById.set(a.id, a));
+
+    // Union of every key seen on either side.
+    const allHwIds = new Set<string>([
+      ...allAssignments.map(a => a.id),
+      ...resultsByHw.keys(),
+    ]);
+
+    return Array.from(allHwIds).map(hwId => {
+      const aData = assignmentsById.get(hwId) || {};
+      const results = resultsByHw.get(hwId) || [];
+      const firstResult = results[0] || {};
+
+      const gradedPairs = results
+        .map(r => ({ r, pct: getPct(r) }))
+        .filter(x => x.pct !== null) as { r: any; pct: number }[];
+      const scores = gradedPairs.map(x => x.pct);
+      const avg    = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+      const topPair = gradedPairs.length
+        ? gradedPairs.reduce((best, cur) => (cur.pct > best.pct ? cur : best))
+        : null;
       return {
         homeworkId:  hwId,
-        title:       aData.title       || results[0]?.assignmentTitle || "Unnamed Assignment",
-        className:   aData.className   || results[0]?.className        || "—",
-        teacherName: aData.teacherName || results[0]?.teacherName      || "—",
+        // Prefer the assignment doc's metadata; fall back to the first
+        // result's snapshot fields (used by orphan groups + legacy data).
+        title:       aData.title       || firstResult.assignmentTitle || "Unnamed Assignment",
+        className:   aData.className   || firstResult.className        || "—",
+        teacherName: aData.teacherName || firstResult.teacherName      || "—",
         dueDate:     aData.dueDate     || null,
         results,
-        gradedCount: graded.length,
+        gradedCount: gradedPairs.length,
         avgScore:    avg,
-        topScore:    Math.round(top),
-        topStudent:  topR?.studentName || "—",
+        topScore:    topPair ? Math.round(topPair.pct) : 0,
+        topStudent:  topPair?.r?.studentName || "—",
       };
     }).sort((a, b) => {
       const da = a.dueDate?.toDate ? a.dueDate.toDate() : new Date(a.dueDate || 0);
       const db_ = b.dueDate?.toDate ? b.dueDate.toDate() : new Date(b.dueDate || 0);
       return db_.getTime() - da.getTime();
     });
-  }, [allResults, assignMap]);
+  }, [allResults, allAssignments]);
 
   /* ── class list for filter tabs ── */
   const classes = useMemo(() => {
@@ -951,18 +1055,53 @@ export default function AssignmentMarks() {
     return ["All", ...Array.from(set).sort()];
   }, [groups]);
 
-  const filtered = classFilter === "All" ? groups : groups.filter(g => g.className === classFilter);
+  // Apply class filter then text search (matches title / teacher / class).
+  const filtered = useMemo(() => {
+    let pool = classFilter === "All" ? groups : groups.filter(g => g.className === classFilter);
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      pool = pool.filter(g =>
+        g.title.toLowerCase().includes(q) ||
+        g.teacherName.toLowerCase().includes(q) ||
+        g.className.toLowerCase().includes(q),
+      );
+    }
+    return pool;
+  }, [groups, classFilter, searchQuery]);
+
+  // Group the filtered list by className for class-wise rendering. Each
+  // section uses the per-class collapse state for in-line pagination.
+  const groupedByClass = useMemo(() => {
+    const map = new Map<string, AssignmentGroup[]>();
+    filtered.forEach(g => {
+      const k = g.className || "—";
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(g);
+    });
+    // Sort each class's assignments by due date desc (already sorted in
+    // `groups` memo, but re-applied per class to be safe after filter).
+    return Array.from(map.entries())
+      .map(([className, items]) => ({ className, items }))
+      .sort((a, b) => a.className.localeCompare(b.className));
+  }, [filtered]);
+
 
   /* ── overall stats ── */
+  // Same schema-aware getPct so stats reflect ALL graded submissions, not
+  // just rows with a literal `score` field.
   const stats = useMemo(() => {
-    const allScores = allResults.map(r => parseFloat(r.score)).filter(n => !isNaN(n));
-    const avg       = allScores.length ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length) : 0;
-    const topR      = [...allResults].sort((a, b) => (parseFloat(b.score) || 0) - (parseFloat(a.score) || 0))[0];
+    const pairs = allResults
+      .map(r => ({ r, pct: getPct(r) }))
+      .filter(x => x.pct !== null) as { r: any; pct: number }[];
+    const avg = pairs.length ? Math.round(pairs.reduce((a, b) => a + b.pct, 0) / pairs.length) : 0;
+    const topPair = pairs.length
+      ? pairs.reduce((best, cur) => (cur.pct > best.pct ? cur : best))
+      : null;
     return {
       totalAssignments: groups.length,
-      totalGraded:      allResults.filter(r => r.score !== null && r.score !== undefined && r.score !== "").length,
+      totalGraded:      pairs.length,
       avgScore:         avg,
-      topStudent:       topR?.studentName || "—",
+      topStudent:       topPair?.r?.studentName || "—",
     };
   }, [allResults, groups]);
 
@@ -973,10 +1112,16 @@ export default function AssignmentMarks() {
         loading={loading}
         groups={groups}
         filtered={filtered}
+        groupedByClass={groupedByClass}
         stats={stats}
         classes={classes}
         classFilter={classFilter}
         setClassFilter={setClassFilter}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        classPages={classPages}
+        goPage={goPage}
+        perClassPageSize={PER_CLASS_PAGE_SIZE}
         selectedGroup={selectedGroup}
         onSelectGroup={g => setSelectedGroup(g)}
         onBackFromDetail={() => setSelectedGroup(null)}
@@ -1014,7 +1159,9 @@ export default function AssignmentMarks() {
             <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
             <span>Teacher Submissions</span>
             <span className="font-bold" style={{ color: "#99AACC" }}>·</span>
-            <span>AI Feedback Engine</span>
+            {/* Was: "AI Feedback Engine" — stale marketing label after the
+                fabricated aiFeedback() function was removed in pass #41. */}
+            <span>Teacher Feedback</span>
           </div>
         </div>
       </div>
@@ -1145,6 +1292,37 @@ export default function AssignmentMarks() {
         })}
       </div>
 
+      {/* Search input — narrows the active class filter further by title /
+          teacher / class name (case-insensitive). */}
+      {!loading && groups.length > 0 && (
+        <div className="mb-3 relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by assignment title, teacher, or class…"
+            className="w-full h-11 pl-10 pr-4 bg-white rounded-[14px] text-[13px] font-medium outline-none"
+            style={{
+              border: "0.5px solid rgba(0,85,255,0.14)",
+              color: "#001040",
+              boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.09)",
+              fontFamily: "inherit",
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF" }}
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" strokeWidth={2.5} />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Class filter pills */}
       {!loading && classes.length > 1 && (
         <div className="flex gap-[7px] flex-wrap mb-5">
@@ -1194,99 +1372,168 @@ export default function AssignmentMarks() {
           </p>
         </div>
       ) : (
-        <div className="rounded-[22px] bg-white overflow-hidden"
-          style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
-              <thead>
-                <tr style={{ background: "rgba(0,85,255,0.04)", borderBottom: "0.5px solid rgba(0,85,255,0.07)" }}>
-                  {["Assignment", "Class", "Teacher", "Due Date", "Graded", "Avg Score", "Top Score", ""].map(h => (
-                    <th key={h} className="px-5 py-[14px] text-left text-[10px] font-bold uppercase tracking-[0.10em] whitespace-nowrap" style={{ color: "#99AACC" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((g, i, arr) => {
-                  const allGraded = g.gradedCount === g.results.length && g.gradedCount > 0;
-                  const avgColor = g.avgScore >= 70 ? "#00C853" : g.avgScore >= 50 ? "#FF8800" : "#FF3355";
-                  return (
-                    <tr key={g.homeworkId || i} className="transition-colors hover:bg-[#F5F9FF]"
-                      style={i < arr.length - 1 ? { borderBottom: "0.5px solid rgba(0,85,255,0.05)" } : {}}>
-                      {/* Assignment name */}
-                      <td className="px-5 py-[14px]">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-[11px] flex items-center justify-center flex-shrink-0"
-                            style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.28)" }}>
-                            <FileText className="w-[16px] h-[16px] text-white" strokeWidth={2.3} />
-                          </div>
-                          <p className="text-[13px] font-bold tracking-[-0.2px] capitalize" style={{ color: "#001040" }}>{g.title}</p>
-                        </div>
-                      </td>
-                      {/* Class */}
-                      <td className="px-5 py-[14px]">
-                        <span className="px-[10px] py-[3px] rounded-full text-[11px] font-bold text-white"
-                          style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 2px 7px rgba(0,85,255,0.28)" }}>
-                          {g.className}
-                        </span>
-                      </td>
-                      {/* Teacher */}
-                      <td className="px-5 py-[14px] text-[12px] font-semibold" style={{ color: "#5070B0" }}>{g.teacherName}</td>
-                      {/* Due date */}
-                      <td className="px-5 py-[14px]">
-                        <span className="text-[11px] font-semibold flex items-center gap-[4px]" style={{ color: "#99AACC" }}>
-                          <Clock className="w-3 h-3" strokeWidth={2.3} /> {fmtDate(g.dueDate)}
-                        </span>
-                      </td>
-                      {/* Graded */}
-                      <td className="px-5 py-[14px]">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[13px] font-bold" style={{ color: "#001040" }}>{g.gradedCount}</span>
-                          <span className="text-[11px] font-semibold" style={{ color: "#99AACC" }}>/ {g.results.length}</span>
-                          {allGraded && (
-                            <span className="flex items-center gap-[3px] px-[7px] py-[2px] rounded-full text-[10px] font-bold"
-                              style={{ background: "rgba(0,200,83,0.10)", color: "#007830", border: "0.5px solid rgba(0,200,83,0.22)" }}>
-                              <Check className="w-[10px] h-[10px]" strokeWidth={2.6} /> Complete
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      {/* Avg score */}
-                      <td className="px-5 py-[14px]">
-                        {g.gradedCount > 0 ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[14px] font-bold" style={{ color: avgColor, letterSpacing: "-0.2px" }}>{g.avgScore}%</span>
-                            <div className="h-1 w-[70px] rounded-[2px] overflow-hidden" style={{ background: "#E0ECFF" }}>
-                              <div className="h-full rounded-[2px]"
-                                style={{ width: `${Math.max(0, Math.min(100, g.avgScore))}%`, background: `linear-gradient(90deg, ${avgColor}, ${avgColor}AA)` }} />
-                            </div>
-                          </div>
-                        ) : <span className="text-[11px]" style={{ color: "#99AACC" }}>—</span>}
-                      </td>
-                      {/* Top score */}
-                      <td className="px-5 py-[14px]">
-                        {g.gradedCount > 0 ? (
-                          <div>
-                            <p className="text-[14px] font-bold" style={{ color: "#00C853" }}>{g.topScore}%</p>
-                            <p className="text-[11px] font-semibold truncate max-w-[120px]" style={{ color: "#99AACC" }}>{g.topStudent}</p>
-                          </div>
-                        ) : <span className="text-[11px]" style={{ color: "#99AACC" }}>—</span>}
-                      </td>
-                      {/* View button */}
-                      <td className="px-5 py-[14px]">
-                        <button onClick={() => setSelectedGroup(g)}
-                          className="h-9 px-4 rounded-[11px] flex items-center gap-[5px] text-[11px] font-bold text-white transition-transform active:scale-95 hover:scale-[1.03] relative overflow-hidden whitespace-nowrap"
-                          style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.26)" }}>
-                          <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
-                          <span className="relative z-10">View Marks</span>
-                          <ChevronRight className="w-3 h-3 relative z-10" strokeWidth={2.5} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        // Class-wise stacked sections — each class gets its own card with
+        // header (class name + count) and a table of its assignments. Each
+        // class is paginated independently: page-numbers (Prev / 1 / 2 /
+        // … / Next) at the bottom of each section. Mirrors RiskStudents.
+        <div className="flex flex-col gap-5">
+          {groupedByClass.map(({ className, items }) => {
+            const totalPages = Math.max(1, Math.ceil(items.length / PER_CLASS_PAGE_SIZE));
+            const currentPage = Math.min(pageOf(className), totalPages);
+            const startIdx = (currentPage - 1) * PER_CLASS_PAGE_SIZE;
+            const visibleItems = items.slice(startIdx, startIdx + PER_CLASS_PAGE_SIZE);
+            return (
+              <div key={className} className="rounded-[22px] bg-white overflow-hidden"
+                style={{ boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.11), 0 16px 40px rgba(0,85,255,.13)", border: "0.5px solid rgba(0,85,255,0.10)" }}>
+                {/* Class section header */}
+                <div className="flex items-center gap-3 px-6 py-[14px]"
+                  style={{ background: "linear-gradient(90deg, rgba(0,85,255,0.06), rgba(0,85,255,0.02))", borderBottom: "0.5px solid rgba(0,85,255,0.08)" }}>
+                  <div className="w-9 h-9 rounded-[11px] flex items-center justify-center flex-shrink-0"
+                    style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.28)" }}>
+                    <Users className="w-[16px] h-[16px] text-white" strokeWidth={2.3} />
+                  </div>
+                  <h3 className="text-[15px] font-bold tracking-[-0.2px]" style={{ color: "#001040" }}>{className}</h3>
+                  <span className="px-[10px] py-[3px] rounded-full text-[10px] font-bold"
+                    style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}>
+                    {items.length} {items.length === 1 ? "assignment" : "assignments"}
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[820px]">
+                    <thead>
+                      <tr style={{ background: "rgba(0,85,255,0.02)", borderBottom: "0.5px solid rgba(0,85,255,0.07)" }}>
+                        {["Assignment", "Teacher", "Due Date", "Graded", "Avg Score", "Top Score", ""].map(h => (
+                          <th key={h} className="px-5 py-[12px] text-left text-[10px] font-bold uppercase tracking-[0.10em] whitespace-nowrap" style={{ color: "#99AACC" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleItems.map((g, i, arr) => {
+                        const allGraded = g.gradedCount === g.results.length && g.gradedCount > 0;
+                        const avgColor = g.avgScore >= 70 ? "#00C853" : g.avgScore >= 50 ? "#FF8800" : "#FF3355";
+                        return (
+                          <tr key={g.homeworkId || i} className="transition-colors hover:bg-[#F5F9FF]"
+                            style={i < arr.length - 1 ? { borderBottom: "0.5px solid rgba(0,85,255,0.05)" } : {}}>
+                            {/* Assignment name */}
+                            <td className="px-5 py-[14px]">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-[11px] flex items-center justify-center flex-shrink-0"
+                                  style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.28)" }}>
+                                  <FileText className="w-[16px] h-[16px] text-white" strokeWidth={2.3} />
+                                </div>
+                                <p className="text-[13px] font-bold tracking-[-0.2px] capitalize" style={{ color: "#001040" }}>{g.title}</p>
+                              </div>
+                            </td>
+                            {/* Teacher */}
+                            <td className="px-5 py-[14px] text-[12px] font-semibold" style={{ color: "#5070B0" }}>{g.teacherName}</td>
+                            {/* Due date */}
+                            <td className="px-5 py-[14px]">
+                              <span className="text-[11px] font-semibold flex items-center gap-[4px]" style={{ color: "#99AACC" }}>
+                                <Clock className="w-3 h-3" strokeWidth={2.3} /> {fmtDate(g.dueDate)}
+                              </span>
+                            </td>
+                            {/* Graded */}
+                            <td className="px-5 py-[14px]">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[13px] font-bold" style={{ color: "#001040" }}>{g.gradedCount}</span>
+                                <span className="text-[11px] font-semibold" style={{ color: "#99AACC" }}>/ {g.results.length}</span>
+                                {allGraded && (
+                                  <span className="flex items-center gap-[3px] px-[7px] py-[2px] rounded-full text-[10px] font-bold"
+                                    style={{ background: "rgba(0,200,83,0.10)", color: "#007830", border: "0.5px solid rgba(0,200,83,0.22)" }}>
+                                    <Check className="w-[10px] h-[10px]" strokeWidth={2.6} /> Complete
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            {/* Avg score */}
+                            <td className="px-5 py-[14px]">
+                              {g.gradedCount > 0 ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[14px] font-bold" style={{ color: avgColor, letterSpacing: "-0.2px" }}>{g.avgScore}%</span>
+                                  <div className="h-1 w-[70px] rounded-[2px] overflow-hidden" style={{ background: "#E0ECFF" }}>
+                                    <div className="h-full rounded-[2px]"
+                                      style={{ width: `${Math.max(0, Math.min(100, g.avgScore))}%`, background: `linear-gradient(90deg, ${avgColor}, ${avgColor}AA)` }} />
+                                  </div>
+                                </div>
+                              ) : <span className="text-[11px]" style={{ color: "#99AACC" }}>—</span>}
+                            </td>
+                            {/* Top score */}
+                            <td className="px-5 py-[14px]">
+                              {g.gradedCount > 0 ? (
+                                <div>
+                                  <p className="text-[14px] font-bold" style={{ color: "#00C853" }}>{g.topScore}%</p>
+                                  <p className="text-[11px] font-semibold truncate max-w-[120px]" style={{ color: "#99AACC" }}>{g.topStudent}</p>
+                                </div>
+                              ) : <span className="text-[11px]" style={{ color: "#99AACC" }}>—</span>}
+                            </td>
+                            {/* View button */}
+                            <td className="px-5 py-[14px]">
+                              <button onClick={() => setSelectedGroup(g)}
+                                className="h-9 px-4 rounded-[11px] flex items-center gap-[5px] text-[11px] font-bold text-white transition-transform active:scale-95 hover:scale-[1.03] relative overflow-hidden whitespace-nowrap"
+                                style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.26)" }}>
+                                <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+                                <span className="relative z-10">View Marks</span>
+                                <ChevronRight className="w-3 h-3 relative z-10" strokeWidth={2.5} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Per-class pagination — Prev / page-numbers / Next.
+                    Only renders when there's more than one page. Pattern
+                    matches RiskStudents class-wise pagination. */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between gap-3 px-5 py-3"
+                    style={{ borderTop: "0.5px solid rgba(0,85,255,0.07)", background: "rgba(0,85,255,0.02)" }}>
+                    <span className="text-[11px] font-semibold" style={{ color: "#5070B0" }}>
+                      {startIdx + 1}–{Math.min(startIdx + PER_CLASS_PAGE_SIZE, items.length)} of {items.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => goPage(className, currentPage - 1)}
+                        disabled={currentPage <= 1}
+                        className="h-8 px-3 rounded-[10px] flex items-center gap-1 text-[11px] font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ background: "#fff", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}
+                      >
+                        <ChevronLeft className="w-3 h-3" strokeWidth={2.5} /> Prev
+                      </button>
+                      {/* Numbered page buttons (cap at 7 for visual clarity) */}
+                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .slice(
+                          Math.max(0, Math.min(currentPage - 4, totalPages - 7)),
+                          Math.max(7, currentPage + 3),
+                        )
+                        .map(pn => (
+                          <button
+                            key={pn}
+                            onClick={() => goPage(className, pn)}
+                            className="h-8 min-w-[32px] px-2 rounded-[10px] text-[11px] font-bold"
+                            style={pn === currentPage
+                              ? { background: "linear-gradient(135deg, #0055FF, #1166FF)", color: "#fff", boxShadow: "0 3px 10px rgba(0,85,255,0.28)" }
+                              : { background: "#fff", color: "#5070B0", border: "0.5px solid rgba(0,85,255,0.16)" }}
+                          >
+                            {pn}
+                          </button>
+                        ))}
+                      <button
+                        onClick={() => goPage(className, currentPage + 1)}
+                        disabled={currentPage >= totalPages}
+                        className="h-8 px-3 rounded-[10px] flex items-center gap-1 text-[11px] font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ background: "#fff", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.16)" }}
+                      >
+                        Next <ChevronRight className="w-3 h-3" strokeWidth={2.5} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
