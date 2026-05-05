@@ -87,12 +87,27 @@ const selectInputStyle = (t1: string): React.CSSProperties => ({
   backgroundPosition: "right 12px center",
 });
 
+// Form now carries the FULL student identity (id, email, classId, className)
+// so the saved incident is linkable from the teacher dashboard, parent
+// dashboard, and the principal's own per-student profile — was: only a
+// free-form `studentName` text input which made all those reads invisible.
 const BLANK_FORM = {
   title: '', type: 'Behavioral', severity: 'Medium',
   date: new Date().toLocaleDateString('en-CA'),
   time: new Date().toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' }),
-  location: '', description: '', studentName: '', studentGrade: '', reportedBy: ''
+  location: '', description: '',
+  studentId: '', studentEmail: '', studentName: '', studentGrade: '',
+  classId: '', className: '',
+  reportedBy: ''
 };
+
+interface StudentLite {
+  id: string;
+  name: string;
+  email: string;
+  classId: string;
+  className: string;
+}
 
 const Discipline = () => {
   const { userData } = useAuth();
@@ -103,6 +118,11 @@ const Discipline = () => {
   const [pieData, setPieData] = useState<any[]>([]);
   const [stats, setStats] = useState({ todayCount: 0, pendingCount: 0, weekCount: 0, criticalCount: 0 });
 
+  // Live student roster for the picker. schoolId-only server-side, branchId
+  // applied in-memory (memory: branchid_inference_lag).
+  const [students, setStudents] = useState<StudentLite[]>([]);
+  const [studentSearch, setStudentSearch] = useState('');
+
   // Filters
   const [filterType, setFilterType]     = useState<'all' | 'week' | 'critical'>('all');
   const [searchTerm, setSearchTerm]     = useState('');
@@ -112,6 +132,70 @@ const Discipline = () => {
   const [showLogModal, setShowLogModal] = useState(false);
   const [form, setForm]                 = useState(BLANK_FORM);
   const [saving, setSaving]             = useState(false);
+
+  // Picker filter state — class first, then narrow by search within class.
+  const [pickerClassFilter, setPickerClassFilter] = useState<string>("");
+
+  // Live students listener — schoolId-only server-side, branchId in-memory.
+  useEffect(() => {
+    const schoolId = userData?.schoolId;
+    if (!schoolId) return;
+    const branchId = userData?.branchId || "";
+    const inBranch = (raw: any): boolean =>
+      !branchId || !raw?.branchId || raw.branchId === branchId;
+
+    const unsub = onSnapshot(
+      query(collection(db, "students"), where("schoolId", "==", schoolId)),
+      (snap) => {
+        const list = snap.docs
+          .map(d => ({ id: d.id, ...(d.data() as any) }))
+          .filter(inBranch)
+          .map(s => ({
+            id: s.id,
+            name: s.name || s.studentName || s.fullName || "Unnamed",
+            email: (s.email || s.studentEmail || "").toLowerCase(),
+            classId: s.classId || "",
+            className: s.className || s.grade || s.gradeLevel || "",
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        setStudents(list);
+      },
+      (err) => console.warn("[Discipline] students listener failed:", err),
+    );
+    return () => unsub();
+  }, [userData?.schoolId, userData?.branchId]);
+
+  // Distinct class options for the picker — sorted, with student counts.
+  const pickerClassOptions = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    students.forEach(s => {
+      const k = s.className || "Unassigned";
+      counts.set(k, (counts.get(k) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .map(([className, count]) => ({ className, count }))
+      .sort((a, b) => a.className.localeCompare(b.className));
+  }, [students]);
+
+  // Filtered student list for the picker dropdown — class filter applied
+  // first, then text search narrows within that class. When no class is
+  // selected and no search text, show students grouped under the first 50
+  // entries so the principal sees the roster up-front.
+  const filteredStudents = React.useMemo(() => {
+    const q = studentSearch.trim().toLowerCase();
+    let pool = students;
+    if (pickerClassFilter) {
+      pool = pool.filter(s => (s.className || "Unassigned") === pickerClassFilter);
+    }
+    if (q) {
+      pool = pool.filter(s =>
+        s.name.toLowerCase().includes(q) ||
+        s.email.toLowerCase().includes(q) ||
+        s.className.toLowerCase().includes(q),
+      );
+    }
+    return pool.slice(0, 100);
+  }, [students, studentSearch, pickerClassFilter]);
 
   useEffect(() => {
     if (!userData?.schoolId) return;
@@ -165,8 +249,13 @@ const Discipline = () => {
     if (statusFilter !== 'all' && (i.status || 'Open').toLowerCase() !== statusFilter) return false;
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
+      // Read student name from BOTH the modern root-level `studentName` AND
+      // the legacy nested `student.name`. Was: nested-only — teacher-
+      // created incidents (which only have root studentName) silently failed
+      // to match search.
+      const sName = String(i.studentName || i.student?.name || "").toLowerCase();
       if (
-        !i.student?.name?.toLowerCase().includes(q) &&
+        !sName.includes(q) &&
         !i.type?.toLowerCase().includes(q) &&
         !i.title?.toLowerCase().includes(q)
       ) return false;
@@ -175,23 +264,47 @@ const Discipline = () => {
   }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   // ── Log new incident ──
+  // Cross-dashboard linkage requires ROOT-LEVEL studentId, studentName,
+  // studentEmail, classId, className. The nested `student: {name, grade}`
+  // is kept ONLY for backwards compatibility with any reads still using
+  // the old path (principal IncidentDetail / owner alerts). New writes
+  // populate both shapes.
   const handleLogIncident = async () => {
-    if (!form.studentName || !form.title || !form.type) return;
+    if (!form.studentId) {
+      toast.error("Please select a student from the picker.");
+      return;
+    }
+    if (!form.title.trim()) {
+      toast.error("Please add a short title.");
+      return;
+    }
+    if (!form.type) {
+      toast.error("Please pick an incident type.");
+      return;
+    }
     setSaving(true);
     try {
       await addDoc(collection(db, 'incidents'), {
-        title:       form.title,
+        title:       form.title.trim(),
         type:        form.type,
         severity:    form.severity,
         date:        form.date,
         time:        form.time,
-        location:    form.location,
-        description: form.description,
-        student:     { name: form.studentName, grade: form.studentGrade },
+        location:    form.location.trim(),
+        description: form.description.trim(),
+        // Root-level identity fields — what teacher/parent/principal-profile reads expect.
+        studentId:    form.studentId,
+        studentEmail: form.studentEmail || null,
+        studentName:  form.studentName,
+        classId:      form.classId || null,
+        className:    form.className || null,
+        // Backwards-compat nested object (don't break existing IncidentDetail / owner reads).
+        student:     { name: form.studentName, grade: form.className || form.studentGrade || '' },
         reportedBy:  form.reportedBy || userData?.name || 'Principal',
+        reportedByRole: 'principal',
         status:      'Open',
         schoolId:    userData?.schoolId || '',
-        branchId:    userData?.branchId || '',
+        branchId:    userData?.branchId || null,
         actionLog:   [{
           action: 'Incident Reported',
           time:   new Date().toLocaleString(),
@@ -202,8 +315,14 @@ const Discipline = () => {
         attachments: [],
         createdAt:   Timestamp.now()
       });
+      toast.success(`Incident logged for ${form.studentName}.`);
       setForm(BLANK_FORM);
+      setStudentSearch('');
+      setPickerClassFilter('');
       setShowLogModal(false);
+    } catch (err: any) {
+      console.error("[Discipline] handleLogIncident failed:", err);
+      toast.error(`Failed to log incident: ${err?.message || "Unknown error"}`);
     } finally {
       setSaving(false);
     }
@@ -226,7 +345,7 @@ const Discipline = () => {
           type: "table",
           headers: ["Date", "Student", "Type", "Severity", "Status"],
           rows: filteredIncidents.map((i: any) => ({
-            cells: [i.date || "—", i.student?.name || "Unknown", i.type || "—", i.severity || "—", i.status || "Open"],
+            cells: [i.date || "—", i.studentName || i.student?.name || "Unknown", i.type || "—", i.severity || "—", i.status || "Open"],
             highlight: ["HIGH", "CRITICAL"].includes((i.severity || "").toUpperCase()),
           })),
         },
@@ -876,9 +995,12 @@ const Discipline = () => {
                 filteredIncidents.slice(0, 20).map((inc, i) => {
                   const sev = sevStyle(inc.severity);
                   const st = statusStyle(inc.status || "Open");
-                  const name = inc.student?.name || "Unknown";
+                  // Read student identity from BOTH schemas (modern root +
+                  // legacy nested) so teacher-created incidents (which only
+                  // have root studentName / className) display correctly.
+                  const name = inc.studentName || inc.student?.name || "Unknown";
                   const initials = name.substring(0, 2).toUpperCase();
-                  const grade = inc.student?.grade || inc.grade || "";
+                  const grade = inc.className || inc.student?.grade || inc.grade || "";
                   const dateLabel = inc.date
                     ? new Date(inc.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
                     : "—";
@@ -1197,30 +1319,138 @@ const Discipline = () => {
                   />
                 </div>
 
-                {/* Student Name + Grade */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                  <div>
-                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T4, marginBottom: 7 }}>
-                      Student Name<span style={{ color: RED, marginLeft: 2 }}>*</span>
-                    </div>
-                    <input
-                      value={form.studentName}
-                      onChange={(e) => setForm((f) => ({ ...f, studentName: e.target.value }))}
-                      placeholder="Full name"
-                      style={fieldInputStyle(T1, T4)}
-                    />
+                {/* Student Picker — class chips + roster list.
+                    Replaces free-form text inputs. Real student record
+                    selection so the saved incident links from teacher / parent
+                    / student-profile reads (which all key on studentId or
+                    studentEmail). */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T4, marginBottom: 7 }}>
+                    Student<span style={{ color: RED, marginLeft: 2 }}>*</span>
                   </div>
-                  <div>
-                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T4, marginBottom: 7 }}>
-                      Grade / Class
+                  {form.studentId ? (
+                    <div
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "12px 14px", background: "rgba(0,200,83,0.08)",
+                        borderRadius: 13, border: "1px solid rgba(0,200,83,0.30)",
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: T1, letterSpacing: "-0.2px" }}>
+                          {form.studentName}
+                        </div>
+                        <div style={{ fontSize: 11, color: T4, marginTop: 2 }}>
+                          {form.className || "—"}{form.studentEmail ? ` · ${form.studentEmail}` : ""}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setForm(f => ({ ...f, studentId: '', studentEmail: '', studentName: '', classId: '', className: '', studentGrade: '' }))}
+                        style={{
+                          width: 26, height: 26, borderRadius: 8,
+                          background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.18)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          cursor: "pointer", flexShrink: 0,
+                        }}
+                        aria-label="Clear student"
+                      >
+                        <X size={12} color="rgba(0,85,255,.6)" strokeWidth={2.5} />
+                      </button>
                     </div>
-                    <input
-                      value={form.studentGrade}
-                      onChange={(e) => setForm((f) => ({ ...f, studentGrade: e.target.value }))}
-                      placeholder="e.g. 9A"
-                      style={fieldInputStyle(T1, T4)}
-                    />
-                  </div>
+                  ) : students.length === 0 ? (
+                    <div style={{ padding: 14, fontSize: 12, color: T4, textAlign: "center", background: "#EEF4FF", borderRadius: 13 }}>
+                      Loading students…
+                    </div>
+                  ) : (
+                    <>
+                      {/* Class filter chips — horizontal scroll, principal
+                          sees their classes up-front and picks the one they
+                          want to log against. */}
+                      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, marginBottom: 8 }}>
+                        <button
+                          onClick={() => setPickerClassFilter("")}
+                          style={{
+                            flexShrink: 0,
+                            padding: "7px 12px", borderRadius: 100,
+                            background: pickerClassFilter === "" ? `linear-gradient(135deg, ${B1}, ${B2})` : "#fff",
+                            color: pickerClassFilter === "" ? "#fff" : T2,
+                            border: `0.5px solid ${pickerClassFilter === "" ? "transparent" : "rgba(0,85,255,0.18)"}`,
+                            fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                          }}
+                        >
+                          All ({students.length})
+                        </button>
+                        {pickerClassOptions.map(c => (
+                          <button
+                            key={c.className}
+                            onClick={() => setPickerClassFilter(c.className)}
+                            style={{
+                              flexShrink: 0,
+                              padding: "7px 12px", borderRadius: 100,
+                              background: pickerClassFilter === c.className ? `linear-gradient(135deg, ${B1}, ${B2})` : "#fff",
+                              color: pickerClassFilter === c.className ? "#fff" : T2,
+                              border: `0.5px solid ${pickerClassFilter === c.className ? "transparent" : "rgba(0,85,255,0.18)"}`,
+                              fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                            }}
+                          >
+                            {c.className} ({c.count})
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Search within selected class (or all). */}
+                      <input
+                        value={studentSearch}
+                        onChange={(e) => setStudentSearch(e.target.value)}
+                        placeholder={pickerClassFilter ? `Search in ${pickerClassFilter}…` : "Search by name or email…"}
+                        style={fieldInputStyle(T1, T4)}
+                      />
+
+                      {/* Roster list — always visible (no need to type first). */}
+                      <div
+                        style={{
+                          marginTop: 6, maxHeight: 220, overflowY: "auto",
+                          background: "#fff", borderRadius: 12,
+                          border: "0.5px solid rgba(0,85,255,0.18)",
+                          boxShadow: "0 8px 24px rgba(0,8,64,0.10)",
+                        }}
+                      >
+                        {filteredStudents.length === 0 ? (
+                          <div style={{ padding: 14, fontSize: 12, color: T4, textAlign: "center" }}>
+                            No students found
+                          </div>
+                        ) : (
+                          filteredStudents.map((s) => (
+                            <button
+                              key={s.id}
+                              onClick={() => {
+                                setForm(f => ({
+                                  ...f,
+                                  studentId: s.id,
+                                  studentEmail: s.email,
+                                  studentName: s.name,
+                                  classId: s.classId,
+                                  className: s.className,
+                                  studentGrade: s.className,
+                                }));
+                                setStudentSearch('');
+                              }}
+                              style={{
+                                width: "100%", padding: "10px 14px", textAlign: "left",
+                                background: "transparent", border: "none", borderBottom: `0.5px solid ${SEP}`,
+                                cursor: "pointer", display: "flex", flexDirection: "column", gap: 2,
+                              }}
+                            >
+                              <span style={{ fontSize: 13, fontWeight: 700, color: T1 }}>{s.name}</span>
+                              <span style={{ fontSize: 11, color: T4 }}>
+                                {s.className || "—"}{s.email ? ` · ${s.email}` : ""}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Type + Severity */}
@@ -1346,15 +1576,8 @@ const Discipline = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={async () => {
-                    if (!form.studentName || !form.title) {
-                      toast.error("Student Name aur Incident Title required hain.");
-                      return;
-                    }
-                    await handleLogIncident();
-                    toast.success("Incident logged successfully.");
-                  }}
-                  disabled={saving || !form.studentName || !form.title}
+                  onClick={() => { void handleLogIncident(); }}
+                  disabled={saving || !form.studentId || !form.title.trim()}
                   style={{
                     flex: 1.3,
                     height: 48,
@@ -1368,9 +1591,9 @@ const Discipline = () => {
                     fontWeight: 700,
                     color: "#fff",
                     border: "none",
-                    cursor: saving ? "not-allowed" : "pointer",
+                    cursor: (saving || !form.studentId || !form.title.trim()) ? "not-allowed" : "pointer",
                     boxShadow: "0 5px 18px rgba(255,51,85,.30)",
-                    opacity: saving || !form.studentName || !form.title ? 0.55 : 1,
+                    opacity: (saving || !form.studentId || !form.title.trim()) ? 0.55 : 1,
                   }}
                 >
                   <AlertTriangle size={14} strokeWidth={2.3} />
@@ -1741,11 +1964,17 @@ const Discipline = () => {
                               <div className="flex items-center gap-3">
                                 <div className="w-9 h-9 rounded-[11px] flex items-center justify-center text-white text-[11px] font-bold shrink-0"
                                   style={{ background: sev.grad, boxShadow: "0 3px 10px rgba(0,85,255,0.22)" }}>
-                                  {(inc.student?.name || 'UK').split(" ").map((w: string) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase()}
+                                  {(inc.studentName || inc.student?.name || 'UK').split(" ").map((w: string) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase()}
                                 </div>
                                 <div className="min-w-0">
-                                  <p className="text-[13px] font-bold truncate" style={{ color: dT1 }}>{inc.student?.name || 'Unknown'}</p>
-                                  {inc.student?.grade && <p className="text-[10px] font-medium mt-0.5" style={{ color: dT3 }}>{inc.student.grade}</p>}
+                                  <p className="text-[13px] font-bold truncate" style={{ color: dT1 }}>
+                                    {inc.studentName || inc.student?.name || 'Unknown'}
+                                  </p>
+                                  {(inc.className || inc.student?.grade) && (
+                                    <p className="text-[10px] font-medium mt-0.5" style={{ color: dT3 }}>
+                                      {inc.className || inc.student?.grade}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                             </td>
@@ -1836,26 +2065,104 @@ const Discipline = () => {
                 />
               </div>
 
-              {/* Student */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Student Name *</label>
-                  <input
-                    value={form.studentName}
-                    onChange={e => setForm(f => ({ ...f, studentName: e.target.value }))}
-                    placeholder="Full name"
-                    className="w-full border border-border rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 bg-background"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Grade / Class</label>
-                  <input
-                    value={form.studentGrade}
-                    onChange={e => setForm(f => ({ ...f, studentGrade: e.target.value }))}
-                    placeholder="e.g. 9A"
-                    className="w-full border border-border rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 bg-background"
-                  />
-                </div>
+              {/* Student Picker — class chips + roster list (replaces the
+                  old free-form text inputs). Principal sees their classes
+                  up-front, picks one, then picks a student from that class. */}
+              <div>
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 block">Student *</label>
+                {form.studentId ? (
+                  <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-bold text-foreground truncate">{form.studentName}</div>
+                      <div className="text-[11px] text-muted-foreground truncate">
+                        {form.className || "—"}{form.studentEmail ? ` · ${form.studentEmail}` : ""}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, studentId: '', studentEmail: '', studentName: '', classId: '', className: '', studentGrade: '' }))}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center bg-white border border-slate-200 shrink-0"
+                      aria-label="Clear student"
+                    >
+                      <X className="w-3.5 h-3.5 text-slate-600" />
+                    </button>
+                  </div>
+                ) : students.length === 0 ? (
+                  <div className="px-4 py-3 text-xs text-muted-foreground text-center bg-secondary rounded-xl">
+                    Loading students…
+                  </div>
+                ) : (
+                  <>
+                    {/* Class filter chips */}
+                    <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
+                      <button
+                        type="button"
+                        onClick={() => setPickerClassFilter("")}
+                        className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap border transition-colors ${
+                          pickerClassFilter === ""
+                            ? "bg-[#1e3a8a] text-white border-transparent"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                        }`}
+                      >
+                        All ({students.length})
+                      </button>
+                      {pickerClassOptions.map(c => (
+                        <button
+                          key={c.className}
+                          type="button"
+                          onClick={() => setPickerClassFilter(c.className)}
+                          className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap border transition-colors ${
+                            pickerClassFilter === c.className
+                              ? "bg-[#1e3a8a] text-white border-transparent"
+                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          {c.className} ({c.count})
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Search within selected class */}
+                    <input
+                      value={studentSearch}
+                      onChange={e => setStudentSearch(e.target.value)}
+                      placeholder={pickerClassFilter ? `Search in ${pickerClassFilter}…` : "Search by name or email…"}
+                      className="w-full border border-border rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 bg-background"
+                    />
+
+                    {/* Roster list — always visible. */}
+                    <div className="mt-1.5 max-h-[220px] overflow-y-auto bg-white rounded-xl border border-border shadow-sm">
+                      {filteredStudents.length === 0 ? (
+                        <div className="px-4 py-3 text-xs text-muted-foreground text-center">No students found</div>
+                      ) : (
+                        filteredStudents.map(s => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              setForm(f => ({
+                                ...f,
+                                studentId: s.id,
+                                studentEmail: s.email,
+                                studentName: s.name,
+                                classId: s.classId,
+                                className: s.className,
+                                studentGrade: s.className,
+                              }));
+                              setStudentSearch('');
+                            }}
+                            className="w-full text-left px-4 py-2 border-b border-border last:border-b-0 hover:bg-secondary/50 flex flex-col gap-0.5"
+                          >
+                            <span className="text-sm font-bold text-foreground">{s.name}</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {s.className || "—"}{s.email ? ` · ${s.email}` : ""}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Type + Severity */}
@@ -1955,7 +2262,7 @@ const Discipline = () => {
               </button>
               <button
                 onClick={handleLogIncident}
-                disabled={saving || !form.studentName || !form.title}
+                disabled={saving || !form.studentId || !form.title.trim()}
                 className="flex-1 py-2.5 bg-[#e11d48] text-white rounded-xl text-sm font-bold hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? 'Saving...' : 'Log Incident'}

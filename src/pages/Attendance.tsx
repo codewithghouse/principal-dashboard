@@ -1,25 +1,61 @@
 import { useState, useEffect } from "react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, LabelList } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { CheckCircle, XCircle, Clock, TrendingUp, Send, Edit3, Bell, FileText, TrendingDown, AlertTriangle, Sparkles } from "lucide-react";
+import { CheckCircle, XCircle, Clock, TrendingUp, Send, Edit3, Bell, FileText, TrendingDown, AlertTriangle, Sparkles, Loader2 } from "lucide-react";
 import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import ClassAttendanceDetail from "@/components/ClassAttendanceDetail";
-import { db } from "@/lib/firebase";
-import { collection, query, onSnapshot, where } from "firebase/firestore";
+import { db, auth } from "@/lib/firebase";
+import { collection, query, onSnapshot, where, writeBatch, doc, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 
+// ─── Centralised tier scheme ─────────────────────────────────────────────────
+// Mobile + desktop previously used different attendance-pct thresholds (90/75/60
+// vs 90/80/70) — same school could read "Good" on mobile and "Average" on
+// desktop. Single source of truth now.
+const TIER_EXCELLENT = 90;
+const TIER_GOOD = 80;
+const TIER_AVERAGE = 70;
+
+type Tier = "excellent" | "good" | "average" | "needs-attention" | "no-data";
+
+const tierFor = (pct: number | null): Tier => {
+  if (pct === null) return "no-data";
+  if (pct >= TIER_EXCELLENT) return "excellent";
+  if (pct >= TIER_GOOD) return "good";
+  if (pct >= TIER_AVERAGE) return "average";
+  return "needs-attention";
+};
+
+const tierLabel = (t: Tier): string => ({
+  excellent: "Excellent",
+  good: "Good",
+  average: "Average",
+  "needs-attention": "Needs Attention",
+  "no-data": "No data",
+}[t]);
+
+// Robust initials — "Aamir Khan" → "AK", "Aamir" → "A", "" → "?". Was:
+// `substring(0, 2)` which produced "AA" for single-name students.
+const safeInitials = (name: string | null | undefined): string => {
+  const parts = (name || "").split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0][0]!.toUpperCase();
+  return (parts[0][0]! + parts[parts.length - 1][0]!).toUpperCase();
+};
+
 const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
+    const v = payload[0].value;
     return (
       <div className="bg-[#1e293b] text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg">
-        Day {payload[0].payload.day}: {payload[0].value}%
+        Day {payload[0].payload.day}: {v === null || v === undefined ? "no data" : `${v}%`}
       </div>
     );
   }
@@ -31,154 +67,313 @@ const Attendance = () => {
   const isMobile = useIsMobile();
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ presentToday: 0, absentToday: 0, lateToday: 0, monthlyAvg: "0%", totalToday: 0 });
-  const [trendData, setTrendData] = useState<any[]>([]);
-  const [gradeHeatmap, setGradeHeatmap] = useState<any[]>([]);
+  // monthlyAvg is now string with "—" sentinel when no data exists. Tier
+  // badge reads from `monthlyAvgVal` (number | null) — never `parseInt`s the
+  // formatted string back, which used to silently coerce "—" → 0 → red tier.
+  const [stats, setStats] = useState<{
+    presentToday: number;
+    absentToday: number;
+    lateToday: number;
+    monthlyAvg: string;
+    monthlyAvgVal: number | null;
+    totalToday: number;
+  }>({ presentToday: 0, absentToday: 0, lateToday: 0, monthlyAvg: "—", monthlyAvgVal: null, totalToday: 0 });
+  const [trendData, setTrendData] = useState<{ day: number; value: number | null }[]>([]);
+  const [gradeHeatmap, setGradeHeatmap] = useState<{ grade: string; pct: string; value: number; color: string }[]>([]);
+  const [hiddenGradesCount, setHiddenGradesCount] = useState(0);
   const [absentStudents, setAbsentStudents] = useState<any[]>([]);
   // Delta-drop: classes/grades that dropped ≥15% vs last 7 days
   const [suddenDrops, setSuddenDrops] = useState<{ grade: string; drop: number; recent: number; prev: number }[]>([]);
+  const [sendingAlerts, setSendingAlerts] = useState(false);
 
   useEffect(() => {
-    if (!userData?.schoolId) return;
+    const schoolId = userData?.schoolId;
+    if (!schoolId) {
+      // No school context — bail with empty state instead of leaving the
+      // spinner on (B7). Was: silent return.
+      setLoading(false);
+      return;
+    }
     setLoading(true);
 
-    const attConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
-    if (userData.branchId) attConstraints.push(where("branchId", "==", userData.branchId));
+    // schoolId-only server-side; branchId in-memory (memory:
+    // branchid_inference_lag — `where branchId == X` server-side may skip
+    // freshly-created records during the 1-2s enforceBranchId trigger
+    // backfill window). Was: server-side branchId filter.
+    const branchId = userData?.branchId || "";
+    const inBranch = (raw: any): boolean =>
+      !branchId || !raw?.branchId || raw.branchId === branchId;
 
-    const unsub = onSnapshot(query(collection(db, "attendance"), ...attConstraints), (snap) => {
-      const records: any[] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const today = new Date().toLocaleDateString('en-CA');
+    const unsub = onSnapshot(
+      query(collection(db, "attendance"), where("schoolId", "==", schoolId)),
+      (snap) => {
+        const records: any[] = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(inBranch);
+        const today = new Date().toLocaleDateString('en-CA');
 
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 30);
-      const cutoffStr = cutoff.toLocaleDateString('en-CA');
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 30);
+        const cutoffStr = cutoff.toLocaleDateString('en-CA');
 
-      // ── Today's counts ──
-      const todayRecs = records.filter(r => r.date === today);
-      const presentToday = todayRecs.filter(r => r.status === 'present').length;
-      const absentToday  = todayRecs.filter(r => r.status === 'absent').length;
-      const lateToday    = todayRecs.filter(r => r.status === 'late').length;
-      const totalToday   = presentToday + absentToday + lateToday;
+        // Stable per-student key — prefer studentId, then studentEmail
+        // (lowercased). Was: `studentId || studentName` which collided when
+        // two students shared a name (memory: dual_query_pattern).
+        const keyFor = (r: any): string =>
+          String(r.studentId || (r.studentEmail || "").toLowerCase() || "");
 
-      // ── Monthly avg ──
-      const monthlyRecs    = records.filter(r => r.date && r.date >= cutoffStr);
-      const monthlyPresent = monthlyRecs.filter(r => r.status === 'present').length;
-      const monthlyAvgVal  = monthlyRecs.length === 0 ? 0 : Math.round((monthlyPresent / monthlyRecs.length) * 100);
+        // Stable per-class key — prefer className over gradeLevel so
+        // streams stay separate (memory: bug_pattern_class_label_normalization).
+        // Was: `gradeLevel || className` collapsed "Class 11 Science" and
+        // "Class 11 Commerce" into a single "11" bucket.
+        const classKeyFor = (r: any): string =>
+          String(r.className || r.gradeLevel || "");
 
-      // ── Grade heatmap – group by gradeLevel or className ──
-      const gradeGroups: Record<string, { present: number; total: number }> = {};
-      records.forEach(r => {
-        const g = r.gradeLevel || r.className || null;
-        if (!g) return;
-        if (!gradeGroups[g]) gradeGroups[g] = { present: 0, total: 0 };
-        gradeGroups[g].total++;
-        if (r.status === 'present') gradeGroups[g].present++;
-      });
+        // ── Today's counts (deduped per student to avoid double-count when
+        //   the same student has 2 records for today, e.g. teacher correction). ──
+        const todayRecs = records.filter(r => r.date === today);
+        const todaySeen = new Map<string, string>(); // studentKey → final status
+        todayRecs.forEach(r => {
+          const k = keyFor(r);
+          if (!k) return;
+          // Last write wins (Firestore returns docs in arbitrary order, so
+          // we'd ideally pick by timestamp — for parity with the existing
+          // teacher mark-attendance flow which overwrites a single doc per
+          // (student, day), last-seen here is good enough).
+          todaySeen.set(k, r.status);
+        });
+        const todayStatuses = Array.from(todaySeen.values());
+        const presentToday = todayStatuses.filter(s => s === 'present').length;
+        const absentToday  = todayStatuses.filter(s => s === 'absent').length;
+        const lateToday    = todayStatuses.filter(s => s === 'late').length;
+        const totalToday   = presentToday + absentToday + lateToday;
 
-      const heatmap = Object.entries(gradeGroups)
-        .map(([grade, { present, total }]) => {
-          const pct = Math.round((present / total) * 100);
-          return {
-            grade,
-            pct: `${pct}%`,
-            value: pct,
-            color: pct >= 90 ? "#22c55e" : pct >= 80 ? "#f59e0b" : "#ef4444"
-          };
-        })
-        .sort((a, b) => a.grade.localeCompare(b.grade))
-        .slice(0, 8);
+        // ── Monthly avg ──
+        const monthlyRecs    = records.filter(r => r.date && r.date >= cutoffStr);
+        const monthlyPresent = monthlyRecs.filter(r => r.status === 'present').length;
+        const monthlyAvgVal  = monthlyRecs.length === 0 ? null : Math.round((monthlyPresent / monthlyRecs.length) * 100);
+        const monthlyAvgStr  = monthlyAvgVal === null ? "—" : `${monthlyAvgVal}%`;
 
-      // ── Delta-based sudden drop detection per grade ──────────────────────
-      const sevenAgo     = new Date(); sevenAgo.setDate(sevenAgo.getDate() - 7);
-      const fourteenAgo  = new Date(); fourteenAgo.setDate(fourteenAgo.getDate() - 14);
-      const sevenAgoStr  = sevenAgo.toLocaleDateString('en-CA');
-      const fourteenAgoStr = fourteenAgo.toLocaleDateString('en-CA');
-
-      const gradeDeltaGroups: Record<string, { recent: number[]; prev: number[] }> = {};
-      records.forEach(r => {
-        const g = r.gradeLevel || r.className || null;
-        if (!g || !r.date) return;
-        if (!gradeDeltaGroups[g]) gradeDeltaGroups[g] = { recent: [], prev: [] };
-        if (r.date >= sevenAgoStr) gradeDeltaGroups[g].recent.push(r.status === 'present' ? 1 : 0);
-        else if (r.date >= fourteenAgoStr) gradeDeltaGroups[g].prev.push(r.status === 'present' ? 1 : 0);
-      });
-      const drops = Object.entries(gradeDeltaGroups)
-        .map(([grade, { recent, prev }]) => {
-          if (recent.length < 3 || prev.length < 3) return null;
-          const recentPct = Math.round((recent.reduce((a,b)=>a+b,0)/recent.length)*100);
-          const prevPct   = Math.round((prev.reduce((a,b)=>a+b,0)/prev.length)*100);
-          const drop = prevPct - recentPct;
-          return drop >= 15 ? { grade, drop, recent: recentPct, prev: prevPct } : null;
-        })
-        .filter(Boolean) as { grade: string; drop: number; recent: number; prev: number }[];
-      setSuddenDrops(drops);
-
-      // ── 30-Day trend ──
-      const trend: any[] = [];
-      for (let i = 29; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const dStr  = d.toLocaleDateString('en-CA');
-        const dRecs = records.filter(r => r.date === dStr);
-        if (dRecs.length > 0) {
-          const p = dRecs.filter(r => r.status === 'present').length;
-          trend.push({ day: d.getDate(), value: parseFloat(((p / dRecs.length) * 100).toFixed(1)) });
-        }
-      }
-
-      // ── Per-student records for consecutive / monthly % ──
-      const studentMap: Record<string, any[]> = {};
-      records.forEach(r => {
-        const sid = r.studentId || r.studentName || null;
-        if (!sid) return;
-        if (!studentMap[sid]) studentMap[sid] = [];
-        studentMap[sid].push(r);
-      });
-
-      const absents = todayRecs
-        .filter(r => r.status === 'absent')
-        .map(r => {
-          const sid  = r.studentId || r.studentName || null;
-          const sRec = (sid ? studentMap[sid] || [] : [])
-            .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
-          // Consecutive absents counting back from today
-          let consecutive = 0;
-          for (const rec of sRec) {
-            if (rec.status === 'absent') consecutive++;
-            else break;
-          }
-
-          // Monthly % for this student
-          const sMonthly  = sRec.filter(rec => rec.date && rec.date >= cutoffStr);
-          const sPresent  = sMonthly.filter(rec => rec.status === 'present').length;
-          const monthlyPct = sMonthly.length === 0 ? 0 : Math.round((sPresent / sMonthly.length) * 100);
-          const statusLabel = monthlyPct < 60 ? 'Chronic' : monthlyPct < 75 ? 'Warning' : 'Active';
-
-          return {
-            initials:    (r.studentName || "ST").substring(0, 2).toUpperCase(),
-            name:        r.studentName || "Unknown",
-            grade:       r.className || r.gradeLevel || "N/A",
-            contact:     r.parentPhone || "—",
-            consecutive: `${consecutive} day${consecutive !== 1 ? 's' : ''}`,
-            consecutiveNum: consecutive,
-            monthly:     `${monthlyPct}%`,
-            monthlyVal:  monthlyPct,
-            status:      statusLabel
-          };
+        // ── Grade heatmap (className-first, streams preserved) ──
+        const gradeGroups: Record<string, { present: number; total: number }> = {};
+        records.forEach(r => {
+          const g = classKeyFor(r);
+          if (!g) return;
+          if (!gradeGroups[g]) gradeGroups[g] = { present: 0, total: 0 };
+          gradeGroups[g].total++;
+          if (r.status === 'present') gradeGroups[g].present++;
         });
 
-      setStats({ presentToday, absentToday, lateToday, monthlyAvg: `${monthlyAvgVal}%`, totalToday });
-      setGradeHeatmap(heatmap);
-      setTrendData(trend);
-      setAbsentStudents(absents);
-      setLoading(false);
-    });
+        const heatmapAll = Object.entries(gradeGroups)
+          .map(([grade, { present, total }]) => {
+            const pct = Math.round((present / total) * 100);
+            return {
+              grade,
+              pct: `${pct}%`,
+              value: pct,
+              color: pct >= TIER_EXCELLENT ? "#22c55e" : pct >= TIER_GOOD ? "#f59e0b" : "#ef4444"
+            };
+          })
+          .sort((a, b) => a.grade.localeCompare(b.grade));
+        const HEATMAP_CAP = 8;
+        const heatmap = heatmapAll.slice(0, HEATMAP_CAP);
+        const hidden = Math.max(0, heatmapAll.length - HEATMAP_CAP);
+
+        // ── Delta-based sudden drop detection per class ──────────────────────
+        const sevenAgo     = new Date(); sevenAgo.setDate(sevenAgo.getDate() - 7);
+        const fourteenAgo  = new Date(); fourteenAgo.setDate(fourteenAgo.getDate() - 14);
+        const sevenAgoStr  = sevenAgo.toLocaleDateString('en-CA');
+        const fourteenAgoStr = fourteenAgo.toLocaleDateString('en-CA');
+
+        const gradeDeltaGroups: Record<string, { recent: number[]; prev: number[] }> = {};
+        records.forEach(r => {
+          const g = classKeyFor(r);
+          if (!g || !r.date) return;
+          if (!gradeDeltaGroups[g]) gradeDeltaGroups[g] = { recent: [], prev: [] };
+          if (r.date >= sevenAgoStr) gradeDeltaGroups[g].recent.push(r.status === 'present' ? 1 : 0);
+          else if (r.date >= fourteenAgoStr) gradeDeltaGroups[g].prev.push(r.status === 'present' ? 1 : 0);
+        });
+        const drops = Object.entries(gradeDeltaGroups)
+          .map(([grade, { recent, prev }]) => {
+            if (recent.length < 3 || prev.length < 3) return null;
+            const recentPct = Math.round((recent.reduce((a,b)=>a+b,0)/recent.length)*100);
+            const prevPct   = Math.round((prev.reduce((a,b)=>a+b,0)/prev.length)*100);
+            const drop = prevPct - recentPct;
+            return drop >= 15 ? { grade, drop, recent: recentPct, prev: prevPct } : null;
+          })
+          .filter(Boolean) as { grade: string; drop: number; recent: number; prev: number }[];
+        setSuddenDrops(drops);
+
+        // ── 30-Day trend — push EVERY day, null for no-data so the chart
+        //   renders gaps honestly instead of pretending day 12 is adjacent
+        //   to day 28 (B13). Recharts is given `connectNulls={false}`. ──
+        const trend: { day: number; value: number | null }[] = [];
+        for (let i = 29; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const dStr  = d.toLocaleDateString('en-CA');
+          const dRecs = records.filter(r => r.date === dStr);
+          if (dRecs.length > 0) {
+            const p = dRecs.filter(r => r.status === 'present').length;
+            trend.push({ day: d.getDate(), value: parseFloat(((p / dRecs.length) * 100).toFixed(1)) });
+          } else {
+            trend.push({ day: d.getDate(), value: null });
+          }
+        }
+
+        // ── Per-student records (dual-key) ──
+        const studentMap: Record<string, any[]> = {};
+        records.forEach(r => {
+          const sid = keyFor(r);
+          if (!sid) return;
+          if (!studentMap[sid]) studentMap[sid] = [];
+          studentMap[sid].push(r);
+        });
+
+        const absents = todayRecs
+          .filter(r => r.status === 'absent')
+          .map(r => {
+            const sid  = keyFor(r);
+            const sRec = (sid ? studentMap[sid] || [] : [])
+              .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+            // Consecutive absents counting back from today
+            let consecutive = 0;
+            for (const rec of sRec) {
+              if (rec.status === 'absent') consecutive++;
+              else break;
+            }
+
+            // Monthly % for this student. Null when student has no records
+            // in the cutoff window — was: 0 → wrongly tagged "Chronic".
+            const sMonthly   = sRec.filter(rec => rec.date && rec.date >= cutoffStr);
+            const sPresent   = sMonthly.filter(rec => rec.status === 'present').length;
+            const monthlyPct = sMonthly.length === 0 ? null : Math.round((sPresent / sMonthly.length) * 100);
+            const statusLabel = monthlyPct === null
+              ? 'New'
+              : monthlyPct < 60 ? 'Chronic' : monthlyPct < 75 ? 'Warning' : 'Active';
+
+            return {
+              studentId:   r.studentId || null,
+              studentEmail: r.studentEmail || null,
+              parentEmail: r.parentEmail || null,
+              parentPhone: r.parentPhone || null,
+              initials:    safeInitials(r.studentName), // B10
+              name:        r.studentName || "Unknown",
+              grade:       r.className || r.gradeLevel || "N/A",
+              classId:     r.classId || null,
+              contact:     r.parentPhone || "—",
+              consecutive: `${consecutive} day${consecutive !== 1 ? 's' : ''}`,
+              consecutiveNum: consecutive,
+              monthly:     monthlyPct === null ? "—" : `${monthlyPct}%`,
+              monthlyVal:  monthlyPct,                        // null when new student
+              status:      statusLabel
+            };
+          });
+
+        setStats({
+          presentToday, absentToday, lateToday,
+          monthlyAvg: monthlyAvgStr,
+          monthlyAvgVal,
+          totalToday,
+        });
+        setGradeHeatmap(heatmap);
+        setHiddenGradesCount(hidden);
+        setTrendData(trend);
+        setAbsentStudents(absents);
+        setLoading(false);
+      },
+      // Real error handler so a permission denial / network drop doesn't
+      // leave the spinner stuck forever (B5). Was: missing.
+      (err) => {
+        console.error("[Attendance] listener failed:", err);
+        toast.error("Failed to load attendance data — please refresh.");
+        setLoading(false);
+      }
+    );
 
     return () => unsub();
   }, [userData?.schoolId, userData?.branchId]);
 
   const pct = (n: number) => stats.totalToday > 0 ? `${Math.round((n / stats.totalToday) * 100)}%` : "—";
+
+  // ── Real "Send Alerts" wiring (B2) ──────────────────────────────────────
+  // Was: toast.success(...) only — no Firestore write, parents never saw
+  // anything. Now writes one principal_to_parent_notes doc per absent
+  // student via a chunked writeBatch (450 ops per chunk to stay under
+  // Firestore's 500-op limit), exactly the pattern NotifyClassParentsModal
+  // uses. Parent-dashboard reads this collection for in-app alerts.
+  const sendAbsenceAlerts = async () => {
+    if (!userData?.schoolId) {
+      toast.error("School context missing — please re-login.");
+      return;
+    }
+    if (absentStudents.length === 0) {
+      toast.success("No absent students today — no alerts needed. 🎉");
+      return;
+    }
+    // Only notify students we can actually identify in the parent-side
+    // collection (need studentId or studentEmail to match).
+    const recipients = absentStudents.filter(s => s.studentId || s.studentEmail);
+    if (recipients.length === 0) {
+      toast.error("Cannot send alerts — absent records are missing studentId/email.");
+      return;
+    }
+
+    setSendingAlerts(true);
+    try {
+      const principalUid = auth.currentUser?.uid || (userData as any)?.id || "";
+      const principalName = (userData as any)?.fullName || (userData as any)?.name || "Principal";
+      const today = new Date().toLocaleDateString("en-CA");
+      const branchId = userData.branchId || null;
+
+      const CHUNK = 450;
+      let written = 0;
+      for (let i = 0; i < recipients.length; i += CHUNK) {
+        const slice = recipients.slice(i, i + CHUNK);
+        const batch = writeBatch(db);
+        slice.forEach(s => {
+          const ref = doc(collection(db, "principal_to_parent_notes"));
+          const msg =
+            `Attendance alert: ${s.name} was marked absent today (${today}).` +
+            (s.consecutiveNum >= 3 ? ` This is day ${s.consecutiveNum} of a continued absence.` : "") +
+            (s.monthlyVal !== null && s.monthlyVal < 75
+              ? ` Monthly attendance is ${s.monthlyVal}% — please reach out if there are any concerns.`
+              : "");
+          batch.set(ref, {
+            schoolId: userData.schoolId,
+            branchId,
+            studentId: s.studentId,
+            studentEmail: s.studentEmail || null,
+            studentName: s.name,
+            parentEmail: s.parentEmail || null,
+            category: "attendance",
+            // Write BOTH field names so either dashboard render path works
+            // (matches NotifyParentModal convention).
+            message: msg,
+            content: msg,
+            from: "principal",
+            principalId: principalUid,
+            principalName,
+            read: false,
+            timestamp: serverTimestamp(),
+            _lastModifiedBy: principalUid,
+          });
+        });
+        await batch.commit();
+        written += slice.length;
+      }
+
+      toast.success(`Alert sent to ${written} parent${written === 1 ? "" : "s"}.`, {
+        description: "Notification posted to Parent Communication.",
+      });
+    } catch (err: any) {
+      console.error("[Attendance] sendAbsenceAlerts failed:", err);
+      toast.error(`Failed to send alerts: ${err?.message || "Unknown error"}`);
+    } finally {
+      setSendingAlerts(false);
+    }
+  };
 
   const generateReport = () => {
     const html = buildReport({
@@ -196,8 +391,12 @@ const Attendance = () => {
           type: "table",
           headers: ["Grade / Class", "Attendance %", "Status"],
           rows: gradeHeatmap.map(g => ({
-            cells: [g.grade, g.pct, g.value >= 90 ? "Good" : g.value >= 80 ? "Average" : "Critical"],
-            highlight: g.value < 80,
+            // Status labels come from the central tier scheme — was: ad-hoc
+            // 90/80 cutoffs with different labels ("Good"/"Average"/"Critical")
+            // than the dashboard, so the same class showed different tiers
+            // in the UI vs the printed report.
+            cells: [g.grade, g.pct, tierLabel(tierFor(g.value))],
+            highlight: g.value < TIER_GOOD,
           })),
         },
         {
@@ -230,15 +429,20 @@ const Attendance = () => {
     const T4 = "#99AACC";
     const SEP = "rgba(0,85,255,.07)";
 
-    const monthlyAvgVal = parseInt(stats.monthlyAvg) || 0;
-    const statusChip =
-      monthlyAvgVal >= 90
-        ? { label: "Excellent", bg: "rgba(0,200,83,.22)", border: "rgba(0,200,83,.36)", color: "#66EE88" }
-        : monthlyAvgVal >= 75
-        ? { label: "Good", bg: "rgba(0,85,255,.22)", border: "rgba(0,85,255,.36)", color: "#99BBFF" }
-        : monthlyAvgVal >= 60
-        ? { label: "Average", bg: "rgba(255,170,0,.22)", border: "rgba(255,170,0,.36)", color: "#FFDD88" }
-        : { label: "Critical", bg: "rgba(255,51,85,.22)", border: "rgba(255,51,85,.36)", color: "#FF99AA" };
+    // Tier from the central scheme — same buckets as desktop (B8). When
+    // monthlyAvgVal is null (no records in 30-day window) we surface a
+    // neutral "No data" chip instead of falling through to a red "Critical"
+    // tag (B6/B9).
+    const tierMobile = tierFor(stats.monthlyAvgVal);
+    const statusChip = (() => {
+      switch (tierMobile) {
+        case "excellent":       return { label: "Excellent",       bg: "rgba(0,200,83,.22)",  border: "rgba(0,200,83,.36)",  color: "#66EE88" };
+        case "good":            return { label: "Good",            bg: "rgba(0,85,255,.22)",  border: "rgba(0,85,255,.36)",  color: "#99BBFF" };
+        case "average":         return { label: "Average",         bg: "rgba(255,170,0,.22)", border: "rgba(255,170,0,.36)", color: "#FFDD88" };
+        case "needs-attention": return { label: "Needs Attention", bg: "rgba(255,51,85,.22)", border: "rgba(255,51,85,.36)", color: "#FF99AA" };
+        case "no-data":         return { label: "No data",         bg: "rgba(255,255,255,.16)", border: "rgba(255,255,255,.24)", color: "rgba(255,255,255,.72)" };
+      }
+    })();
 
     const heatmapColor = (v: number) =>
       v >= 90
@@ -254,35 +458,39 @@ const Attendance = () => {
         : "0 4px 14px rgba(255,51,85,.28)";
     const heatmapTextColor = (v: number) => (v >= 90 ? GREEN : v >= 80 ? GOLD : RED);
 
+    // Honest UX: principals don't mark attendance themselves (teachers do).
+    // The button now scrolls to the class heatmap so the principal can drill
+    // into a class for review/correction instead of claiming a write action
+    // it never performed.
     const handleMark = () => {
       if (gradeHeatmap.length === 0) {
-        toast.info("No classes found yet.", {
-          description: "Classes will appear here as teachers record attendance.",
+        toast.info("No classes have recorded attendance yet.", {
+          description: "Classes will appear here once teachers start marking.",
         });
         return;
       }
-      toast.info("Tap a class below to mark attendance.", {
-        description: "Each class opens its own attendance sheet.",
-      });
+      toast.info("Tap a class below to view its attendance sheet.");
       requestAnimationFrame(() => {
         document.getElementById("mobile-att-heatmap")?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     };
 
-    const handleSendAlerts = () => {
-      if (absentStudents.length === 0) {
-        toast.success("No absent students today — no alerts needed. 🎉");
-        return;
-      }
-      toast.success(`Alert sent to ${absentStudents.length} parent${absentStudents.length === 1 ? "" : "s"}.`, {
-        description: "Absence notification dispatched via SMS + app notification.",
-      });
-    };
+    // Wired to the real chunked writeBatch defined above (B2). Was: only a
+    // toast — parents never received anything.
+    const handleSendAlerts = () => { void sendAbsenceAlerts(); };
 
-    const bestClass =
-      gradeHeatmap.length > 0 ? [...gradeHeatmap].sort((a, b) => b.value - a.value)[0] : null;
-    const worstClass =
-      gradeHeatmap.length > 0 ? [...gradeHeatmap].sort((a, b) => a.value - b.value)[0] : null;
+    // Single sort, then index from both ends. Hide worst when there's only
+    // one class (otherwise best === worst and the AI card prints the same
+    // class as both leader and lagger). B11 + same single-section UX bug
+    // fixed in SubjectAnalysis.
+    //
+    // Plain const (not useMemo) — useMemo would be conditionally called
+    // since the entire mobile branch is inside `if (isMobile) { ... return }`,
+    // violating the rules of hooks if isMobile flips between renders. The
+    // sort is over <=8 items, so the cost is negligible.
+    const sortedHeatmap = [...gradeHeatmap].sort((a, b) => b.value - a.value);
+    const bestClass  = sortedHeatmap[0] || null;
+    const worstClass = sortedHeatmap.length >= 2 ? sortedHeatmap[sortedHeatmap.length - 1] : null;
 
     const avatarGrad = [
       `linear-gradient(135deg, ${B1}, ${B2})`,
@@ -630,6 +838,25 @@ const Attendance = () => {
               }}
             >
               <span>Grade-wise Heatmap</span>
+              {/* B12 — count of classes hidden by the 8-cap. */}
+              {hiddenGradesCount > 0 && (
+                <span
+                  style={{
+                    padding: "3px 9px",
+                    borderRadius: 100,
+                    background: "rgba(0,85,255,.10)",
+                    border: "0.5px solid rgba(0,85,255,.16)",
+                    fontSize: 9,
+                    fontWeight: 700,
+                    color: B1,
+                    textTransform: "none",
+                    letterSpacing: "0.04em",
+                  }}
+                  title={`Showing top 8 classes — ${hiddenGradesCount} more not displayed`}
+                >
+                  +{hiddenGradesCount} more
+                </span>
+              )}
               <span style={{ flex: 1, height: "0.5px", background: "rgba(0,85,255,.12)" }} />
             </div>
 
@@ -805,12 +1032,16 @@ const Attendance = () => {
                       width={38}
                     />
                     <Tooltip content={<CustomTooltip />} />
+                    {/* connectNulls={false} so days with no records render
+                        as gaps instead of pretending day 12 is adjacent to
+                        day 28 (B13). */}
                     <Area
                       type="monotone"
                       dataKey="value"
                       stroke={B1}
                       strokeWidth={2.5}
                       fill="url(#mobTrendGradient)"
+                      connectNulls={false}
                       dot={{ r: 3, fill: "#ffffff", stroke: B1, strokeWidth: 2 }}
                       activeDot={{ r: 5, fill: B1, stroke: "#ffffff", strokeWidth: 2 }}
                       animationDuration={1200}
@@ -988,6 +1219,7 @@ const Attendance = () => {
               </button>
               <button
                 onClick={handleSendAlerts}
+                disabled={sendingAlerts}
                 style={{
                   flex: 1,
                   height: 44,
@@ -1001,12 +1233,15 @@ const Attendance = () => {
                   background: "#fff",
                   color: "#002080",
                   border: "0.5px solid rgba(0,85,255,.16)",
-                  cursor: "pointer",
+                  cursor: sendingAlerts ? "not-allowed" : "pointer",
+                  opacity: sendingAlerts ? 0.6 : 1,
                   boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
                 }}
               >
-                <Bell size={13} color="rgba(0,85,255,.6)" strokeWidth={2.2} />
-                Send Alerts
+                {sendingAlerts
+                  ? <Loader2 size={13} color="rgba(0,85,255,.6)" className="animate-spin" />
+                  : <Bell size={13} color="rgba(0,85,255,.6)" strokeWidth={2.2} />}
+                {sendingAlerts ? "Sending…" : "Send Alerts"}
               </button>
               <button
                 onClick={generateReport}
@@ -1076,20 +1311,29 @@ const Attendance = () => {
                 </span>
               </div>
               <div style={{ fontSize: 13, color: "rgba(255,255,255,.85)", lineHeight: 1.72, position: "relative", zIndex: 1 }}>
-                Overall attendance is{" "}
-                <strong style={{ color: "#fff", fontWeight: 700 }}>
-                  {statusChip.label} at {stats.monthlyAvg}
-                </strong>
-                . <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.absentToday} absence{stats.absentToday === 1 ? "" : "s"}</strong> today
-                {stats.lateToday > 0 ? (
-                  <>
-                    {" "}and <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.lateToday} late arrival{stats.lateToday === 1 ? "" : "s"}</strong>
+                {stats.monthlyAvgVal === null ? (
+                  <>No attendance has been recorded yet — once teachers start marking, the 30-day overview and today's counts will appear here.</>
+                ) : stats.totalToday === 0 ? (
+                  <>30-day overall attendance is{" "}
+                    <strong style={{ color: "#fff", fontWeight: 700 }}>
+                      {statusChip.label} at {stats.monthlyAvg}
+                    </strong>. <strong style={{ color: "#fff", fontWeight: 700 }}>No attendance marked yet today</strong> — figures will populate as teachers record.
                   </>
                 ) : (
-                  <>. No late arrivals recorded</>
+                  <>Overall attendance is{" "}
+                    <strong style={{ color: "#fff", fontWeight: 700 }}>
+                      {statusChip.label} at {stats.monthlyAvg}
+                    </strong>
+                    . Today: <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.absentToday} absence{stats.absentToday === 1 ? "" : "s"}</strong>
+                    {stats.lateToday > 0 ? (
+                      <>{" "}and <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.lateToday} late arrival{stats.lateToday === 1 ? "" : "s"}</strong></>
+                    ) : (
+                      <>, no late arrivals</>
+                    )}
+                    .
+                  </>
                 )}
-                .
-                {bestClass && (
+                {bestClass && stats.monthlyAvgVal !== null && (
                   <>
                     {" "}<strong style={{ color: "#fff", fontWeight: 700 }}>{bestClass.grade}</strong> leads with{" "}
                     <strong style={{ color: "#fff", fontWeight: 700 }}>{bestClass.pct}</strong> attendance.
@@ -1160,9 +1404,17 @@ const Attendance = () => {
   const dSH_LG = "0 0 0 0.5px rgba(0,85,255,0.10), 0 4px 16px rgba(0,85,255,0.10), 0 18px 44px rgba(0,85,255,0.12)";
   const dSH_BTN = "0 6px 22px rgba(0,85,255,0.38), 0 2px 5px rgba(0,85,255,0.18)";
 
-  const attendancePctNum = parseInt(stats.monthlyAvg) || 0;
-  const tier = attendancePctNum >= 90 ? "Excellent" : attendancePctNum >= 80 ? "Good" : attendancePctNum >= 70 ? "Average" : "Needs Attention";
-  const tierColor = attendancePctNum >= 90 ? dGREEN : attendancePctNum >= 80 ? dGOLD : attendancePctNum >= 70 ? dORANGE : dRED;
+  // Tier comes from the central helper — no more `parseInt(...) || 0` which
+  // silently coerced the "—" no-data sentinel to 0 → wrongly painted everything
+  // red (B6/B9). When stats.monthlyAvgVal is null the badge reads "No data".
+  const tierKeyDesktop = tierFor(stats.monthlyAvgVal);
+  const tier = tierLabel(tierKeyDesktop);
+  const tierColor =
+    tierKeyDesktop === "excellent"       ? dGREEN
+    : tierKeyDesktop === "good"          ? dGOLD
+    : tierKeyDesktop === "average"       ? dORANGE
+    : tierKeyDesktop === "needs-attention" ? dRED
+    : dT4; // no-data → muted slate
 
   return (
     <div className="pb-10 w-full px-2 animate-in fade-in duration-500"
@@ -1181,19 +1433,38 @@ const Attendance = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* B2 — was: toast-only ("Mark attendance — navigate to class
+              detail to record"). Principals don't mark attendance themselves
+              (teachers do). The button now jumps the user to the heatmap to
+              drill into a class for review/correction. */}
           <button
-            onClick={() => toast.info("Mark attendance — navigate to class detail to record")}
+            onClick={() => {
+              if (gradeHeatmap.length === 0) {
+                toast.info("No classes have recorded attendance yet.");
+                return;
+              }
+              toast.info("Click a bar in the heatmap to open the class attendance sheet.");
+              requestAnimationFrame(() => {
+                document.getElementById("desktop-att-heatmap")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              });
+            }}
             className="h-11 px-4 rounded-[13px] flex items-center gap-2 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02]"
             style={{ border: `0.5px solid ${dSEP}`, color: dT2, boxShadow: dSH }}>
             <Edit3 className="w-[14px] h-[14px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
             Mark Attendance
           </button>
+          {/* B2 — was: toast.success("queued") with no Firestore write.
+              Now writes principal_to_parent_notes via chunked writeBatch. */}
           <button
-            onClick={() => toast.success("Absence alerts queued for all absent students")}
-            className="h-11 px-4 rounded-[13px] flex items-center gap-2 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02]"
+            onClick={sendAbsenceAlerts}
+            disabled={sendingAlerts}
+            className="h-11 px-4 rounded-[13px] flex items-center gap-2 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02] disabled:opacity-60"
             style={{ border: `0.5px solid ${dSEP}`, color: dT2, boxShadow: dSH }}>
-            <Bell className="w-[14px] h-[14px]" style={{ color: dORANGE }} strokeWidth={2.3} />
-            Send Alerts
+            {sendingAlerts
+              ? <Loader2 className="w-[14px] h-[14px] animate-spin" style={{ color: dORANGE }} />
+              : <Bell className="w-[14px] h-[14px]" style={{ color: dORANGE }} strokeWidth={2.3} />}
+            {sendingAlerts ? "Sending…" : "Send Alerts"}
           </button>
           <button onClick={generateReport}
             className="h-11 px-5 rounded-[13px] flex items-center gap-2 text-[13px] font-bold text-white relative overflow-hidden transition-transform hover:scale-[1.02]"
@@ -1231,7 +1502,11 @@ const Attendance = () => {
                   <div className="flex items-baseline gap-3">
                     <span className="text-[48px] font-bold leading-none tracking-tight">{stats.monthlyAvg}</span>
                     <span className="text-[11px] font-bold px-3 py-1 rounded-full"
-                      style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.28)" }}>
+                      style={{
+                        background: "rgba(255,255,255,0.18)",
+                        border: `0.5px solid ${tierColor === dT4 ? "rgba(255,255,255,0.28)" : tierColor + "55"}`,
+                        color: tierColor === dT4 ? "rgba(255,255,255,0.85)" : "#fff",
+                      }}>
                       {tier}
                     </span>
                   </div>
@@ -1323,7 +1598,7 @@ const Attendance = () => {
           {/* Heatmap + Trend */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
             {/* Grade Heatmap */}
-            <div className="bg-white rounded-[20px] overflow-hidden"
+            <div id="desktop-att-heatmap" className="bg-white rounded-[20px] overflow-hidden"
               style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
               <div className="flex items-center gap-[10px] px-6 py-[18px]" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
                 <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
@@ -1331,6 +1606,18 @@ const Attendance = () => {
                   <CheckCircle className="w-4 h-4" style={{ color: dVIOLET }} strokeWidth={2.4} />
                 </div>
                 <h2 className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Grade-wise Heatmap</h2>
+                {/* B12 — surface the count of classes hidden by the 8-cap so
+                    a school with more sections doesn't silently lose data
+                    from the heatmap. */}
+                {hiddenGradesCount > 0 && (
+                  <span
+                    className="text-[10px] font-bold px-2.5 py-1 rounded-full"
+                    style={{ background: dBG2, color: dT3, border: `0.5px solid ${dSEP}` }}
+                    title={`Showing top 8 classes — ${hiddenGradesCount} more not displayed`}
+                  >
+                    +{hiddenGradesCount} more
+                  </span>
+                )}
               </div>
               <div className="p-6">
                 {gradeHeatmap.length === 0 ? (
@@ -1423,7 +1710,11 @@ const Attendance = () => {
                       <YAxis domain={['auto', 'auto']} axisLine={false} tickLine={false}
                         tick={{ fontSize: 10, fontWeight: 700, fill: dT4 }} tickFormatter={(v) => `${v}%`} />
                       <Tooltip content={<CustomTooltip />} />
+                      {/* connectNulls={false} so days with no records render
+                          as gaps instead of pretending day 12 is adjacent to
+                          day 28 (B13). */}
                       <Area type="monotone" dataKey="value" stroke={dB1} strokeWidth={2.5} fill="url(#trendGrad)" dot={false}
+                        connectNulls={false}
                         activeDot={{ r: 5, fill: dB1, stroke: "#fff", strokeWidth: 2 }} animationDuration={1200} />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -1448,11 +1739,15 @@ const Attendance = () => {
                 </span>
               </div>
               {absentStudents.length > 0 && (
-                <button onClick={() => toast.success("Absence alerts queued for all parents")}
-                  className="h-10 px-4 rounded-[12px] flex items-center gap-1.5 text-[12px] font-bold text-white transition-transform hover:scale-[1.02]"
+                <button
+                  onClick={sendAbsenceAlerts}
+                  disabled={sendingAlerts}
+                  className="h-10 px-4 rounded-[12px] flex items-center gap-1.5 text-[12px] font-bold text-white transition-transform hover:scale-[1.02] disabled:opacity-60"
                   style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.26)" }}>
-                  <Send className="w-[13px] h-[13px]" strokeWidth={2.4} />
-                  Alert Parents
+                  {sendingAlerts
+                    ? <Loader2 className="w-[13px] h-[13px] animate-spin" />
+                    : <Send className="w-[13px] h-[13px]" strokeWidth={2.4} />}
+                  {sendingAlerts ? "Sending…" : "Alert Parents"}
                 </button>
               )}
             </div>
@@ -1540,7 +1835,17 @@ const Attendance = () => {
               <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI Attendance Intelligence</span>
             </div>
             <p className="text-[14px] leading-[1.75] font-normal relative z-10 max-w-[900px]" style={{ color: "rgba(255,255,255,0.88)" }}>
-              School attendance is tracking at <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.monthlyAvg}</strong> ({tier}) with <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.presentToday} present</strong>, <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.absentToday} absent</strong>, and <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.lateToday} late</strong> today.
+              {stats.monthlyAvgVal === null ? (
+                // No 30-day data at all — don't pretend a tier or list 0/0/0 today.
+                <>No attendance has been recorded yet — once teachers start marking, the 30-day average and today's counts will appear here.</>
+              ) : stats.totalToday === 0 ? (
+                // Have monthly history, but no records for TODAY yet — surface
+                // that explicitly instead of saying "0 present, 0 absent, 0 late
+                // today" alongside a 92% average (which reads as a contradiction).
+                <>30-day attendance is tracking at <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.monthlyAvg}</strong> ({tier}). <strong style={{ color: "#fff", fontWeight: 700 }}>No attendance has been marked yet today</strong> — figures will populate as teachers record.</>
+              ) : (
+                <>30-day attendance is tracking at <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.monthlyAvg}</strong> ({tier}). Today: <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.presentToday} present</strong>, <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.absentToday} absent</strong>, <strong style={{ color: "#fff", fontWeight: 700 }}>{stats.lateToday} late</strong> (out of {stats.totalToday} marked).</>
+              )}
               {suddenDrops.length > 0 && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{suddenDrops.length} class{suddenDrops.length === 1 ? "" : "es"}</strong> showed a sudden 15%+ drop this week — immediate review recommended.</>}
               {absentStudents.filter(s => s.status === "Chronic").length > 0 && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{absentStudents.filter(s => s.status === "Chronic").length} student{absentStudents.filter(s => s.status === "Chronic").length === 1 ? "" : "s"}</strong> flagged as chronic absentees.</>}
             </p>

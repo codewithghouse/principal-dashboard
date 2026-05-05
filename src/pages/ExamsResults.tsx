@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { db } from "@/lib/firebase";
 import { collection, query, getDocs, where } from "firebase/firestore";
+import { pctOfDoc } from "@/lib/scoreUtils";
 import ExamDetail from "@/components/ExamDetail";
 import ExamsResultsMobile from "@/components/dashboard/ExamsResultsMobile";
 
@@ -49,8 +50,27 @@ function fmtDate(str: string) {
     : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+// Robust initials — "Aamir Khan" → "AK", "Aamir" → "A", "" → "??". Was:
+// `name.substring(0, 2)` which produced "AA" for single-name students.
+const safeInitials = (name: string | null | undefined): string => {
+  const parts = (name || "").split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "??";
+  if (parts.length === 1) return parts[0][0]!.toUpperCase();
+  return (parts[0][0]! + parts[parts.length - 1][0]!).toUpperCase();
+};
+
+// Stable per-student key — prefer studentId, then lowercased studentEmail.
+// Memory: dual_query_pattern_studentid_email — single-key dedup silently
+// drops legacy email-keyed rows.
+const studentKey = (s: any): string =>
+  String(s.studentId || (s.studentEmail || "").toLowerCase() || "").trim();
+
 export function buildExamGroup(name: string, scores: any[]): ExamGroup {
-  const appeared = scores.filter(s => !s.isAbsent && s.score !== null && s.score !== undefined);
+  // "Appeared" = not absent AND has a usable percentage (post-pctOfDoc
+  // normalisation by the parent fetcher). Was: filtered by `s.score !==
+  // null` which dropped marks-format rows (only `marksObtained`/`totalMarks`,
+  // no `score` field) even though their percentage was already computed.
+  const appeared = scores.filter(s => !s.isAbsent && typeof s.percentage === "number" && !isNaN(s.percentage));
 
   const classMap = new Map<string, any[]>();
   appeared.forEach(s => {
@@ -68,15 +88,22 @@ export function buildExamGroup(name: string, scores: any[]): ExamGroup {
       passed: passed.length, failed: rows.length - passed.length,
       passRate: Math.round(passed.length / rows.length * 100),
       topper: top ? `${top.studentName} (${Math.round(top.percentage)}%)` : "—",
-      topperPct: top?.percentage || 0, avgPct: Math.round(avg),
+      // `??` not `||` — a real 0% topper (everyone failed) shouldn't fall
+      // through to the "missing data" branch. With `||`, both null and 0
+      // collapsed to 0 indistinguishably.
+      topperPct: top?.percentage ?? 0, avgPct: Math.round(avg),
     };
   }).sort((a, b) => a.section.localeCompare(b.section));
 
+  // Dual-key student aggregation — was: studentId-only Map key dropped
+  // legacy email-keyed students.
   const stMap = new Map<string, { name: string; className: string; total: number; count: number }>();
   appeared.forEach(s => {
-    if (!stMap.has(s.studentId))
-      stMap.set(s.studentId, { name: s.studentName, className: s.className || s.classId || "", total: 0, count: 0 });
-    const e = stMap.get(s.studentId)!; e.total += s.percentage; e.count++;
+    const k = studentKey(s);
+    if (!k) return;
+    if (!stMap.has(k))
+      stMap.set(k, { name: s.studentName || "Unknown", className: s.className || s.classId || "", total: 0, count: 0 });
+    const e = stMap.get(k)!; e.total += s.percentage; e.count++;
   });
   const meritList: MeritEntry[] = Array.from(stMap.values())
     .map(v => ({ name: v.name, className: v.className, avgPct: Math.round(v.total / v.count) }))
@@ -85,12 +112,14 @@ export function buildExamGroup(name: string, scores: any[]): ExamGroup {
 
   const fMap = new Map<string, { name: string; className: string; total: number; count: number }>();
   appeared.filter(s => s.percentage < 50).forEach(s => {
-    if (!fMap.has(s.studentId))
-      fMap.set(s.studentId, { name: s.studentName, className: s.className || s.classId || "", total: 0, count: 0 });
-    const e = fMap.get(s.studentId)!; e.total += s.percentage; e.count++;
+    const k = studentKey(s);
+    if (!k) return;
+    if (!fMap.has(k))
+      fMap.set(k, { name: s.studentName || "Unknown", className: s.className || s.classId || "", total: 0, count: 0 });
+    const e = fMap.get(k)!; e.total += s.percentage; e.count++;
   });
   const failList: FailEntry[] = Array.from(fMap.values())
-    .map(v => ({ name: v.name, className: v.className, avgPct: Math.round(v.total / v.count), initials: v.name?.substring(0, 2).toUpperCase() || "??" }))
+    .map(v => ({ name: v.name, className: v.className, avgPct: Math.round(v.total / v.count), initials: safeInitials(v.name) }))
     .sort((a, b) => a.avgPct - b.avgPct).slice(0, 8);
 
   const dates = [...new Set(scores.map(s => s.testDate || s.date || "").filter(Boolean))].sort();
@@ -121,23 +150,63 @@ export default function ExamsResults() {
   const [loading,        setLoading]        = useState(true);
   const [selectedExam,   setSelectedExam]   = useState<ExamGroup | null>(null);
 
-  /* ── fetch data ── */
+  /* ── fetch data ──
+     - schoolId-only server-side; branchId in-memory (memory:
+       branchid_inference_lag).
+     - Multi-source merge: test_scores + results + gradebook_scores. Bulk-
+       upload schools were missing ~40% of scores when only test_scores was
+       read (memory: owner_dashboard_alternate_data_sources).
+     - Each row's percentage normalised via pctOfDoc — was: relied on raw
+       `s.percentage` field which is NaN/undefined for marks-format rows. */
   useEffect(() => {
-    if (!userData?.schoolId) return;
+    if (!userData?.schoolId) {
+      setLoading(false);
+      return;
+    }
+    const schoolId = userData.schoolId;
+    const branchId = userData?.branchId || "";
+    const inBranch = (raw: any): boolean =>
+      !branchId || !raw?.branchId || raw.branchId === branchId;
+
     const go = async () => {
       try {
-        /* 1. test_scores by schoolId + branchId */
-        const scoreConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
-        if (userData.branchId) scoreConstraints.push(where("branchId", "==", userData.branchId));
-        const scoresSnap = await getDocs(
-          query(collection(db, "test_scores"), ...scoreConstraints)
-        );
-        const rawScores = scoresSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+        /* 1. Score sources — fetch all 3, merge with content-fingerprint dedup. */
+        const onlySchool = (col: string) =>
+          query(collection(db, col), where("schoolId", "==", schoolId));
+        const [testScoresSnap, resultsSnap, gradebookSnap] = await Promise.all([
+          getDocs(onlySchool("test_scores")),
+          getDocs(onlySchool("results")),
+          getDocs(onlySchool("gradebook_scores")),
+        ]);
+        const fpSeen = new Set<string>();
+        const rawScores: any[] = [];
+        [...testScoresSnap.docs, ...resultsSnap.docs, ...gradebookSnap.docs].forEach(d => {
+          const data = { id: d.id, ...d.data() } as any;
+          if (!inBranch(data)) return;
+          const pct = pctOfDoc(data);
+          // Keep `isAbsent` rows even when pct is null — the exam list needs
+          // them in totalStudents counts.
+          const subjKey = String(data.subject ?? data.subjectName ?? "").toLowerCase();
+          const dateRaw = data.testDate || data.date || data.createdAt || data.uploadedAt;
+          const dateK = (() => {
+            if (!dateRaw) return "";
+            if (typeof dateRaw === "string") return dateRaw.slice(0, 10);
+            if (dateRaw?.toDate) return dateRaw.toDate().toISOString().slice(0, 10);
+            return "";
+          })();
+          const sKey = String(data.studentId || (data.studentEmail || "").toLowerCase() || "").trim();
+          const fp = `${sKey}|${subjKey}|${dateK}|${pct === null ? "x" : Math.round(pct * 10)}`;
+          if (fpSeen.has(fp)) return;
+          fpSeen.add(fp);
+          // Normalise percentage so downstream `s.percentage` reads work.
+          rawScores.push({ ...data, percentage: pct === null ? data.percentage : pct });
+        });
 
         /* 2. enrich with className from tests (max 10 per "in" query) */
         const testIds = [...new Set(rawScores.map(s => s.testId).filter(Boolean))] as string[];
         const testsMap = new Map<string, any>();
         for (const ids of chunk(testIds, 10)) {
+          if (!ids.length) continue;
           const tSnap = await getDocs(query(collection(db, "tests"), where("__name__", "in", ids)));
           tSnap.docs.forEach(d => testsMap.set(d.id, { id: d.id, ...d.data() }));
         }
@@ -147,26 +216,21 @@ export default function ExamsResults() {
         });
         setAllScores(enriched);
 
-        /* 3. upcoming tests via teachers (schoolId + branchId scoped) */
-        const teacherConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
-        if (userData.branchId) teacherConstraints.push(where("branchId", "==", userData.branchId));
-        const tSnap = await getDocs(
-          query(collection(db, "teachers"), ...teacherConstraints)
-        );
-        const tIds = tSnap.docs.map(d => d.id);
+        /* 3. upcoming tests via teachers (schoolId-only + in-memory branch) */
+        const tSnap = await getDocs(onlySchool("teachers"));
+        const tIds = tSnap.docs.filter(d => inBranch(d.data() as any)).map(d => d.id);
         const upcoming: any[] = [];
         const today = new Date(); today.setHours(0, 0, 0, 0);
-        const testsScopeC: any[] = [where("schoolId", "==", userData.schoolId)];
-        if (userData.branchId) testsScopeC.push(where("branchId", "==", userData.branchId));
         for (const ids of chunk(tIds, 10)) {
           if (!ids.length) continue;
           const uSnap = await getDocs(
             query(collection(db, "tests"),
-              ...testsScopeC,
+              where("schoolId", "==", schoolId),
               where("teacherId", "in", ids))
           );
           uSnap.docs.forEach(d => {
             const data = { id: d.id, ...d.data() } as any;
+            if (!inBranch(data)) return;
             const examDate = new Date(data.testDate || data.date || 0);
             if (examDate >= today && data.status !== "Completed")
               upcoming.push(data);
@@ -176,7 +240,9 @@ export default function ExamsResults() {
           new Date(a.testDate || a.date || 0).getTime() - new Date(b.testDate || b.date || 0).getTime()
         );
         setUpcomingExams(upcoming);
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        console.error("[ExamsResults] fetch failed:", e);
+      }
       setLoading(false);
     };
     go();
@@ -190,39 +256,63 @@ export default function ExamsResults() {
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(s);
     });
-    return Array.from(map.entries())
-      .map(([name, scores]) => buildExamGroup(name, scores))
-      .sort((a, b) => b.dateLabel.localeCompare(a.dateLabel));
+    // Sort by actual exam date (not the formatted dateLabel string — was:
+    // localeCompare which gave wrong order for "5 Mar 2026" vs "12 Mar 2026").
+    const groups = Array.from(map.entries()).map(([name, scores]) => buildExamGroup(name, scores));
+    const latestDateMs = (g: ExamGroup) => {
+      let max = 0;
+      g.scores.forEach((s: any) => {
+        const raw = s.testDate || s.date;
+        if (!raw) return;
+        const d = raw?.toDate ? raw.toDate() : new Date(raw);
+        const ms = d?.getTime?.() || 0;
+        if (ms > max) max = ms;
+      });
+      return max;
+    };
+    return groups.sort((a, b) => latestDateMs(b) - latestDateMs(a));
   }, [allScores]);
 
   /* ── derived: latest exam ── */
   const latestExam = examGroups[0] || null;
   const prevExam   = examGroups[1] || null;
 
-  /* ── derived: subject pass rates ── */
+  /* ── derived: subject pass rates ──
+     - Filters by normalised `s.percentage` (was: `s.score !== null` which
+       missed marks-format rows even after normalisation).
+     - Skips rows without a real subject (was: bucketed under "Unknown" which
+       fabricated a subject row that doesn't exist). */
   const subjectData = useMemo(() => {
     const map = new Map<string, { passed: number; total: number }>();
-    allScores.filter(s => !s.isAbsent && s.score !== null).forEach(s => {
-      const subj = (s.subject || s.subjectName || "Unknown").trim();
-      if (!map.has(subj)) map.set(subj, { passed: 0, total: 0 });
-      const e = map.get(subj)!; e.total++;
-      if (s.percentage >= 50) e.passed++;
-    });
+    allScores
+      .filter(s => !s.isAbsent && typeof s.percentage === "number" && !isNaN(s.percentage))
+      .forEach(s => {
+        const subj = String(s.subject || s.subjectName || "").trim();
+        if (!subj) return;
+        if (!map.has(subj)) map.set(subj, { passed: 0, total: 0 });
+        const e = map.get(subj)!; e.total++;
+        if (s.percentage >= 50) e.passed++;
+      });
     return Array.from(map.entries())
       .map(([name, { passed, total }]) => ({ name: name.length > 8 ? name.slice(0, 8) : name, passRate: Math.round(passed / total * 100) }))
       .sort((a, b) => a.passRate - b.passRate);
   }, [allScores]);
 
-  /* ── derived: grade distribution ── */
+  /* ── derived: grade distribution ──
+     Driven by the normalised percentage tier (was: anything without a literal
+     "A"/"B"/"C" letter — including ungraded rows — was bucketed as "Failed",
+     which conflated genuine fails with missing-grade rows). */
   const gradeData = useMemo(() => {
     const counts = { A: 0, B: 0, C: 0, Failed: 0 };
-    (latestExam?.scores || []).filter(s => !s.isAbsent && s.score !== null).forEach(s => {
-      const g = s.grade || "";
-      if (g === "A") counts.A++;
-      else if (g === "B") counts.B++;
-      else if (g === "C") counts.C++;
-      else counts.Failed++;
-    });
+    (latestExam?.scores || [])
+      .filter(s => !s.isAbsent && typeof s.percentage === "number" && !isNaN(s.percentage))
+      .forEach(s => {
+        const p = s.percentage;
+        if (p >= 75)      counts.A++;
+        else if (p >= 60) counts.B++;
+        else if (p >= 50) counts.C++;
+        else              counts.Failed++;
+      });
     return [
       { name: "A Grade", value: counts.A,      color: GRADE_COLORS[0] },
       { name: "B Grade", value: counts.B,      color: GRADE_COLORS[1] },
@@ -231,14 +321,18 @@ export default function ExamsResults() {
     ].filter(d => d.value > 0);
   }, [latestExam]);
 
-  /* ── derived: failed students by subject ── */
+  /* ── derived: failed students by subject ──
+     Same percentage check + skip-unknown-subject rule as subjectData above. */
   const failedBySubject = useMemo(() => {
     const map = new Map<string, any[]>();
-    (latestExam?.scores || []).filter(s => !s.isAbsent && s.percentage < 50).forEach(s => {
-      const subj = (s.subject || s.subjectName || "Unknown").trim();
-      if (!map.has(subj)) map.set(subj, []);
-      map.get(subj)!.push(s);
-    });
+    (latestExam?.scores || [])
+      .filter(s => !s.isAbsent && typeof s.percentage === "number" && s.percentage < 50)
+      .forEach(s => {
+        const subj = String(s.subject || s.subjectName || "").trim();
+        if (!subj) return;
+        if (!map.has(subj)) map.set(subj, []);
+        map.get(subj)!.push(s);
+      });
     return Array.from(map.entries())
       .map(([subject, students]) => ({ subject, students: students.sort((a, b) => a.percentage - b.percentage) }))
       .sort((a, b) => b.students.length - a.students.length);
@@ -270,6 +364,7 @@ export default function ExamsResults() {
         selectedExam={selectedExam}
         onSelectExam={exam => setSelectedExam(exam)}
         onBackFromDetail={() => setSelectedExam(null)}
+        userData={userData}
       />
     );
   }

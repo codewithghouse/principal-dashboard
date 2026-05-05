@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
-  ChevronLeft, Download, TrendingUp, TrendingDown,
-  Loader2, User, Users, Printer,
+  ChevronLeft, TrendingUp, TrendingDown,
+  Loader2, User, Printer,
 } from "lucide-react";
 import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import {
@@ -9,17 +9,38 @@ import {
   ResponsiveContainer, Cell,
 } from "recharts";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, getDocs } from "firebase/firestore";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { pctOfDoc } from "@/lib/scoreUtils";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-// Wraps shared `pctOfDoc` (returns null for missing data, handles all 4 score
-// schemas). Was: defaulted to 0 → fabricated low-end bucket counts and
-// dragged subject averages toward zero (memory: bug_pattern_score_zero_no_data).
-const getScore = (r: any): number | null => pctOfDoc(r);
+// Tier thresholds — kept consistent across barColor + headerColor + teacher
+// avgColor (B16: was three different cutoffs, leading to amber bars under a
+// "green" header).
+const TIER_GREEN = 75;
+const TIER_AMBER = 60;
 
-const barColor = (v: number) => v >= 75 ? "#22c55e" : v >= 55 ? "#f59e0b" : "#ef4444";
+const barColor = (v: number): string =>
+  v >= TIER_GREEN ? "#22c55e" : v >= TIER_AMBER ? "#f59e0b" : "#ef4444";
+
+const tierTextColor = (v: number): string =>
+  v >= TIER_GREEN ? "text-green-600" : v >= TIER_AMBER ? "text-amber-500" : "text-red-500";
+
+const tierHeaderBg = (v: number): string =>
+  v >= TIER_GREEN ? "bg-green-50 border-green-100"
+  : v >= TIER_AMBER ? "bg-amber-50 border-amber-100"
+  : "bg-red-50 border-red-100";
+
+// Robust initials — strips whitespace, filters falsy chars (B15: "" or " "
+// previously yielded "UNDEFINED").
+const safeInitials = (name: string): string =>
+  (name || "")
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase() || "?";
 
 // ─── props ────────────────────────────────────────────────────────────────────
 interface SubjectAnalysisProps {
@@ -44,37 +65,50 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
   const [sectionData,      setSectionData]      = useState<any[]>([]);
   const [marksDistData,    setMarksDistData]    = useState<any[]>([]);
   const [teacherData,      setTeacherData]      = useState<any[]>([]);
-  const [insights,         setInsights]         = useState<{ top: any; weak: any; issues: string[] } | null>(null);
+  const [insights,         setInsights]         = useState<{ top: any; weak: any | null; issues: string[] } | null>(null);
   const [totalStudents,    setTotalStudents]    = useState(subject.totalStudents || 0);
+  const [computedAvg,      setComputedAvg]      = useState<number | null>(null);
+  const [hasData,          setHasData]          = useState(false);
   const [loading,          setLoading]          = useState(true);
 
   const resultsRef    = useRef<any[]>([]);
   const testScoresRef = useRef<any[]>([]);
   const gradebookRef  = useRef<any[]>([]);
+  // Debounce token for the burst-coalescing recompute (memory:
+  // 80ms debounced compute pattern eliminates initial-burst thrash).
+  const recomputeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const schoolId = userData?.schoolId || userData?.school || "";
   const branchId = userData?.branchId || "";
 
+  // Stable key for the assigned-teachers list — used as a stable useEffect dep
+  // so a teacher reassignment in the parent triggers re-evaluation (B1).
+  const teacherIdsKey = useMemo(
+    () => (subject.teacherIds || []).slice().sort().join("|"),
+    [subject.teacherIds],
+  );
+
   // ── load data ─────────────────────────────────────────────────────────────
-  // P0 fixes:
-  //  - schoolId-only server-side; branchId in-memory (memory: branchid_inference_lag)
-  //  - 3 score collections live-merged (results + test_scores + gradebook_scores)
-  //    — bulk-upload schools used to see "No data" because they write to
-  //    test_scores/gradebook_scores instead of results.
-  //  - Real errLog handlers replace silent .then() / no-error onSnapshot.
-  //  - Subject-match fallback covers BOTH teacherIds-strict AND result-subject-loose
-  //    so a substitute teacher's score isn't lost just because they're not in
-  //    the original assignment list.
+  // - schoolId-only server-side; branchId in-memory (memory: branchid_inference_lag)
+  // - 3 score collections live-merged (results + test_scores + gradebook_scores)
+  // - Teachers via onSnapshot (B4: was getDocs once, leaving stale names when
+  //   a teacher was added or their subject field updated post-mount)
+  // - 80ms debounced recompute (B3: prevents 3-listener initial-burst thrash)
+  // - useEffect deps include teacherIdsKey + subject.name (B1)
   useEffect(() => {
-    if (!schoolId) return;
+    if (!schoolId) {
+      // No school context — bail early, leave UI in empty state. Was: silent
+      // return left the spinner spinning forever (B21).
+      setLoading(false);
+      setHasData(false);
+      return;
+    }
 
     const inBranch = (raw: any): boolean =>
       !branchId || !raw?.branchId || raw.branchId === branchId;
 
-    // Step 1: Build teacher → subject map for this school
     const teacherMapLocal: Record<string, { name: string; subject: string }> = {};
     let mapReady = false;
-    let pendingRecompute = false;
 
     const subjectMatches = (r: any): boolean => {
       // Match by EITHER teacherIds list OR subject field — accept whichever
@@ -86,8 +120,8 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
       return subj === subject.name.toLowerCase();
     };
 
-    const recompute = () => {
-      if (!mapReady) { pendingRecompute = true; return; }
+    const runRecompute = () => {
+      if (!mapReady) return;
       const merged = [
         ...resultsRef.current.filter(inBranch),
         ...testScoresRef.current.filter(inBranch),
@@ -97,10 +131,17 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
       computeFromResults(subjectResults, teacherMapLocal);
     };
 
-    getDocs(query(collection(db, "teachers"), where("schoolId", "==", schoolId)))
-      .then((snap) => {
+    const scheduleRecompute = () => {
+      if (recomputeTimer.current) clearTimeout(recomputeTimer.current);
+      recomputeTimer.current = setTimeout(runRecompute, 80);
+    };
+
+    const uTeachers = onSnapshot(
+      query(collection(db, "teachers"), where("schoolId", "==", schoolId)),
+      (snap) => {
+        Object.keys(teacherMapLocal).forEach((k) => delete teacherMapLocal[k]);
         snap.docs.forEach((d) => {
-          const t = d.data();
+          const t = d.data() as any;
           if (!inBranch(t)) return;
           teacherMapLocal[d.id] = {
             name:    t.name    || t.teacherName || "Teacher",
@@ -109,43 +150,48 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
           };
         });
         mapReady = true;
-        if (pendingRecompute) recompute();
-      })
-      .catch((err) => console.warn("[SubjectAnalysis] teacher map fetch failed:", err));
+        scheduleRecompute();
+      },
+      (err) => console.warn("[SubjectAnalysis] teachers listener failed:", err),
+    );
 
     const u1 = onSnapshot(
       query(collection(db, "results"), where("schoolId", "==", schoolId)),
-      (snap) => { resultsRef.current = snap.docs.map((d) => ({ id: d.id, ...d.data() })); recompute(); },
+      (snap) => { resultsRef.current = snap.docs.map((d) => ({ id: d.id, ...d.data() })); scheduleRecompute(); },
       (err) => console.warn("[SubjectAnalysis] results listener failed:", err),
     );
     const u2 = onSnapshot(
       query(collection(db, "test_scores"), where("schoolId", "==", schoolId)),
-      (snap) => { testScoresRef.current = snap.docs.map((d) => ({ id: d.id, ...d.data() })); recompute(); },
+      (snap) => { testScoresRef.current = snap.docs.map((d) => ({ id: d.id, ...d.data() })); scheduleRecompute(); },
       (err) => console.warn("[SubjectAnalysis] test_scores listener failed:", err),
     );
     const u3 = onSnapshot(
       query(collection(db, "gradebook_scores"), where("schoolId", "==", schoolId)),
-      (snap) => { gradebookRef.current = snap.docs.map((d) => ({ id: d.id, ...d.data() })); recompute(); },
+      (snap) => { gradebookRef.current = snap.docs.map((d) => ({ id: d.id, ...d.data() })); scheduleRecompute(); },
       (err) => console.warn("[SubjectAnalysis] gradebook_scores listener failed:", err),
     );
 
-    // Safety timer — unblock spinner after 5s if all listeners denied/empty
+    // Safety timer — unblock spinner after 5s if all listeners denied/empty.
     const safetyTimer = setTimeout(() => setLoading(false), 5000);
 
-    return () => { clearTimeout(safetyTimer); u1(); u2(); u3(); };
-  }, [schoolId, branchId, subject.name]);
+    return () => {
+      clearTimeout(safetyTimer);
+      if (recomputeTimer.current) clearTimeout(recomputeTimer.current);
+      uTeachers(); u1(); u2(); u3();
+    };
+  }, [schoolId, branchId, subject.name, teacherIdsKey]);
 
   const computeFromResults = (
     results: any[],
     teacherMap: Record<string, { name: string; subject: string }>
   ) => {
     // Cross-collection dedup (memory: same exam mirrored to results +
-    // test_scores wouldn't double-count). Also drops null-pct docs entirely
-    // — never feeds fabricated 0s into averages or distribution buckets.
+    // test_scores wouldn't double-count). Drops null-pct docs entirely —
+    // never feeds fabricated 0s into averages or distribution buckets.
     const fpSeen = new Set<string>();
     const deduped: { raw: any; _pct: number }[] = [];
     results.forEach((r) => {
-      const p = getScore(r);
+      const p = pctOfDoc(r);
       if (p === null) return;
       const subjKey = String(r.subject ?? r.subjectName ?? "").toLowerCase();
       const ts = r.timestamp ?? r.createdAt ?? r.date;
@@ -167,10 +213,13 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
       setMarksDistData([]);
       setTeacherData([]);
       setInsights(null);
-      setTotalStudents(subject.totalStudents || 0);
+      setComputedAvg(null);
+      setTotalStudents(0); // B18: don't fall back to parent prop when zero data
+      setHasData(false);
       setLoading(false);
       return;
     }
+    setHasData(true);
 
     // ── 1. Section-wise performance ─────────────────────────────────────────
     const classGroups: Record<string, { scores: number[]; className: string; teacherName: string }> = {};
@@ -190,23 +239,27 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
     setSectionData(sections);
 
     // ── 2. Performance Insights ─────────────────────────────────────────────
+    // Top vs Weakest only makes sense with ≥2 sections — with a single
+    // section the two pointers collapse to the same row and the UI shows the
+    // same name as both "Top Performing" and "Weakest" (B29). When that
+    // happens we surface ONE card; the renderer keys off `weak == null`.
     if (sections.length > 0) {
       const top  = sections[sections.length - 1];
-      const weak = sections[0];
+      const weak = sections.length >= 2 ? sections[0] : null;
 
       const issues: string[] = [];
-      const lowSections = sections.filter((s) => s.value < 60);
+      const lowSections = sections.filter((s) => s.value < TIER_AMBER);
       if (lowSections.length > 0) {
         // Truncate the section list at 4 names to avoid an overflowing comma-list
         const names = lowSections.map(s => s.section);
         const shown = names.slice(0, 4).join(", ") + (names.length > 4 ? `, +${names.length - 4} more` : "");
-        issues.push(`${lowSections.length} section(s) scoring below 60% (${shown})`);
+        issues.push(`${lowSections.length} section(s) scoring below ${TIER_AMBER}% (${shown})`);
       }
-      const allScores = deduped.map((d) => d._pct);
-      const passRate  = Math.round(allScores.filter((s) => s >= 40).length / allScores.length * 100);
+      const allScoresLocal = deduped.map((d) => d._pct);
+      const passRate  = Math.round(allScoresLocal.filter((s) => s >= 40).length / allScoresLocal.length * 100);
       if (passRate < 80) issues.push(`Pass rate is ${passRate}% — ${100 - passRate}% students below passing marks`);
-      const avgScore  = Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length);
-      if (avgScore < 60) issues.push(`Overall subject average (${avgScore}%) needs improvement`);
+      const avgScore  = Math.round(allScoresLocal.reduce((a, b) => a + b, 0) / allScoresLocal.length);
+      if (avgScore < TIER_AMBER) issues.push(`Overall subject average (${avgScore}%) needs improvement`);
       if (issues.length === 0) issues.push(`Performance is stable — maintain assessment frequency`);
 
       setInsights({ top, weak, issues });
@@ -223,8 +276,10 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
     ]);
 
     // ── 4. Teacher effectiveness ────────────────────────────────────────────
-    // Skip phantom "unknown" teacher — was rendering as a row before, now
-    // only real teacherIds with a name make the list.
+    // Skip phantom "unknown" teacher — only real teacherIds with a name make
+    // the list. Grades are sorted alphabetically (B28) and shown with a "+N"
+    // overflow indicator so a teacher with many classes doesn't visually
+    // overflow the row (B14).
     const teacherGroups: Record<string, { name: string; scores: number[]; grades: Set<string> }> = {};
     deduped.forEach(({ raw, _pct }) => {
       const tid = raw.teacherId;
@@ -240,13 +295,16 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
     const colors = ["#1e3a8a", "#22c55e", "#f59e0b", "#8b5cf6", "#ef4444"];
     const teachers = Object.entries(teacherGroups).map(([tid, data], idx) => {
       const avg = Math.round(data.scores.reduce((a, b) => a + b, 0) / data.scores.length);
+      const allGrades = Array.from(data.grades).sort((a, b) => a.localeCompare(b));
+      const shownGrades = allGrades.slice(0, 3).join(", ");
+      const extra = allGrades.length - 3;
       return {
         id:       tid,
         name:     data.name,
-        grades:   Array.from(data.grades).slice(0, 3).join(", ") || "—",
+        grades:   allGrades.length === 0 ? "—" : extra > 0 ? `${shownGrades} · +${extra}` : shownGrades,
         avg,
-        avgColor: avg < 60 ? "#ef4444" : avg < 75 ? "#f59e0b" : "#22c55e",
-        initials: data.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
+        avgColor: barColor(avg), // B16: align with the bar tier scheme
+        initials: safeInitials(data.name), // B15: tolerates empty/whitespace names
         avatarBg: colors[idx % colors.length],
       };
     }).sort((a, b) => b.avg - a.avg); // highest-performing teacher first
@@ -260,23 +318,32 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
         .map((d) => d.raw.studentId || (d.raw.studentEmail || "").toLowerCase())
         .filter(Boolean)
     );
-    setTotalStudents(uniqueStudents.size || subject.totalStudents || 0);
+    setTotalStudents(uniqueStudents.size); // B18: drop fabricated parent-prop fallback
+
+    // Live overall average (B9, B10): single source of truth for header colour
+    // AND export — was: header used parent-passed `subject.avg` while exporter
+    // recomputed from sectionData (different weighting), so the two could
+    // disagree. Now both read `computedAvg` derived from real per-student
+    // dedup'd scores.
+    const overall = allScores.reduce((a, b) => a + b, 0) / allScores.length;
+    setComputedAvg(Math.round(overall));
 
     setLoading(false);
   };
 
   // ── export PDF ─────────────────────────────────────────────────────────────
+  // Uses the live `computedAvg` (derived from deduped per-student scores) as
+  // the single source of truth — was: subtitle showed parent prop avg while
+  // hero color was recomputed from section averages (different weightings),
+  // so the two could disagree.
   const handleExportPDF = () => {
-    const allScores = sectionData.map(s => s.value);
-    const overallAvg = allScores.length
-      ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length)
-      : subject.avgNum ?? 0;
+    const avgLabel = computedAvg !== null ? `${computedAvg}%` : "—";
     const html = buildReport({
       title: `${subject.name} — Subject Analysis`,
-      subtitle: `Overall Average: ${subject.avg} · ${totalStudents} students`,
+      subtitle: `Overall Average: ${avgLabel} · ${totalStudents} students`,
       badge: subject.name,
       heroStats: [
-        { label: "Overall Average", value: subject.avg, color: overallAvg >= 75 ? "#4ade80" : overallAvg >= 55 ? "#fbbf24" : "#f87171" },
+        { label: "Overall Average", value: avgLabel, color: computedAvg === null ? "#9ca3af" : barColor(computedAvg) },
         { label: "Total Students",  value: totalStudents },
         { label: "Sections",        value: sectionData.length },
         { label: "Teachers",        value: teacherData.length },
@@ -288,7 +355,7 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
           headers: ["Section", "Avg Score", "Teacher"],
           rows: sectionData.map(s => ({
             cells: [s.section, `${s.value}%`, s.teacherName],
-            highlight: s.value < 60,
+            highlight: s.value < TIER_AMBER,
           })),
         },
         {
@@ -297,7 +364,7 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
           headers: ["Teacher", "Classes", "Avg Score"],
           rows: teacherData.map(t => ({
             cells: [t.name, t.grades, `${t.avg}%`],
-            highlight: t.avg < 60,
+            highlight: t.avg < TIER_AMBER,
           })),
         },
         ...(insights?.issues?.length ? [{
@@ -311,9 +378,21 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
   };
 
   // ── render ────────────────────────────────────────────────────────────────
-  const avgNum = subject.avgNum ?? parseInt(subject.avg) ?? 0;
-  const headerBg = avgNum < 60 ? "bg-red-50 border-red-100" : avgNum < 75 ? "bg-amber-50 border-amber-100" : "bg-green-50 border-green-100";
-  const avgColor = avgNum < 60 ? "text-red-500" : avgNum < 75 ? "text-amber-500" : "text-green-600";
+  // Header colour + label use the LIVE computed average so it matches what's
+  // actually plotted. Falls back to the parent-passed `subject.avgNum` only
+  // when we genuinely have no data yet (e.g. first paint before listeners
+  // settle). `parseInt` was using `?? 0` which is broken for NaN — now we
+  // explicitly Number-coerce and isFinite-check (B8/B19).
+  const parsePropAvg = (): number | null => {
+    if (typeof subject.avgNum === "number" && Number.isFinite(subject.avgNum)) return subject.avgNum;
+    const n = Number.parseFloat(String(subject.avg ?? ""));
+    return Number.isFinite(n) ? n : null;
+  };
+  const propAvg = parsePropAvg();
+  const displayAvg = computedAvg ?? propAvg;        // null when we truly have nothing
+  const displayAvgLabel = displayAvg === null ? "—" : `${displayAvg}%`;
+  const headerBg = displayAvg === null ? "bg-slate-50 border-slate-100" : tierHeaderBg(displayAvg);
+  const avgColor = displayAvg === null ? "text-slate-400" : tierTextColor(displayAvg);
 
   return (
     <div className="animate-in fade-in duration-500 pb-12">
@@ -334,7 +413,7 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
           <div>
             <h1 className="text-2xl font-black text-foreground tracking-tight">{subject.name}</h1>
             <p className="text-sm text-muted-foreground font-medium mt-0.5">
-              Overall Average: <span className={`font-black ${avgColor}`}>{subject.avg}</span>
+              Overall Average: <span className={`font-black ${avgColor}`}>{displayAvgLabel}</span>
               {totalStudents > 0 && <><span className="mx-2">•</span>{totalStudents} students</>}
             </p>
           </div>
@@ -389,7 +468,7 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
                           </div>
                         ) : null
                       }
-                      cursor={{ fill: "rgba(0,0,0,0.02)" }}
+                      cursor={{ fill: "rgba(0,0,0,0.04)" }}
                     />
                     <Bar dataKey="value" radius={[0, 6, 6, 0]} animationDuration={1000} barSize={20}
                       label={{ position: "right", fontSize: 11, fontWeight: 700, fill: "#64748b", formatter: (v: number) => `${v}%` }}
@@ -405,59 +484,90 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
 
             {/* Performance Insights */}
             <div className="space-y-4">
-              {/* Top Performing Section */}
-              <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
-                    <TrendingUp className="w-4 h-4 text-green-500" />
+              {/* Top / Single Section card.
+                  When only one section has data, label it "Section
+                  Performance" and use a tier-coloured icon — was: showed
+                  the same row twice as both "Top" and "Weakest". */}
+              {(() => {
+                const isSingle = !!insights?.top && !insights?.weak;
+                const top = insights?.top;
+                const tierClr = top ? barColor(top.value) : "#94a3b8";
+                return (
+                  <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ background: isSingle ? `${tierClr}15` : "#f0fdf4" }}
+                      >
+                        <TrendingUp className="w-4 h-4" style={{ color: isSingle ? tierClr : "#22c55e" }} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-foreground mb-1">
+                          {isSingle ? "Section Performance" : "Top Performing Section"}
+                        </h4>
+                        {top ? (
+                          <p className="text-sm text-muted-foreground font-medium">
+                            <span className="font-black text-foreground">{top.section}</span> with{" "}
+                            <span className="font-black" style={{ color: isSingle ? tierClr : "#16a34a" }}>{top.value}%</span> average
+                            {top.teacherName !== "—" && ` (${top.teacherName})`}
+                            {isSingle && (
+                              <span className="block text-xs text-slate-400 mt-1 font-medium">
+                                Only one section has data so far — comparison unavailable.
+                              </span>
+                            )}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-slate-400">No section data yet</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-foreground mb-1">Top Performing Section</h4>
-                    {insights?.top ? (
-                      <p className="text-sm text-muted-foreground font-medium">
-                        <span className="font-black text-foreground">{insights.top.section}</span> with{" "}
-                        <span className="text-green-600 font-black">{insights.top.value}%</span> average
-                        {insights.top.teacherName !== "—" && ` (${insights.top.teacherName})`}
-                      </p>
-                    ) : (
-                      <p className="text-sm text-slate-400">No section data yet</p>
-                    )}
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
 
-              {/* Weakest Section */}
-              <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-                    <TrendingDown className="w-4 h-4 text-red-500" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-foreground mb-1">Weakest Section</h4>
-                    {insights?.weak ? (
+              {/* Weakest Section — rendered only when ≥2 sections exist. */}
+              {insights?.weak && (
+                <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                      <TrendingDown className="w-4 h-4 text-red-500" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-foreground mb-1">Weakest Section</h4>
                       <p className="text-sm text-muted-foreground font-medium">
                         <span className="font-black text-foreground">{insights.weak.section}</span> with{" "}
                         <span className="text-red-500 font-black">{insights.weak.value}%</span> average
                         {insights.weak.teacherName !== "—" && ` (${insights.weak.teacherName})`}
                       </p>
-                    ) : (
-                      <p className="text-sm text-slate-400">No section data yet</p>
-                    )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Key Issues */}
               <div className="bg-card border border-border rounded-2xl p-5 shadow-sm flex-1">
                 <h4 className="text-sm font-bold text-foreground mb-3">Key Issues Identified</h4>
-                <ul className="space-y-2.5">
-                  {(insights?.issues || ["No issues to report"]).map((issue, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm text-muted-foreground font-medium">
-                      <span className="text-slate-400 mt-1.5 shrink-0">•</span>
-                      {issue}
-                    </li>
-                  ))}
-                </ul>
+                {/* B13: distinguish "no issues found" (good news) from "no
+                    data uploaded yet" (neutral). Was: showed "No issues to
+                    report" in both cases, masking missing data. */}
+                {!hasData ? (
+                  <p className="text-sm text-slate-400 font-medium">
+                    No exam scores recorded for this subject yet.
+                  </p>
+                ) : insights?.issues?.length ? (
+                  <ul className="space-y-2.5">
+                    {insights.issues.map((issue, i) => (
+                      <li key={i} className="flex items-start gap-2.5 text-sm text-muted-foreground font-medium">
+                        <span className="text-slate-400 mt-1.5 shrink-0">•</span>
+                        {issue}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-slate-400 font-medium">
+                    No issues to report — performance is stable.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -492,7 +602,7 @@ const SubjectAnalysis = ({ subject, onBack }: SubjectAnalysisProps) => {
                           </div>
                         ) : null
                       }
-                      cursor={{ fill: "rgba(0,0,0,0.02)" }}
+                      cursor={{ fill: "rgba(0,0,0,0.04)" }}
                     />
                     <Bar dataKey="students" radius={[4, 4, 0, 0]} animationDuration={1000}>
                       {marksDistData.map((entry, i) => (

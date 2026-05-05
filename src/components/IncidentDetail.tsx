@@ -69,21 +69,53 @@ const IncidentDetail = ({ incident, onBack }: IncidentDetailProps) => {
   }, [incident?.id]);
 
   // ── Fetch related incidents (same student, different doc) ──
+  // Handles BOTH schemas:
+  //   - Legacy principal writes: student: { name, grade } (nested only)
+  //   - Modern teacher / principal writes: studentId / studentEmail at root
+  // School-scoped server-side query, then in-memory match across all three
+  // identity paths so a teacher-authored incident links to a principal-
+  // authored one for the same student.
   useEffect(() => {
-    if (!userData?.schoolId || !localInc?.student?.name) return;
+    if (!userData?.schoolId || !localInc) return;
     const scopeC: any[] = [where('schoolId', '==', userData.schoolId)];
     if (userData.branchId) scopeC.push(where('branchId', '==', userData.branchId));
-    getDocs(query(
-      collection(db, 'incidents'),
-      ...scopeC,
-      where('student.name', '==', localInc.student.name),
-      limit(6)
-    )).then(snap => {
-      setRelatedIncidents(
-        snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.id !== incident.id)
-      );
-    }).catch(() => {});
-  }, [userData?.schoolId, userData?.branchId, localInc?.student?.name, incident.id]);
+
+    const targetId    = String(localInc.studentId || "");
+    const targetEmail = String(localInc.studentEmail || "").toLowerCase();
+    const targetName  = String(
+      localInc.studentName || localInc.student?.name || ""
+    ).toLowerCase().trim();
+
+    if (!targetId && !targetEmail && !targetName) {
+      setRelatedIncidents([]);
+      return;
+    }
+
+    getDocs(query(collection(db, 'incidents'), ...scopeC, limit(200)))
+      .then(snap => {
+        const matches = snap.docs
+          .filter(d => d.id !== incident.id)
+          .map(d => ({ id: d.id, ...(d.data() as any) }))
+          .filter(d => {
+            if (targetId && d.studentId && d.studentId === targetId) return true;
+            if (targetEmail && d.studentEmail && String(d.studentEmail).toLowerCase() === targetEmail) return true;
+            const nm = String(d.studentName || d.student?.name || "").toLowerCase().trim();
+            if (targetName && nm && nm === targetName) return true;
+            return false;
+          })
+          .slice(0, 6);
+        setRelatedIncidents(matches);
+      })
+      .catch((err) => {
+        console.warn("[IncidentDetail] related incidents query failed:", err);
+        setRelatedIncidents([]);
+      });
+  }, [
+    userData?.schoolId, userData?.branchId,
+    localInc?.studentId, localInc?.studentEmail,
+    localInc?.studentName, localInc?.student?.name,
+    incident.id,
+  ]);
 
   const actorName = userData?.name || 'Principal';
   const now       = () => new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });

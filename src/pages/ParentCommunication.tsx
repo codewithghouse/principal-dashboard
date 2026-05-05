@@ -3,7 +3,7 @@ import { Loader2, MessageSquare, Search, Send, User, ChevronLeft, CheckCheck, Us
 import { useLocation, useNavigate } from "react-router-dom";
 import CommunicationIntelligence from "@/components/CommunicationIntelligence";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, writeBatch } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -81,6 +81,40 @@ const ParentCommunication = () => {
   }, [userData?.schoolId, userData?.branchId]);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [allMessages, selectedStudent]);
+
+  // ── Mark parent → principal messages as read on chat open ────────────────
+  // Was: missing entirely. Result: principal opened the chat, saw the
+  // parent's message, but the doc stayed `read: false` forever — the unread
+  // badge in the sidebar never cleared (the "2 messages" sticky bug). Mirrors
+  // the parent dashboard's PrincipalNotesPage which does this for the other
+  // direction. writeBatch chunked at 450 ops to stay under Firestore's 500 cap.
+  useEffect(() => {
+    if (!selectedStudent) return;
+    const key = selectedStudent.studentId || selectedStudent.id;
+    if (!key) return;
+    const unread = allMessages.filter(
+      m => m.studentId === key && m.from === "parent" && m.read === false,
+    );
+    if (unread.length === 0) return;
+
+    const CHUNK = 450;
+    (async () => {
+      try {
+        for (let i = 0; i < unread.length; i += CHUNK) {
+          const slice = unread.slice(i, i + CHUNK);
+          const batch = writeBatch(db);
+          slice.forEach(m => {
+            batch.update(doc(db, "principal_to_parent_notes", m.id), { read: true });
+          });
+          await batch.commit();
+        }
+      } catch (err) {
+        // Silent — the listener will retry on the next open. We don't surface
+        // a toast since this is best-effort UX, not user-initiated.
+        console.warn("[ParentCommunication] mark-as-read failed:", err);
+      }
+    })();
+  }, [selectedStudent, allMessages]);
 
   const lastMessages = useMemo(() => {
     const map = new Map<string, any>();
@@ -439,7 +473,14 @@ const ParentCommunication = () => {
                             </div>
                             <div style={{ fontSize: 9, color: "rgba(80,112,176,.7)", fontWeight: 600, textAlign: "right", marginTop: 4, display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
                               <span>{fmtTime(n.timestamp)}</span>
-                              <CheckCheck size={12} color={GREEN} strokeWidth={2.5} />
+                              {/* WhatsApp tick convention: 1 tick = sent (parent
+                                  hasn't opened yet), 2 ticks = read. Was: always
+                                  2 ticks regardless of `read` state — gave a
+                                  false "read" signal the moment principal hit
+                                  send. */}
+                              {n.read
+                                ? <CheckCheck size={12} color={GREEN} strokeWidth={2.5} />
+                                : <Check size={12} color={T4} strokeWidth={2.5} />}
                             </div>
                           </div>
                         </div>
@@ -484,9 +525,13 @@ const ParentCommunication = () => {
                             <div style={{ fontSize: 11, fontWeight: 700, color: B1, marginBottom: 5 }}>{senderName}</div>
                             <div>{n.message}</div>
                           </div>
-                          <div style={{ fontSize: 9, color: T4, fontWeight: 600, textAlign: "right", marginTop: 4, display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
-                            <span>{fmtTime(n.timestamp)}</span>
-                            <Check size={12} color={GREEN} strokeWidth={2.5} />
+                          {/* Received-message timestamp only — WhatsApp
+                              convention is to NEVER render delivery ticks on
+                              inbound messages (no semantic meaning to display
+                              one's own read state to oneself). Was: showed a
+                              green Check unconditionally. */}
+                          <div style={{ fontSize: 9, color: T4, fontWeight: 600, textAlign: "right", marginTop: 4 }}>
+                            {fmtTime(n.timestamp)}
                           </div>
                         </div>
                       </div>
@@ -953,7 +998,12 @@ const ParentCommunication = () => {
                         {unread}
                       </div>
                     ) : last && last.from === "principal" ? (
-                      <CheckCheck size={12} color={GREEN} strokeWidth={2.5} />
+                      // Sidebar tick now reflects whether the LAST OUTBOUND
+                      // message was read by parent — was: always 2 ticks
+                      // regardless of read state.
+                      last.read
+                        ? <CheckCheck size={12} color={GREEN} strokeWidth={2.5} />
+                        : <Check size={12} color={T4} strokeWidth={2.5} />
                     ) : null}
                   </div>
                 </button>
@@ -1245,7 +1295,14 @@ const ParentCommunication = () => {
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1 min-w-0 flex-1">
                             {last && last.from === "principal" && (
-                              <CheckCheck size={14} color={unread > 0 ? WA_TEXT_MUTED : WA_TICK_READ} strokeWidth={2.4} className="shrink-0" />
+                              // Tick on the LAST OUTBOUND message — single
+                              // gray = sent (parent hasn't read), double blue
+                              // = read. Was: color toggled by `unread > 0`
+                              // (count of inbound unread) which is unrelated
+                              // to whether THIS message was read.
+                              last.read
+                                ? <CheckCheck size={14} color={WA_TICK_READ} strokeWidth={2.4} className="shrink-0" />
+                                : <Check size={14} color={WA_TEXT_MUTED} strokeWidth={2.4} className="shrink-0" />
                             )}
                             <span className="text-[13px] truncate"
                               style={{ color: unread > 0 ? WA_TEXT : WA_TEXT_MUTED, fontWeight: unread > 0 ? 500 : 400 }}>
@@ -1412,7 +1469,14 @@ const ParentCommunication = () => {
                                       color: WA_TIME,
                                     }}>
                                     {fmtTime(n.timestamp)}
-                                    {isSent && <CheckCheck size={15} color={WA_TICK_READ} strokeWidth={2.4} />}
+                                    {isSent && (
+                                      // 1 tick = sent, 2 ticks (blue) = read.
+                                      // Was: always 2 blue ticks even before
+                                      // parent opened the message.
+                                      n.read
+                                        ? <CheckCheck size={15} color={WA_TICK_READ} strokeWidth={2.4} />
+                                        : <Check size={15} color={WA_TIME} strokeWidth={2.4} />
+                                    )}
                                   </span>
                                 </div>
                               </div>

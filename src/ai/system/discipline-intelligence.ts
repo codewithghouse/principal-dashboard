@@ -11,11 +11,22 @@
 //   who actually have ≥ N logged incidents in real Firestore data.
 
 export type DisciplineLog = {
-  student?: string;
+  // String OR legacy nested object {name, grade} — coerced to a string in
+  // the patterns builder before any string method is called.
+  student?: string | { name?: string; grade?: string } | null;
   type?: string;       // incident category, e.g. "Bullying", "Late submission"
   severity?: string;   // "Low" | "Medium" | "High" | "Critical"
   date?: string;
   location?: string;
+};
+
+// Coerce the polymorphic student field to a clean string. Was: callers
+// did `(l.student || "Unknown").trim()` which crashed when `l.student` was
+// the legacy nested object `{name, grade}` (objects don't have `.trim`).
+const studentNameOf = (s: DisciplineLog["student"]): string => {
+  if (typeof s === "string") return s.trim();
+  if (s && typeof s === "object" && typeof s.name === "string") return s.name.trim();
+  return "";
 };
 
 export type DisciplineInput = {
@@ -85,7 +96,7 @@ const worstSeverity = (rows: DisciplineLog[]): "Low" | "Medium" | "High" | "Crit
 const buildBehavioralPatterns = (logs: DisciplineLog[]): BehavioralPattern[] => {
   const byStudent = new Map<string, DisciplineLog[]>();
   logs.forEach((l) => {
-    const name = (l.student || "Unknown").trim();
+    const name = studentNameOf(l.student);
     if (!name || name === "Unknown") return;
     if (!byStudent.has(name)) byStudent.set(name, []);
     byStudent.get(name)!.push(l);
@@ -144,7 +155,10 @@ const buildRelatedIncidents = (logs: DisciplineLog[]): RelatedIncident[] => {
     });
     const dominantLoc = [...locCount.entries()].sort((a, b) => b[1] - a[1])[0];
     const dominantLocFraction = dominantLoc ? dominantLoc[1] / rows.length : 0;
-    const studentCount = new Set(rows.map((r) => r.student || "Unknown")).size;
+    // Use the coerced name string — the raw `r.student` may be the legacy
+    // nested object, and Set keyed on object refs would count every row as
+    // unique, breaking the single-student cluster heuristic below.
+    const studentCount = new Set(rows.map((r) => studentNameOf(r.student) || "Unknown")).size;
 
     let common_factor: string;
     // Single-student clusters take priority — when the same name owns every

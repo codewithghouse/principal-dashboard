@@ -82,30 +82,42 @@ export default function TeacherLeaderboard() {
   const [selected, setSelected] = useState<TeacherScore | null>(null);
 
   // ── Load ────────────────────────────────────────────────────────────────
+  // schoolId-only server-side; branchId in-memory (memory:
+  // branchid_inference_lag — server-side branchId silently drops freshly
+  // written records during the enforceBranchId trigger backfill window).
+  // Error handlers now log to console (was: silent `() => markLoaded()` —
+  // a permission denial or rule mismatch would just clear loading without
+  // any signal).
   useEffect(() => {
     if (!schoolId) { setLoading(false); return; }
 
     let loadedCount = 0;
     const total = 9;
     const markLoaded = () => { loadedCount++; if (loadedCount >= total) setLoading(false); };
-
-    // Build query with optional branchId scope
-    const scoped = (col: string) => {
-      const base = [where("schoolId", "==", schoolId)];
-      if (branchId) base.push(where("branchId", "==", branchId));
-      return query(collection(db, col), ...base);
+    const onError = (label: string) => (err: any) => {
+      console.warn(`[TeacherLeaderboard] ${label} listener failed:`, err?.code || err?.message || err);
+      markLoaded();
     };
 
+    const inBranch = (raw: any): boolean =>
+      !branchId || !raw?.branchId || raw.branchId === branchId;
+    const filterDocs = <T,>(snap: any, withId = false): T[] => snap.docs
+      .map((d: any) => withId ? { id: d.id, ...(d.data() as any) } : (d.data() as any))
+      .filter(inBranch);
+
+    const scoped = (col: string) =>
+      query(collection(db, col), where("schoolId", "==", schoolId));
+
     const unsubs = [
-      onSnapshot(scoped("teachers"),            (s) => { setTeachers(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); }, () => markLoaded()),
-      onSnapshot(scoped("test_scores"),         (s) => { setTestScores(s.docs.map((d) => d.data() as ScoreDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(scoped("results"),             (s) => { setResults(s.docs.map((d) => d.data() as ScoreDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(scoped("gradebook_scores"),    (s) => { setGradebook(s.docs.map((d) => d.data() as ScoreDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(scoped("attendance"),          (s) => { setAttendance(s.docs.map((d) => d.data() as AttendanceDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(scoped("assignments"),         (s) => { setAssignments(s.docs.map((d) => d.data() as AssignmentDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(scoped("teacher_attendance"),  (s) => { setTAttendance(s.docs.map((d) => d.data() as TeacherAttendanceDoc)); markLoaded(); }, () => markLoaded()),
-      onSnapshot(scoped("classes"),             (s) => { setClasses(s.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))); markLoaded(); }, () => markLoaded()),
-      onSnapshot(scoped("teaching_assignments"),(s) => { setTeachingAssignments(s.docs.map((d) => d.data() as any)); markLoaded(); }, () => markLoaded()),
+      onSnapshot(scoped("teachers"),            (s) => { setTeachers(filterDocs<TeacherDoc>(s, true)); markLoaded(); }, onError("teachers")),
+      onSnapshot(scoped("test_scores"),         (s) => { setTestScores(filterDocs<ScoreDoc>(s)); markLoaded(); }, onError("test_scores")),
+      onSnapshot(scoped("results"),             (s) => { setResults(filterDocs<ScoreDoc>(s)); markLoaded(); }, onError("results")),
+      onSnapshot(scoped("gradebook_scores"),    (s) => { setGradebook(filterDocs<ScoreDoc>(s)); markLoaded(); }, onError("gradebook_scores")),
+      onSnapshot(scoped("attendance"),          (s) => { setAttendance(filterDocs<AttendanceDoc>(s)); markLoaded(); }, onError("attendance")),
+      onSnapshot(scoped("assignments"),         (s) => { setAssignments(filterDocs<AssignmentDoc>(s)); markLoaded(); }, onError("assignments")),
+      onSnapshot(scoped("teacher_attendance"),  (s) => { setTAttendance(filterDocs<TeacherAttendanceDoc>(s)); markLoaded(); }, onError("teacher_attendance")),
+      onSnapshot(scoped("classes"),             (s) => { setClasses(filterDocs<any>(s, true)); markLoaded(); }, onError("classes")),
+      onSnapshot(scoped("teaching_assignments"),(s) => { setTeachingAssignments(filterDocs<any>(s)); markLoaded(); }, onError("teaching_assignments")),
     ];
 
     return () => unsubs.forEach((u) => u());

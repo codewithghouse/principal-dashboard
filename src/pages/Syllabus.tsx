@@ -505,24 +505,32 @@ const Syllabus = () => {
               value={uploadForm.classId}
               onChange={(e) => setUploadForm(f => ({ ...f, classId: e.target.value }))}
               disabled={uploading}
+              className="custom-chrome"
               style={{
+                "--cc-padding": "12px 40px 12px 14px",
+                "--cc-line-height": "1.4",
+                "--cc-font-size": "14px",
+                "--cc-font-weight": "600",
                 width: "100%",
-                height: 44,
-                padding: "0 14px",
                 background: "#fff",
                 borderRadius: 12,
-                border: "0.5px solid rgba(0,85,255,0.18)",
-                fontSize: 13,
-                fontWeight: 600,
+                border: "1px solid rgba(0,85,255,0.22)",
                 color: "#001040",
                 outline: "none",
                 cursor: uploading ? "not-allowed" : "pointer",
                 fontFamily: "inherit",
-              }}
+                textIndent: 0,
+                appearance: "none",
+                WebkitAppearance: "none",
+                MozAppearance: "none",
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230055FF' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 14px center",
+              } as any}
             >
-              <option value="">— Select a class —</option>
+              <option value="" style={{ color: "#000" }}>— Select a class —</option>
               {classes.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id} style={{ color: "#000" }}>{c.name}</option>
               ))}
             </select>
             {classes.length === 0 && (
@@ -546,16 +554,18 @@ const Syllabus = () => {
               maxLength={120}
               style={{
                 width: "100%",
-                height: 44,
-                padding: "0 14px",
+                height: 46,
+                padding: "12px 14px",
                 background: "#fff",
                 borderRadius: 12,
-                border: "0.5px solid rgba(0,85,255,0.18)",
-                fontSize: 13,
+                border: "1px solid rgba(0,85,255,0.22)",
+                fontSize: 14,
                 fontWeight: 500,
                 color: "#001040",
                 outline: "none",
                 fontFamily: "inherit",
+                lineHeight: "1.4",
+                boxSizing: "border-box",
               }}
             />
           </div>
@@ -575,16 +585,18 @@ const Syllabus = () => {
                 maxLength={60}
                 style={{
                   width: "100%",
-                  height: 44,
-                  padding: "0 14px",
+                  height: 46,
+                  padding: "12px 14px",
                   background: "#fff",
                   borderRadius: 12,
-                  border: "0.5px solid rgba(0,85,255,0.18)",
-                  fontSize: 13,
+                  border: "1px solid rgba(0,85,255,0.22)",
+                  fontSize: 14,
                   fontWeight: 500,
                   color: "#001040",
                   outline: "none",
                   fontFamily: "inherit",
+                  lineHeight: "1.4",
+                  boxSizing: "border-box",
                 }}
               />
             </div>
@@ -601,16 +613,18 @@ const Syllabus = () => {
                 maxLength={20}
                 style={{
                   width: "100%",
-                  height: 44,
-                  padding: "0 14px",
+                  height: 46,
+                  padding: "12px 14px",
                   background: "#fff",
                   borderRadius: 12,
-                  border: "0.5px solid rgba(0,85,255,0.18)",
-                  fontSize: 13,
+                  border: "1px solid rgba(0,85,255,0.22)",
+                  fontSize: 14,
                   fontWeight: 500,
                   color: "#001040",
                   outline: "none",
                   fontFamily: "inherit",
+                  lineHeight: "1.4",
+                  boxSizing: "border-box",
                 }}
               />
             </div>
@@ -626,36 +640,59 @@ const Syllabus = () => {
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 12,
-                padding: 14,
-                borderRadius: 12,
-                border: "1px dashed rgba(0,85,255,0.32)",
-                background: "rgba(0,85,255,0.04)",
+                gap: 14,
+                padding: 16,
+                borderRadius: 14,
+                border: uploadForm.file
+                  ? "1.5px solid rgba(0,200,83,0.45)"
+                  : "1.5px dashed rgba(0,85,255,0.40)",
+                background: uploadForm.file
+                  ? "rgba(0,200,83,0.06)"
+                  : "rgba(0,85,255,0.06)",
                 cursor: uploading ? "not-allowed" : "pointer",
                 opacity: uploading ? 0.6 : 1,
+                transition: "all 0.18s ease",
+                minHeight: 76,
               }}
             >
               <div
                 style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 10,
-                  background: "linear-gradient(135deg, #0055FF, #1166FF)",
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  background: uploadForm.file
+                    ? "linear-gradient(135deg, #00C853, #22EE66)"
+                    : "linear-gradient(135deg, #0055FF, #1166FF)",
+                  boxShadow: uploadForm.file
+                    ? "0 4px 14px rgba(0,200,83,0.30)"
+                    : "0 4px 14px rgba(0,85,255,0.30)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
                 }}
               >
-                <Plus size={20} color="#fff" strokeWidth={2.4} />
+                {uploadForm.file
+                  ? <CheckCircle2 size={22} color="#fff" strokeWidth={2.4} />
+                  : <Plus size={22} color="#fff" strokeWidth={2.6} />}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#001040", letterSpacing: "-0.2px" }}>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: "#001040",
+                    letterSpacing: "-0.2px",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {uploadForm.file ? uploadForm.file.name : "Choose a file"}
                 </div>
-                <div style={{ fontSize: 11, color: "#5070B0", marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: "#5070B0", marginTop: 3, fontWeight: 500 }}>
                   {uploadForm.file
-                    ? `${(uploadForm.file.size / 1024 / 1024).toFixed(2)} MB`
+                    ? `${(uploadForm.file.size / 1024 / 1024).toFixed(2)} MB · Tap to replace`
                     : `Max 30 MB · ${ALLOWED_EXT_HINT}`}
                 </div>
               </div>
@@ -1065,57 +1102,50 @@ const Syllabus = () => {
         </div>
 
         {/* FILTERS */}
+        {/* MUST use `.custom-chrome` to opt out of index.css global
+            `select { padding ... !important }` — otherwise the value text
+            disappears under `appearance:none`. Memory:
+            bug_pattern_select_text_invisible. */}
         <div style={{ display: "flex", gap: 8, padding: "8px 20px 0" }}>
-          <select
-            value={classFilter}
-            onChange={(e) => setClassFilter(e.target.value)}
-            style={{
-              flex: 1,
-              padding: "0 12px",
-              background: "#fff",
-              borderRadius: 14,
-              border: "0.5px solid rgba(0,85,255,.12)",
-              fontFamily: "inherit",
-              fontSize: 11,
-              fontWeight: 700,
-              color: T2,
-              boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
-              cursor: "pointer",
-              height: 46,
-              appearance: "none",
-              WebkitAppearance: "none",
-            }}
-          >
-            <option value="">All Classes</option>
-            {classOptions.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-          <select
-            value={subjectFilter}
-            onChange={(e) => setSubjectFilter(e.target.value)}
-            style={{
-              flex: 1,
-              padding: "0 12px",
-              background: "#fff",
-              borderRadius: 14,
-              border: "0.5px solid rgba(0,85,255,.12)",
-              fontFamily: "inherit",
-              fontSize: 11,
-              fontWeight: 700,
-              color: T2,
-              boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
-              cursor: "pointer",
-              height: 46,
-              appearance: "none",
-              WebkitAppearance: "none",
-            }}
-          >
-            <option value="">All Subjects</option>
-            {subjectOptions.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+          {[
+            { value: classFilter, set: setClassFilter, all: "All Classes", opts: classOptions },
+            { value: subjectFilter, set: setSubjectFilter, all: "All Subjects", opts: subjectOptions },
+          ].map((f, i) => (
+            <select
+              key={i}
+              value={f.value}
+              onChange={(e) => f.set(e.target.value)}
+              className="custom-chrome"
+              style={{
+                "--cc-padding": "12px 36px 12px 14px",
+                "--cc-line-height": "1.4",
+                "--cc-font-size": "13px",
+                "--cc-font-weight": "600",
+                flex: 1,
+                height: 46,
+                background: "#fff",
+                borderRadius: 14,
+                border: "1px solid rgba(0,85,255,.18)",
+                fontFamily: "inherit",
+                color: T1,
+                boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+                cursor: "pointer",
+                outline: "none",
+                appearance: "none",
+                WebkitAppearance: "none",
+                MozAppearance: "none",
+                textIndent: 0,
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230055FF' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 12px center",
+              } as any}
+            >
+              <option value="" style={{ color: "#000" }}>{f.all}</option>
+              {f.opts.map((o) => (
+                <option key={o} value={o} style={{ color: "#000" }}>{o}</option>
+              ))}
+            </select>
+          ))}
         </div>
 
         {/* SECTION LABEL */}
@@ -1535,8 +1565,8 @@ const Syllabus = () => {
                     aria-label="Delete syllabus"
                   >
                     {deletingId === s.id
-                      ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />
-                      : <Trash2 size={13} strokeWidth={2.3} />}
+                      ? <Loader2 size={14} color={RED} style={{ animation: "spin 1s linear infinite" }} />
+                      : <Trash2 size={14} color={RED} strokeWidth={2.4} />}
                   </button>
                 </div>
               </div>
@@ -1819,18 +1849,27 @@ const Syllabus = () => {
           <select key={i}
             value={f.value}
             onChange={(e) => f.set(e.target.value)}
-            className="h-11 px-4 pr-10 bg-white rounded-[14px] text-[13px] font-semibold outline-none cursor-pointer appearance-none"
+            className="custom-chrome bg-white rounded-[14px] outline-none cursor-pointer"
             style={{
+              "--cc-padding": "12px 40px 12px 16px",
+              "--cc-line-height": "1.4",
+              "--cc-font-size": "13px",
+              "--cc-font-weight": "600",
+              minWidth: 160,
               border: `0.5px solid ${dSEP}`,
               color: dT2,
               boxShadow: dSH,
               fontFamily: "inherit",
+              textIndent: 0,
+              appearance: "none",
+              WebkitAppearance: "none",
+              MozAppearance: "none",
               backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230055FF' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
               backgroundRepeat: "no-repeat",
               backgroundPosition: "right 14px center",
-            }}>
-            <option value="">{f.all}</option>
-            {f.opts.map((o: string) => <option key={o} value={o}>{o}</option>)}
+            } as any}>
+            <option value="" style={{ color: "#000" }}>{f.all}</option>
+            {f.opts.map((o: string) => <option key={o} value={o} style={{ color: "#000" }}>{o}</option>)}
           </select>
         ))}
       </div>
@@ -1972,12 +2011,15 @@ const Syllabus = () => {
                     <span className="relative z-10">View PDF</span>
                   </button>
                   <button onClick={() => handleDelete(s)} disabled={deletingId === s.id}
-                    className="w-10 h-10 rounded-[12px] flex items-center justify-center bg-white disabled:opacity-50 transition-transform hover:scale-[1.04]"
-                    style={{ border: `0.5px solid rgba(255,51,85,0.20)`, color: dRED }}
+                    className="w-10 h-10 rounded-[12px] flex items-center justify-center disabled:opacity-50 transition-transform hover:scale-[1.04]"
+                    style={{
+                      background: "rgba(255,51,85,0.10)",
+                      border: `1px solid rgba(255,51,85,0.30)`,
+                    }}
                     title="Delete syllabus">
                     {deletingId === s.id
-                      ? <Loader2 className="w-[13px] h-[13px] animate-spin" />
-                      : <Trash2 className="w-[13px] h-[13px]" />}
+                      ? <Loader2 size={15} color={dRED} className="animate-spin" strokeWidth={2.4} />
+                      : <Trash2 size={15} color={dRED} strokeWidth={2.4} />}
                   </button>
                 </div>
               </div>

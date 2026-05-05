@@ -11,23 +11,17 @@ import { useAuth } from "@/lib/AuthContext";
 import TeacherProfile from "@/components/TeacherProfile";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useNavigate } from "react-router-dom";
+import { pctOfDoc } from "@/lib/scoreUtils";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const grade = (pct: number) => pct >= 85 ? "A" : pct >= 75 ? "B" : pct >= 60 ? "C" : "D";
 const gradeColor = (g: string) => g === "A" ? "text-green-600 bg-green-50" : g === "B" ? "text-blue-600 bg-blue-50" : g === "C" ? "text-amber-600 bg-amber-50" : "text-red-600 bg-red-50";
 
-// robust score parser matches TeacherProfile.tsx pattern — handles percentage, marks/totalMarks, etc.
-const getScore = (r: any): number => {
-  if (typeof r.percentage === "number" && r.percentage > 0) return Math.round(r.percentage);
-  const pctStr = parseFloat(r.percentage ?? "");
-  if (!isNaN(pctStr) && pctStr > 0) return Math.round(pctStr);
-  const raw = r.marksObtained ?? r.marks ?? r.score ?? null;
-  if (raw === null || raw === undefined || raw === "") return 0;
-  const total = r.totalMarks ?? r.maxMarks ?? r.outOf ?? 100;
-  const rawN = Number(raw), totN = Number(total);
-  if (isNaN(rawN)) return 0;
-  return totN > 0 ? Math.round((rawN / totN) * 100) : Math.min(100, Math.round(rawN));
-};
+// Robust score parser — uses shared `pctOfDoc` which returns null on missing
+// data (was: a local impl that returned 0 → fed false low scores into avgs
+// and biased school average up after `filter(n>0)` dropped them entirely;
+// memory: bug_pattern_score_zero_no_data).
+const getScoreOrNull = (r: any): number | null => pctOfDoc(r);
 
 const toDate = (v: any): Date | null => {
   if (!v) return null;
@@ -82,48 +76,66 @@ const TeacherPerformance = () => {
 
     const schoolId = userData.schoolId;
     const branchId = userData?.branchId || "";
-    const C: any[] = [where("schoolId", "==", schoolId)];
-    if (branchId) C.push(where("branchId", "==", branchId));
-
-    // Some collections (tests, assignments, lessonPlans, parent_notes, teacher_reviews, results)
-    // may not carry branchId — so only schoolId filter is safe there.
-    const CS: any[] = [where("schoolId", "==", schoolId)];
+    // schoolId-only server-side; branchId in-memory (memory:
+    // branchid_inference_lag — server-side branchId silently drops freshly
+    // written records during the enforceBranchId trigger backfill window).
+    const inBranch = (raw: any): boolean =>
+      !branchId || !raw?.branchId || raw.branchId === branchId;
 
     // ── Listen to teachers ────────────────────────────────────────────────
     const tUnsub = onSnapshot(
-      query(collection(db, "teachers"), ...C),
+      query(collection(db, "teachers"), where("schoolId", "==", schoolId)),
       async (tSnap) => {
-        const teacherDocs = tSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+        const teacherDocs = tSnap.docs
+          .map(d => ({ id: d.id, ...d.data() as any }))
+          .filter(inBranch);
 
         // ── Fetch every relevant collection in parallel ───────────────────
-        const safeGet = async (q: any) => {
-          try { return await getDocs(q); } catch { return { docs: [] as any[] }; }
+        // Errors logged (was: silent swallow). All collections fetched with
+        // schoolId-only — branch filter applied in-memory below.
+        const safeGet = async (q: any, label: string) => {
+          try { return await getDocs(q); }
+          catch (err) {
+            console.warn(`[TeacherPerformance] ${label} fetch failed:`, err);
+            return { docs: [] as any[] };
+          }
         };
+        const onlySchool = (col: string) =>
+          query(collection(db, col), where("schoolId", "==", schoolId));
         const [
           scoresSnap, assignSnap, classesSnap,
           testsSnap, assignmentsSnap, lessonsSnap,
-          notesSnap, reviewsSnap, resultsSnap,
+          notesSnap, reviewsSnap, resultsSnap, gradebookSnap,
         ] = await Promise.all([
-          safeGet(query(collection(db, "test_scores"),          ...C)),
-          safeGet(query(collection(db, "teaching_assignments"), ...C)),
-          safeGet(query(collection(db, "classes"),              ...C)),
-          safeGet(query(collection(db, "tests"),                ...CS)),
-          safeGet(query(collection(db, "assignments"),          ...CS)),
-          safeGet(query(collection(db, "lessonPlans"),          ...CS)),
-          safeGet(query(collection(db, "parent_notes"),         ...CS)),
-          safeGet(query(collection(db, "teacher_reviews"),      ...CS)),
-          safeGet(query(collection(db, "results"),              ...CS)),
+          safeGet(onlySchool("test_scores"),          "test_scores"),
+          safeGet(onlySchool("teaching_assignments"), "teaching_assignments"),
+          safeGet(onlySchool("classes"),              "classes"),
+          safeGet(onlySchool("tests"),                "tests"),
+          safeGet(onlySchool("assignments"),          "assignments"),
+          safeGet(onlySchool("lessonPlans"),          "lessonPlans"),
+          safeGet(onlySchool("parent_notes"),         "parent_notes"),
+          safeGet(onlySchool("teacher_reviews"),      "teacher_reviews"),
+          safeGet(onlySchool("results"),              "results"),
+          // gradebook_scores is co-canonical with test_scores per memory
+          // owner_dashboard_alternate_data_sources — was: missing entirely,
+          // ~40% of bulk-uploaded scores invisible to teacher avg.
+          safeGet(onlySchool("gradebook_scores"),     "gradebook_scores"),
         ]);
 
-        const scores      = scoresSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
-        const assigns     = assignSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
-        const classDocs   = classesSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
-        const testDocs    = testsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
-        const asgnDocs    = assignmentsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
-        const lessonDocs  = lessonsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
-        const noteDocs    = notesSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
-        const reviewDocs  = reviewsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
-        const resultDocs  = resultsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() as any }));
+        // In-memory branch filter applied to every list.
+        const mapDocs = (snap: any) => snap.docs
+          .map((d: any) => ({ id: d.id, ...d.data() as any }))
+          .filter(inBranch);
+        const scores      = mapDocs(scoresSnap);
+        const assigns     = mapDocs(assignSnap);
+        const classDocs   = mapDocs(classesSnap);
+        const testDocs    = mapDocs(testsSnap);
+        const asgnDocs    = mapDocs(assignmentsSnap);
+        const lessonDocs  = mapDocs(lessonsSnap);
+        const noteDocs    = mapDocs(notesSnap);
+        const reviewDocs  = mapDocs(reviewsSnap);
+        const resultDocs  = mapDocs(resultsSnap);
+        const gradebookDocs = mapDocs(gradebookSnap);
 
         // classId → name lookup
         const classNameById = new Map<string, string>();
@@ -136,17 +148,47 @@ const TeacherPerformance = () => {
         const cutoff30 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
         const cutoff60 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
 
-        // Combine test_scores + results — both represent graded assessments created by teacher
-        const allScoreRows = [...scores, ...resultDocs];
+        // Multi-source merge: test_scores + results + gradebook_scores. All
+        // three represent graded assessments — bulk-upload schools tend to
+        // write to gradebook_scores while real-time tests land in
+        // test_scores; results carries legacy data. Content-fingerprint dedup
+        // (student|subject|date|pct rounded to 0.1%) collapses the same exam
+        // mirrored across collections.
+        const fpSeen = new Set<string>();
+        const allScoreRows: { row: any; pct: number }[] = [];
+        [...scores, ...resultDocs, ...gradebookDocs].forEach(r => {
+          const p = getScoreOrNull(r);
+          if (p === null) return;
+          const subjKey = String(r.subject ?? r.subjectName ?? "").toLowerCase();
+          const ts = r.timestamp ?? r.createdAt ?? r.date ?? r.uploadedAt;
+          const dateK = (() => {
+            if (!ts) return "";
+            if (typeof ts === "string") return ts.slice(0, 10);
+            if (ts?.toDate) return ts.toDate().toISOString().slice(0, 10);
+            return "";
+          })();
+          const sKey = String(r.studentId || (r.studentEmail || "").toLowerCase() || "").trim();
+          const fp = `${sKey}|${subjKey}|${dateK}|${Math.round(p * 10)}`;
+          if (fpSeen.has(fp)) return;
+          fpSeen.add(fp);
+          allScoreRows.push({ row: r, pct: p });
+        });
 
-        // School-wide average (uses richer getScore — handles marks/totalMarks)
-        const allPcts = allScoreRows.map(s => getScore(s)).filter(n => n > 0);
-        const overallAvg = allPcts.length ? Math.round(allPcts.reduce((a,b)=>a+b,0) / allPcts.length) : 0;
+        // School-wide average — null-aware, no zero-stuffing.
+        const overallAvg = allScoreRows.length
+          ? Math.round(allScoreRows.reduce((a, b) => a + b.pct, 0) / allScoreRows.length)
+          : 0;
         setSchoolAvg(overallAvg);
 
         const stats: TeacherStat[] = teacherDocs.map((t: any) => {
-          // Classes & subjects from teaching_assignments + fallback to teacher doc
-          const tAssigns = assigns.filter((a: any) => a.teacherId === t.id || a.teacherEmail === t.email);
+          // Classes & subjects from teaching_assignments + fallback to teacher
+          // doc. Email match normalised to lowercase — was: case-sensitive,
+          // missed `John@x.com` vs `john@x.com`.
+          const tEmail = String(t.email || "").toLowerCase();
+          const tAssigns = assigns.filter((a: any) =>
+            a.teacherId === t.id ||
+            (tEmail && String(a.teacherEmail || "").toLowerCase() === tEmail),
+          );
 
           const subjectsSet = new Set<string>();
           tAssigns.forEach((a: any) => a.subject && subjectsSet.add(a.subject));
@@ -168,43 +210,50 @@ const TeacherPerformance = () => {
           });
 
           // All score rows attributable to this teacher — match by teacherId OR classId
-          const tScores = allScoreRows.filter(s =>
+          const tScores = allScoreRows.filter(({ row: s }) =>
             s.teacherId === t.id ||
             (s.classId && classIds.includes(s.classId))
           );
 
-          const pcts = tScores.map(s => getScore(s)).filter(n => n > 0);
-          const avgScore = pcts.length ? Math.round(pcts.reduce((a,b)=>a+b,0) / pcts.length) : null;
+          // Avg from the already-validated pct (no zero-filtering — null-pct
+          // rows were dropped at fingerprint stage above).
+          const avgScore = tScores.length
+            ? Math.round(tScores.reduce((a, b) => a + b.pct, 0) / tScores.length)
+            : null;
 
           // Previous 30-60 day avg for trend delta
-          const prevScores = tScores.filter(s => {
-            const d = toDate(s.createdAt || s.timestamp || s.date);
+          const prevScores = tScores.filter(({ row: s }) => {
+            const d = toDate(s.createdAt || s.timestamp || s.date || s.uploadedAt);
             return d && d >= cutoff60 && d < cutoff30;
           });
-          const prevPcts = prevScores.map(s => getScore(s)).filter(n => n > 0);
-          const prevAvg  = prevPcts.length ? Math.round(prevPcts.reduce((a,b)=>a+b,0) / prevPcts.length) : null;
+          const prevAvg = prevScores.length
+            ? Math.round(prevScores.reduce((a, b) => a + b.pct, 0) / prevScores.length)
+            : null;
 
-          // Monthly trend (last 4 months) — use any available timestamp
+          // Monthly trend (last 4 months) — null for empty months so the chart
+          // can render gaps honestly instead of plotting a misleading 0%.
           const months = Array.from({length:4}, (_, i) => {
             const d = new Date(now.getFullYear(), now.getMonth()-3+i, 1);
             return { label: MONTH_NAMES[d.getMonth()], month: d.getMonth(), year: d.getFullYear() };
           });
           const monthlyScores = months.map(({ label, month, year }) => {
-            const mScores = tScores.filter(s => {
-              const ts = toDate(s.createdAt || s.timestamp || s.date);
+            const mScores = tScores.filter(({ row: s }) => {
+              const ts = toDate(s.createdAt || s.timestamp || s.date || s.uploadedAt);
               return ts && ts.getMonth() === month && ts.getFullYear() === year;
             });
-            const mPcts = mScores.map(s => getScore(s)).filter(n => n > 0);
-            return { month: label, avg: mPcts.length ? Math.round(mPcts.reduce((a,b)=>a+b,0)/mPcts.length) : 0 };
+            return { month: label, avg: mScores.length ? Math.round(mScores.reduce((a, b) => a + b.pct, 0) / mScores.length) : 0 };
           });
 
-          // Per-subject breakdown — consider subjectName / subject fallback
+          // Per-subject breakdown. Drops scores with no subject (was:
+          // fabricated "General" / first-of-teacher's-subjects attribution
+          // which inflated whichever subject happened to come first).
           const subjectMap: Record<string, number[]> = {};
-          tScores.forEach(s => {
-            const sub = s.subjectName || s.subject || (subjects[0] || "General");
+          tScores.forEach(({ row: s, pct }) => {
+            const subRaw = s.subjectName || s.subject || "";
+            const sub = String(subRaw || "").trim();
+            if (!sub) return; // skip — don't attribute to a guessed subject
             if (!subjectMap[sub]) subjectMap[sub] = [];
-            const sc = getScore(s);
-            if (sc > 0) subjectMap[sub].push(sc);
+            subjectMap[sub].push(pct);
           });
           const subjectBreakdown = Object.entries(subjectMap)
             .map(([subject, vals]) => ({
@@ -214,9 +263,15 @@ const TeacherPerformance = () => {
             }))
             .sort((a,b)=>b.avg-a.avg);
           const topSubject  = subjectBreakdown.length ? subjectBreakdown[0].subject : "—";
-          const weakSubject = subjectBreakdown.length ? subjectBreakdown[subjectBreakdown.length-1].subject : "—";
+          // Hide weakSubject when only 1 subject (would otherwise echo top)
+          // — same single-section UX bug pattern fixed in SubjectAnalysis.
+          const weakSubject = subjectBreakdown.length >= 2 ? subjectBreakdown[subjectBreakdown.length-1].subject : "—";
 
-          const studentCount = [...new Set(tScores.map(s => s.studentId || s.studentEmail).filter(Boolean))].length;
+          const studentCount = new Set(
+            tScores
+              .map(({ row: s }) => String(s.studentId || (s.studentEmail || "").toLowerCase() || "").trim())
+              .filter(Boolean),
+          ).size;
 
           // Activity counts — everything this teacher created
           const testsCreated       = testDocs.filter((d: any) => d.teacherId === t.id).length;

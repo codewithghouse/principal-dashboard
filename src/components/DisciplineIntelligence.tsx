@@ -38,8 +38,18 @@ const DisciplineIntelligence = () => {
           const dateVal = x.date
             || (x.createdAt?.toDate ? x.createdAt.toDate().toISOString().slice(0, 10) : "")
             || (x.createdAt?.seconds ? new Date(x.createdAt.seconds * 1000).toISOString().slice(0, 10) : "");
+          // student field has TWO historical shapes (memory: discipline
+          // schema migration): newer principal/teacher writes use root-level
+          // string `studentName`, older principal writes use nested
+          // `student: { name, grade }`. Coerce to a clean string so the
+          // downstream pipeline can safely call `.trim()` on it.
+          const studentStr =
+            (typeof x.studentName === "string" && x.studentName) ||
+            (x.student && typeof x.student === "object" && x.student.name) ||
+            (typeof x.student === "string" && x.student) ||
+            "Unknown";
           return {
-            student:  x.studentName || x.student || "Unknown",
+            student:  studentStr,
             type:     x.type || x.title || "Incident",
             severity: x.severity || "Medium",
             date:     dateVal,

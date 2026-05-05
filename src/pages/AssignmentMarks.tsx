@@ -25,40 +25,11 @@ function scoreLetter(s: number) {
   return { letter: "D", color: "text-red-600 bg-red-50" };
 }
 
-function aiFeedback(score: number, studentName: string, title: string): string {
-  const first = (studentName || "Student").split(" ")[0];
-  // Use score digits to vary phrases so each student gets different wording
-  const v = Math.floor(score) % 3;
-  if (score >= 90) {
-    return [
-      `Outstanding performance, ${first}! Demonstrates excellent mastery of ${title}.`,
-      `Exceptional work! ${first} has shown a thorough understanding of all concepts in ${title}.`,
-      `Brilliant submission, ${first}. Keep this level of excellence — you're a top performer!`,
-    ][v];
-  }
-  if (score >= 75) {
-    return [
-      `Good job, ${first}! Solid understanding shown. A bit more depth could push you to the top.`,
-      `Well done, ${first}. Key concepts covered well — revisit the finer details to excel further.`,
-      `Nice work on ${title}, ${first}. You're on the right track; refine your approach to reach the top.`,
-    ][v];
-  }
-  if (score >= 60) {
-    return [
-      `Decent effort, ${first}. Focus on the weaker areas of ${title} to improve your score.`,
-      `You have a fair grasp, ${first}. Revisiting the core concepts will help you score higher.`,
-      `Average performance. Consistent practice and revision of ${title} is recommended, ${first}.`,
-    ][v];
-  }
-  if (score >= 40) {
-    return [
-      `${first} needs more effort. Review the ${title} material thoroughly and seek teacher guidance.`,
-      `Below average performance. ${first} should revisit ${title} concepts and practice regularly.`,
-      `More practice needed, ${first}. Focus on understanding the fundamentals before the next test.`,
-    ][v];
-  }
-  return `${first} requires immediate attention and support. Please review ${title} with extra guidance from the teacher.`;
-}
+// `aiFeedback()` removed — it was a hardcoded template-string generator
+// labelled "[AI]" in the UI, which is fabricated AI per the no-fake-AI policy
+// (memory: bug_pattern_fabricated_fallback + ai_features_master_breakdown).
+// When a teacher hasn't entered feedback for a student, the UI now shows "—"
+// so principals can see at a glance which submissions still need real review.
 
 function fmtDate(val: any) {
   if (!val) return "—";
@@ -92,7 +63,8 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
     const rows = group.results.map(r => {
       const sc = r.score !== null && r.score !== undefined ? parseFloat(r.score) : null;
       const graded = sc !== null && !isNaN(sc);
-      const fb = r.feedback || (graded ? aiFeedback(sc!, r.studentName || "", group.title) + " [AI]" : "");
+      // CSV: only the teacher's real feedback. No fabricated "[AI]" templates.
+      const fb = r.feedback || "";
       return [
         r.studentName || "",
         r.score ?? "—",
@@ -412,9 +384,8 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
                   ? { letter: "C", bg: "rgba(255,170,0,.10)", color: "#884400", border: "0.5px solid rgba(255,170,0,.22)", barFrom: GOLD, barTo: "#FFCC55" }
                   : { letter: "D", bg: "rgba(255,51,85,.10)", color: RED, border: "0.5px solid rgba(255,51,85,.22)", barFrom: RED, barTo: "#FF88AA" }
                 : null;
-              const feedbackText =
-                r.feedback ||
-                (graded ? aiFeedback(score!, r.studentName || "", group.title) : null);
+              // Only the teacher's real feedback. No fabricated AI templates.
+              const feedbackText = r.feedback || null;
               const needsAttention = graded && score! < 40;
               const isLast = i === sorted.length - 1;
 
@@ -852,18 +823,14 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
                     <td className="px-5 py-[14px] max-w-md">
                       {r.feedback ? (
                         <span className="text-[12px] leading-[1.55]" style={{ color: "#5070B0" }}>{r.feedback}</span>
-                      ) : graded ? (
-                        <div>
-                          <p className="text-[12px] leading-[1.55]" style={{ color: "#5070B0" }}>
-                            {aiFeedback(score!, r.studentName || "", group.title)}
-                          </p>
-                          <span className="inline-flex items-center gap-1 mt-[6px] px-[9px] py-[3px] rounded-full text-[10px] font-bold"
-                            style={{ background: "rgba(123,63,244,0.10)", color: "#7B3FF4", border: "0.5px solid rgba(123,63,244,0.22)" }}>
-                            <Sparkles className="w-[10px] h-[10px]" strokeWidth={2.3} /> AI
-                          </span>
-                        </div>
                       ) : (
-                        <span style={{ color: "#99AACC" }}>—</span>
+                        // Was: fabricated "AI feedback" template + green
+                        // Sparkles "AI" badge. Now shows an honest "Awaiting
+                        // feedback" hint so the principal can see at a glance
+                        // which submissions still need real teacher review.
+                        <span className="text-[12px] italic" style={{ color: "#99AACC" }}>
+                          {graded ? "Awaiting teacher feedback" : "—"}
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -897,29 +864,47 @@ export default function AssignmentMarks() {
   const [selectedGroup, setSelectedGroup] = useState<AssignmentGroup | null>(null);
   const [classFilter,   setClassFilter]   = useState("All");
 
-  /* ── fetch ── */
+  /* ── fetch ──
+     - schoolId-only server-side; branchId in-memory (memory:
+       branchid_inference_lag).
+     - Results listener filters in-memory so freshly-written assignment
+       results don't get dropped during the enforceBranchId trigger window. */
   useEffect(() => {
-    if (!userData?.schoolId) return;
+    const schoolId = userData?.schoolId;
+    if (!schoolId) {
+      setLoading(false);
+      return;
+    }
+    const branchId = userData?.branchId || "";
+    const inBranch = (raw: any): boolean =>
+      !branchId || !raw?.branchId || raw.branchId === branchId;
+
     const go = async () => {
       try {
-        /* 1. results by schoolId + branchId */
-        const c: any[] = [where("schoolId", "==", userData.schoolId)];
-        if (userData.branchId) c.push(where("branchId", "==", userData.branchId));
-        const rSnap = await getDocs(query(collection(db, "results"), ...c));
-        const results = rSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+        /* 1. results — schoolId only, branch in-memory */
+        const rSnap = await getDocs(
+          query(collection(db, "results"), where("schoolId", "==", schoolId)),
+        );
+        const results = rSnap.docs
+          .map(d => ({ id: d.id, ...d.data() } as any))
+          .filter(inBranch);
         setAllResults(results);
 
         /* 2. fetch assignments metadata by homeworkId (max 10 per "in" query) */
-        const hwIds = [...new Set(results.map(r => r.homeworkId).filter(Boolean))] as string[];
+        const hwIds = [...new Set(results.map((r: any) => r.homeworkId).filter(Boolean))] as string[];
         const aMap  = new Map<string, any>();
         for (const ids of chunk(hwIds, 10)) {
+          if (!ids.length) continue;
           const aSnap = await getDocs(
             query(collection(db, "assignments"), where("__name__", "in", ids))
           );
           aSnap.docs.forEach(d => aMap.set(d.id, { id: d.id, ...d.data() }));
         }
         setAssignMap(aMap);
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        console.error("[AssignmentMarks] fetch failed:", e);
+        toast.error("Failed to load assignment marks. Please refresh.");
+      }
       setLoading(false);
     };
     go();

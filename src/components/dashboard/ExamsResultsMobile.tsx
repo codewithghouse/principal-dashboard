@@ -1,9 +1,12 @@
+import { useState } from "react";
 import {
   FileText, Plus, Calendar, Users, Trophy, ChevronRight, ChevronLeft,
   Loader2, Sparkles, Download, Printer, Share2, BarChart3, AlertTriangle,
   CheckCircle, TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
+import { db, auth } from "@/lib/firebase";
+import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore";
 import type { ExamGroup } from "@/pages/ExamsResults";
 
 export interface ExamsResultsMobileProps {
@@ -18,6 +21,7 @@ export interface ExamsResultsMobileProps {
   selectedExam: ExamGroup | null;
   onSelectExam: (exam: ExamGroup) => void;
   onBackFromDetail: () => void;
+  userData: any; // needed for share-with-parents wiring (was: stub)
 }
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -66,16 +70,26 @@ const initialsOf = (name: string) => {
 };
 
 // ── CSV export helper ─────────────────────────────────────────────────────────
+// Proper CSV escaping per RFC 4180 — wrap field in `"..."` and double up any
+// internal `"`. Was: used JSON.stringify which escapes `"` as `\"` (JSON
+// convention, NOT CSV). Excel/Sheets either showed the backslash literal or
+// chopped fields on the wrong character. Excel BOM `﻿` prepended so
+// non-ASCII names render correctly when opened in Excel.
+const csvField = (v: unknown): string => {
+  const s = v === null || v === undefined ? "" : String(v);
+  return `"${s.replace(/"/g, '""')}"`;
+};
 const exportCSV = (exam: ExamGroup) => {
   const rows: string[] = [];
-  rows.push("Rank,Student,Class,Average %,Result");
+  rows.push(["Rank", "Student", "Class", "Average %", "Result"].map(csvField).join(","));
   exam.meritList.forEach(m => {
-    rows.push([m.rank, JSON.stringify(m.name), JSON.stringify(m.className), m.avgPct, "Pass"].join(","));
+    rows.push([m.rank, m.name, m.className, m.avgPct, "Pass"].map(csvField).join(","));
   });
   exam.failList.forEach(f => {
-    rows.push(["—", JSON.stringify(f.name), JSON.stringify(f.className), f.avgPct, "Fail"].join(","));
+    rows.push(["—", f.name, f.className, f.avgPct, "Fail"].map(csvField).join(","));
   });
-  const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
+  const csvText = "﻿" + rows.join("\r\n");
+  const blob = new Blob([csvText], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -90,8 +104,12 @@ const exportCSV = (exam: ExamGroup) => {
 const ExamsResultsMobile = ({
   loading, upcomingExams, examGroups, latestExam,
   subjectData, gradeData, topper, totalSchoolStudents,
-  selectedExam, onSelectExam, onBackFromDetail,
+  selectedExam, onSelectExam, onBackFromDetail, userData,
 }: ExamsResultsMobileProps) => {
+
+  // Sharing-in-progress flag — disables the Share button + toggles its label
+  // so the principal can't double-tap and queue duplicate notes.
+  const [sharingParents, setSharingParents] = useState(false);
 
   // ── Donut geometry for grade distribution (dashboard) ──
   const donutR = 35;
@@ -138,8 +156,125 @@ const ExamsResultsMobile = ({
       toast.info("Opening print dialog…");
       window.setTimeout(() => window.print(), 50);
     };
-    const handleShare = () => toast.info("Parent sharing — coming soon");
-    const handleCompare = () => toast.info("Previous exam comparison — coming soon");
+
+    // Real share-with-parents — mirrors ExamDetail.tsx desktop logic.
+    // Was: stub `toast.info("coming soon")` so mobile principals literally
+    // could not share results with parents. Now writes a personalised note
+    // to `principal_to_parent_notes` (chunked writeBatch at 450 ops) for
+    // ONLY the parents whose child appeared in this exam — same collection
+    // parent dashboard reads for in-app messages.
+    const handleShare = async () => {
+      // React's `disabled` attribute updates on next render — between a
+      // synchronous double-tap and the re-render, both clicks could enter
+      // the handler. Re-check the flag at function entry to guard against
+      // duplicate writes.
+      if (sharingParents) return;
+      if (!userData?.schoolId) return toast.error("School data not found.");
+      const seen = new Set<string>();
+      const recipients = exam.scores
+        .filter((s: any) => s.studentId)
+        .filter((s: any) => {
+          const k = String(s.studentId);
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        })
+        .map((s: any) => ({
+          studentId:    String(s.studentId),
+          studentEmail: (s.studentEmail || "").toLowerCase() || null,
+          studentName:  s.studentName || "",
+          className:    s.className   || s.classId || "",
+          percentage:   typeof s.percentage === "number" ? s.percentage : null,
+          grade:        s.grade || "",
+          isAbsent:     !!s.isAbsent,
+        }));
+      if (recipients.length === 0) {
+        toast.info("No students in this exam to notify.");
+        return;
+      }
+      setSharingParents(true);
+      try {
+        const principalUid = auth.currentUser?.uid || (userData as any)?.id || "";
+        const principalName = (userData as any)?.fullName || (userData as any)?.name || "Principal";
+        const CHUNK = 450;
+        let written = 0;
+        for (let i = 0; i < recipients.length; i += CHUNK) {
+          const slice = recipients.slice(i, i + CHUNK);
+          const batch = writeBatch(db);
+          slice.forEach((r: any) => {
+            const ref = doc(collection(db, "principal_to_parent_notes"));
+            const childResult = r.isAbsent
+              ? "marked as absent for this exam"
+              : `scored ${r.percentage !== null ? `${Math.round(r.percentage)}%` : "—"}${r.grade ? ` (${r.grade})` : ""}`;
+            // Fallback name avoids "Dear Parent of ,\n" / "your child has..."
+            // gibberish when studentName happens to be missing (legacy enrollment).
+            const childRef = r.studentName?.trim() || "your child";
+            const message =
+              `📊 *${exam.name} Result*\n\n` +
+              `Dear Parent of ${childRef},\n\n` +
+              `${childRef} has ${childResult} in *${exam.name}*.\n\n` +
+              `🏫 School Pass Rate: ${exam.passRate}%\n` +
+              `📈 School Average: ${exam.avgPct}%\n\n` +
+              `Please open the Parent Dashboard → Performance for the full report.\n\n` +
+              `— ${principalName}`;
+            batch.set(ref, {
+              schoolId:     userData.schoolId,
+              branchId:     userData.branchId || null,
+              principalId:  principalUid,
+              principalName,
+              studentId:    r.studentId,
+              studentEmail: r.studentEmail,
+              studentName:  r.studentName,
+              parentName:   `Parent of ${r.studentName}`,
+              className:    r.className,
+              message,
+              content:      message,
+              from:         "principal",
+              category:     "exam_result",
+              examName:     exam.name,
+              read:         false,
+              timestamp:    serverTimestamp(),
+              _lastModifiedBy: principalUid,
+            });
+          });
+          await batch.commit();
+          written += slice.length;
+        }
+        toast.success(`Results shared with ${written} parent${written === 1 ? "" : "s"}.`, {
+          description: "Notification posted to Parent Communication.",
+        });
+      } catch (e: any) {
+        console.error("[ExamsResultsMobile] handleShare failed:", e);
+        toast.error(`Failed to share: ${e?.message || "Unknown error"}`);
+      }
+      setSharingParents(false);
+    };
+
+    // Compare with previous exam of the same series. Was: stub "coming
+    // soon". Now finds the previous exam by date order and surfaces the
+    // pass-rate / average / total-students delta as a toast description.
+    const handleCompare = () => {
+      // Pick the immediately-prior exam (examGroups is already sorted newest
+      // first by the parent's latestDateMs comparator).
+      const idx = examGroups.findIndex(e => e.name === exam.name);
+      const prev = idx >= 0 ? examGroups[idx + 1] : examGroups[1];
+      if (!prev) {
+        toast.info("No previous exam recorded yet to compare against.");
+        return;
+      }
+      const fmt = (a: number, b: number, unit: string) => {
+        const d = a - b;
+        const sign = d > 0 ? "+" : "";
+        return `${a}${unit} (${sign}${d}${unit} vs prev ${b}${unit})`;
+      };
+      toast.success(`Compared with ${prev.name}`, {
+        description:
+          `Pass: ${fmt(exam.passRate, prev.passRate, "%")} · ` +
+          `Avg: ${fmt(exam.avgPct, prev.avgPct, "%")} · ` +
+          `Students: ${fmt(exam.totalStudents, prev.totalStudents, "")}`,
+        duration: 8000,
+      });
+    };
 
     const aiVerdict =
       exam.avgPct >= 75 ? "Strong performance" :
@@ -368,10 +503,13 @@ const ExamsResultsMobile = ({
         </div>
         <div className="flex gap-2 px-5 pt-2 flex-wrap">
           <button onClick={handleShare}
-            className="flex-1 min-w-[100px] h-[42px] rounded-[14px] flex items-center justify-center gap-[6px] text-[12px] font-bold transition-transform active:scale-95"
+            disabled={sharingParents}
+            className="flex-1 min-w-[100px] h-[42px] rounded-[14px] flex items-center justify-center gap-[6px] text-[12px] font-bold transition-transform active:scale-95 disabled:opacity-60"
             style={{ background: "rgba(0,200,83,0.10)", color: "#007830", border: "0.5px solid rgba(0,200,83,0.22)" }}>
-            <Share2 className="w-[13px] h-[13px]" strokeWidth={2.2} />
-            Share with Parents
+            {sharingParents
+              ? <Loader2 className="w-[13px] h-[13px] animate-spin" />
+              : <Share2 className="w-[13px] h-[13px]" strokeWidth={2.2} />}
+            {sharingParents ? "Sharing…" : "Share with Parents"}
           </button>
           <button onClick={handleCompare}
             className="flex-1 min-w-[100px] h-[42px] rounded-[14px] flex items-center justify-center gap-[6px] text-[12px] font-bold bg-white transition-transform active:scale-95"

@@ -64,25 +64,40 @@ const ExamStructure = () => {
   const [newExam, setNewExam]           = useState(emptyExam());
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
+  // schoolId-only server-side; branchId in-memory (memory:
+  // branchid_inference_lag). Was: hard-required branchId — single-branch
+  // schools whose userData.branchId was undefined could not load OR save
+  // exam structures at all.
   useEffect(() => {
     const schoolId = userData?.schoolId;
-    const branchId = userData?.branchId;
-    if (!schoolId || !branchId) { setLoading(false); return; }
+    if (!schoolId) { setLoading(false); return; }
+    const branchId = userData?.branchId || "";
+    const inBranch = (raw: any): boolean =>
+      !branchId || !raw?.branchId || raw.branchId === branchId;
 
     getDocs(query(
       collection(db, "exam_structure"),
       where("schoolId", "==", schoolId),
-      where("branchId", "==", branchId)
     )).then(snap => {
-      setExamTypes(snap.docs.map(d => ({ id: d.id, ...d.data() } as ExamType)));
+      setExamTypes(
+        snap.docs
+          .map(d => ({ id: d.id, ...d.data() } as ExamType & { branchId?: string }))
+          .filter(inBranch),
+      );
+    }).catch(err => {
+      console.error("[ExamStructure] fetch failed:", err);
+      toast.error("Failed to load exam structure.");
     }).finally(() => setLoading(false));
   }, [userData?.schoolId, userData?.branchId]);
 
   // ── Save single exam type ─────────────────────────────────────────────────
   const handleSave = async (exam: ExamType) => {
     const schoolId = userData?.schoolId;
-    const branchId = userData?.branchId;
-    if (!schoolId || !branchId) return;
+    if (!schoolId) {
+      toast.error("School context missing — please re-login.");
+      return;
+    }
+    const branchId = userData?.branchId || null; // null is valid for single-branch tenants
 
     setSaving(exam.id);
     try {
@@ -103,8 +118,11 @@ const ExamStructure = () => {
   const handleAdd = async () => {
     if (!newExam.name.trim()) return toast.error("Exam name is required.");
     const schoolId = userData?.schoolId;
-    const branchId = userData?.branchId;
-    if (!schoolId || !branchId) return;
+    if (!schoolId) {
+      toast.error("School context missing — please re-login.");
+      return;
+    }
+    const branchId = userData?.branchId || null;
 
     setSaving("new");
     try {

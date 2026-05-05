@@ -72,13 +72,45 @@ const StudentProfile = ({ student, onBack }: Props) => {
         setResults(resSnap.docs.map(d => ({ id: d.id, ...d.data() }))
           .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
 
-        // Discipline incidents
-        const incIdentC = studentEmail
-          ? [where("studentEmail", "==", studentEmail)]
-          : [where("studentId", "==", studentId)];
-        const incSnap = await getDocs(query(collection(db, "incidents"), ...scopeC, ...incIdentC));
-        setIncidents(incSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-          .sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+        // Discipline incidents — fan out across BOTH the modern root-level
+        // schema (studentId/studentEmail) AND the legacy nested
+        // `student.name` path that older principal-created docs used. The
+        // school-scoped fallback runs in-memory on `studentName` so legacy
+        // records linked only by name still appear here. Deduped by doc id.
+        const studentName = (student?.name as string) || (student?.studentName as string) || "";
+        const incQueries: Promise<any>[] = [];
+        if (studentEmail) {
+          incQueries.push(getDocs(query(collection(db, "incidents"), ...scopeC, where("studentEmail", "==", studentEmail))));
+        }
+        if (studentId) {
+          incQueries.push(getDocs(query(collection(db, "incidents"), ...scopeC, where("studentId", "==", studentId))));
+        }
+        // Legacy nested path — the principal's old write schema used
+        // `student: { name, grade }` with no root identity fields, so we
+        // also pull a school-scoped batch and filter in-memory by name.
+        if (studentName) {
+          incQueries.push(getDocs(query(collection(db, "incidents"), ...scopeC)));
+        }
+        const incSnaps = await Promise.all(incQueries);
+        const incSeen = new Set<string>();
+        const incMerged: any[] = [];
+        incSnaps.forEach((snap, idx) => {
+          const isLegacyScan = !!studentName && idx === incQueries.length - 1;
+          snap.docs.forEach((d: any) => {
+            const data = d.data() as any;
+            // Legacy in-memory filter by nested student.name match.
+            if (isLegacyScan) {
+              const nm = (data.student?.name || "").toLowerCase().trim();
+              if (!nm || nm !== studentName.toLowerCase().trim()) return;
+            }
+            if (incSeen.has(d.id)) return;
+            incSeen.add(d.id);
+            incMerged.push({ id: d.id, ...data });
+          });
+        });
+        setIncidents(
+          incMerged.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+        );
 
         // Parent notes
         if (studentId) {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Loader2, MessageSquare, Search, Send, User, ChevronLeft, CheckCheck, Mail, Smile, GraduationCap, Plus, MoreVertical, Phone, Sparkles, Check, Clock, FileText, Paperclip, Video, Lock } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, writeBatch } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -43,6 +43,34 @@ const TeacherNotes = () => {
   }, [userData?.schoolId, userData?.branchId]);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [allMessages, selectedTeacher]);
+
+  // ── Mark teacher → principal messages as read on chat open ───────────────
+  // Mirrors the parent-dashboard PrincipalNotesPage and the principal
+  // ParentCommunication fix. Was: missing entirely, so teacher messages
+  // stayed `read: false` forever and the unread badge never cleared.
+  useEffect(() => {
+    if (!selectedTeacher?.id) return;
+    const unread = allMessages.filter(
+      m => m.teacherId === selectedTeacher.id && m.from === "teacher" && m.read === false,
+    );
+    if (unread.length === 0) return;
+
+    const CHUNK = 450;
+    (async () => {
+      try {
+        for (let i = 0; i < unread.length; i += CHUNK) {
+          const slice = unread.slice(i, i + CHUNK);
+          const batch = writeBatch(db);
+          slice.forEach(m => {
+            batch.update(doc(db, "principal_to_teacher_notes", m.id), { read: true });
+          });
+          await batch.commit();
+        }
+      } catch (err) {
+        console.warn("[TeacherNotes] mark-as-read failed:", err);
+      }
+    })();
+  }, [selectedTeacher, allMessages]);
 
   const lastMessages = useMemo(() => {
     const map = new Map<string, any>();
@@ -1073,7 +1101,11 @@ const TeacherNotes = () => {
                             }}
                           />
                         ) : last && last.from === "principal" ? (
-                          <CheckCheck size={12} color={GREEN} strokeWidth={2.5} />
+                          // Sidebar tick reflects last outbound message's
+                          // read state — single gray = sent, double blue = read.
+                          last.read
+                            ? <CheckCheck size={12} color={GREEN} strokeWidth={2.5} />
+                            : <Check size={12} color={T4} strokeWidth={2.5} />
                         ) : null}
                       </>
                     ) : (
@@ -1376,8 +1408,14 @@ const TeacherNotes = () => {
                         </div>
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1 min-w-0 flex-1">
+                            {/* Sidebar tick reflects whether the LAST OUTBOUND
+                                message was read by the teacher — was: color
+                                toggled by `unread > 0` (count of inbound
+                                unread) which is unrelated to this. */}
                             {last && last.from === "principal" && (
-                              <CheckCheck size={14} color={unread > 0 ? WA_TEXT_MUTED : WA_TICK_READ} strokeWidth={2.4} className="shrink-0" />
+                              last.read
+                                ? <CheckCheck size={14} color={WA_TICK_READ} strokeWidth={2.4} className="shrink-0" />
+                                : <Check size={14} color={WA_TEXT_MUTED} strokeWidth={2.4} className="shrink-0" />
                             )}
                             <span className="text-[13px] truncate"
                               style={{ color: unread > 0 ? WA_TEXT : WA_TEXT_MUTED, fontWeight: unread > 0 ? 500 : 400 }}>
@@ -1549,7 +1587,13 @@ const TeacherNotes = () => {
                                       color: WA_TIME,
                                     }}>
                                     {fmtTime(n.timestamp)}
-                                    {isSent && <CheckCheck size={15} color={WA_TICK_READ} strokeWidth={2.4} />}
+                                    {isSent && (
+                                      // 1 tick = sent, 2 ticks (blue) = read
+                                      // by teacher. Was: always 2 blue ticks.
+                                      n.read
+                                        ? <CheckCheck size={15} color={WA_TICK_READ} strokeWidth={2.4} />
+                                        : <Check size={15} color={WA_TIME} strokeWidth={2.4} />
+                                    )}
                                   </span>
                                 </div>
                               </div>

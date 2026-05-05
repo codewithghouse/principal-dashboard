@@ -4,8 +4,8 @@ import {
   X, TrendingUp, TrendingDown, Minus
 } from "lucide-react";
 import { buildReport, openReportWindow } from "@/lib/reportTemplate";
-import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, getDocs, query, where } from "firebase/firestore";
+import { db, auth } from "@/lib/firebase";
+import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore";
 import { toast } from "sonner";
 import type { ExamGroup } from "@/pages/ExamsResults";
 
@@ -31,14 +31,49 @@ export default function ExamDetail({ exam, allExams, onBack, userData }: ExamDet
   const [showCompare, setShowCompare]   = useState(false);
   const [sharingParents, setSharingParents] = useState(false);
 
-  /* ── Previous exam (same name prefix, older by date) ── */
+  /* ── Previous exam (same series, immediately prior by actual date) ──
+     Bugs fixed in this pass:
+       1. Operator precedence — `A === B || C && D` previously parsed as
+          `A === B || (C && D)`, so if the current exam name contained "unit",
+          ANY other exam containing "unit" matched regardless of series prefix.
+          Now uses explicit parens.
+       2. `dateLabel.localeCompare` for ordering — string-compare gave wrong
+          order for human-formatted dates ("5 Mar" vs "12 Mar"). Now uses real
+          timestamps from each exam's underlying score docs.
+       3. Picked `[0]` after ASC sort — that's the OLDEST exam in the match
+          set, not the most recent one immediately before the current. Now
+          sorts DESC by date and picks the first one whose latest-date is
+          STRICTLY before the current exam's latest-date. */
   const prevExam = useMemo(() => {
-    const others = allExams.filter(e =>
-      e.name !== exam.name &&
-      (e.name.split(" ").slice(0, 2).join(" ") === exam.name.split(" ").slice(0, 2).join(" ") ||
-       exam.name.toLowerCase().includes("unit") && e.name.toLowerCase().includes("unit"))
-    );
-    return others.sort((a, b) => a.dateLabel.localeCompare(b.dateLabel))[0] || null;
+    const dateMs = (g: { scores: any[] }): number => {
+      let max = 0;
+      g.scores.forEach((s: any) => {
+        const raw = s.testDate || s.date;
+        if (!raw) return;
+        const d = raw?.toDate ? raw.toDate() : new Date(raw);
+        const ms = d?.getTime?.() || 0;
+        if (ms > max) max = ms;
+      });
+      return max;
+    };
+    const seriesKey = (n: string) =>
+      (n || "").trim().toLowerCase().split(/\s+/).slice(0, 2).join(" ");
+    const currKey = seriesKey(exam.name);
+    const currMs = dateMs(exam);
+
+    const candidates = allExams
+      .filter(e =>
+        e.name !== exam.name &&
+        // Match same series by first-two-words prefix (so "Unit Test 1"
+        // groups with "Unit Test 2", but "Unit Test" doesn't match
+        // "Final Exam" just because both contain text).
+        seriesKey(e.name) === currKey,
+      )
+      .map(e => ({ exam: e, ms: dateMs(e) }))
+      .filter(x => x.ms > 0 && (currMs === 0 || x.ms < currMs))
+      .sort((a, b) => b.ms - a.ms);
+
+    return candidates[0]?.exam || null;
   }, [allExams, exam]);
 
   /* ── Download Results (CSV) ── */
@@ -98,42 +133,112 @@ export default function ExamDetail({ exam, allExams, onBack, userData }: ExamDet
     toast.success("Print window opened!");
   };
 
-  /* ── Share with Parents ── */
+  /* ── Share with Parents ──
+     Sends a personalised exam-result note to ONLY the parents whose child
+     actually appeared in this exam — was: blasted to every parent in the
+     school via an enrollments fetch (parents of kids in unrelated classes
+     got "your child's result" messages for exams their kid never took).
+
+     Schema fixes baked in:
+       - `timestamp: serverTimestamp()` (was: `createdAt`) — matches the rest
+         of `principal_to_parent_notes` so PrincipalNotesPage's sort + parent
+         inbox queries pick this up.
+       - `principalId` populated — without it parent dashboard's reply flow
+         can't address the response.
+       - `writeBatch` chunked at 450 ops (was: 500-doc Promise.all that may
+         partially commit on failure). */
   const handleShare = async () => {
+    // Re-check the in-flight flag at function entry — `disabled` updates on
+    // next render, so a synchronous double-click could otherwise enter the
+    // handler twice and write duplicate notes.
+    if (sharingParents) return;
     if (!userData?.schoolId) return toast.error("School data not found.");
+
+    // Recipients: parents of students who actually appeared in this exam.
+    // Dedup by studentId in case the same student has multiple score rows.
+    const seen = new Set<string>();
+    const recipients = exam.scores
+      .filter((s: any) => s.studentId)
+      .filter((s: any) => {
+        const k = String(s.studentId);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .map((s: any) => ({
+        studentId:    String(s.studentId),
+        studentEmail: (s.studentEmail || "").toLowerCase() || null,
+        studentName:  s.studentName || "",
+        className:    s.className   || s.classId || "",
+        percentage:   typeof s.percentage === "number" ? s.percentage : null,
+        grade:        s.grade || "",
+        isAbsent:     !!s.isAbsent,
+        score:        s.score,
+        maxScore:     s.maxScore,
+      }));
+
+    if (recipients.length === 0) {
+      toast.info("No students in this exam to notify.");
+      return;
+    }
+
     setSharingParents(true);
     try {
-      /* Fetch all student enrollments for this school/branch */
-      const enrollConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
-      if (userData.branchId) enrollConstraints.push(where("branchId", "==", userData.branchId));
-      const snap = await getDocs(
-        query(collection(db, "enrollments"), ...enrollConstraints)
-      );
-      const message = `📊 *${exam.name} Results Published*\n\nDear Parent,\n\nThe results for *${exam.name}* have been published.\n\n🏫 School Pass Rate: ${exam.passRate}%\n📈 School Average: ${exam.avgPct}%\n\nPlease check your child's result in the Parent Dashboard under "Performance" section.\n\n— ${userData.name || "Principal"}`;
+      const principalUid = auth.currentUser?.uid || (userData as any)?.id || "";
+      const principalName = userData?.fullName || userData?.name || "Principal";
 
-      const promises = snap.docs.slice(0, 500).map(d => {
-        const enrollment = d.data();
-        return addDoc(collection(db, "principal_to_parent_notes"), {
-          studentId:   enrollment.studentId   || "",
-          studentName: enrollment.studentName || "",
-          parentName:  enrollment.parentName  || `Parent of ${enrollment.studentName}`,
-          message,
-          content: message,
-          from:    "principal",
-          type:    "exam_result",
-          examName: exam.name,
-          read:    false,
-          schoolId: userData.schoolId,
-          branchId: userData.branchId || "",
-          createdAt: serverTimestamp(),
+      const CHUNK = 450;
+      let written = 0;
+      for (let i = 0; i < recipients.length; i += CHUNK) {
+        const slice = recipients.slice(i, i + CHUNK);
+        const batch = writeBatch(db);
+        slice.forEach(r => {
+          const ref = doc(collection(db, "principal_to_parent_notes"));
+          // Personalised body — actual child + actual score + class avg context.
+          const childResult = r.isAbsent
+            ? "marked as absent for this exam"
+            : `scored ${r.percentage !== null ? `${Math.round(r.percentage)}%` : "—"}${r.grade ? ` (${r.grade})` : ""}`;
+          // Fallback name avoids "Dear Parent of ,\n" gibberish when
+          // studentName happens to be missing on legacy enrollment rows.
+          const childRef = r.studentName?.trim() || "your child";
+          const message =
+            `📊 *${exam.name} Result*\n\n` +
+            `Dear Parent of ${childRef},\n\n` +
+            `${childRef} has ${childResult} in *${exam.name}*.\n\n` +
+            `🏫 School Pass Rate: ${exam.passRate}%\n` +
+            `📈 School Average: ${exam.avgPct}%\n\n` +
+            `Please open the Parent Dashboard → Performance for the full report.\n\n` +
+            `— ${principalName}`;
+          batch.set(ref, {
+            schoolId:     userData.schoolId,
+            branchId:     userData.branchId || null,
+            principalId:  principalUid,
+            principalName,
+            studentId:    r.studentId,
+            studentEmail: r.studentEmail,
+            studentName:  r.studentName,
+            parentName:   `Parent of ${r.studentName}`,
+            className:    r.className,
+            // Both field names so any consumer renders correctly.
+            message,
+            content:      message,
+            from:         "principal",
+            category:     "exam_result",
+            examName:     exam.name,
+            read:         false,
+            timestamp:    serverTimestamp(),
+            _lastModifiedBy: principalUid,
+          });
         });
+        await batch.commit();
+        written += slice.length;
+      }
+      toast.success(`Results shared with ${written} parent${written === 1 ? "" : "s"}.`, {
+        description: "Notification posted to Parent Communication.",
       });
-
-      await Promise.all(promises);
-      toast.success(`Results shared with ${snap.docs.length} parent(s)!`);
-    } catch (e) {
-      console.error(e);
-      toast.error("Failed to share. Try again.");
+    } catch (e: any) {
+      console.error("[ExamDetail] handleShare failed:", e);
+      toast.error(`Failed to share: ${e?.message || "Unknown error"}`);
     }
     setSharingParents(false);
   };
