@@ -17,11 +17,19 @@
  * is the exact `bug_pattern_score_zero_no_data` failure mode that has
  * silently mis-classified students as Weak across multiple pages.
  *
- * Handles four shapes seen in production writers:
- *   1. percentage: 85           — direct percentage
- *   2. score: 17 / maxScore: 20 — ratio (covers test_scores)
- *   3. marks: 17 / maxMarks: 20 — alt naming
- *   4. obtainedMarks: 17 / totalMarks: 20 — gradebook_scores schema
+ * Handles five shapes seen in production writers:
+ *   1. percentage: 85                          — direct percentage
+ *   2. score: 17 / maxScore: 20                — test_scores schema (EnterScores.tsx)
+ *   3. mark: 17 / maxMarks: 20                 — gradebook_scores schema (Gradebook.tsx)
+ *   4. marks: 17 / maxMarks: 20                — alt naming
+ *   5. obtainedMarks / marksObtained / outOf   — legacy variants
+ *
+ * IMPORTANT: `mark` (singular) was added 2026-05-09 — the gradebook writer
+ * uses `mark: Number(...)` while the helper previously only checked `marks`
+ * (plural). Result was 100% of gradebook_scores docs returning null and
+ * being silently dropped — visible to principal as "school avg present but
+ * no teacher attributed any scores" because gradebook is the bulk-upload
+ * path. Memory: bug_pattern_filterbytime_field_drift / silent dropping.
  */
 export function pctOfDoc(d: any): number | null {
   const numOf = (v: any): number => {
@@ -35,8 +43,8 @@ export function pctOfDoc(d: any): number | null {
   const direct = numOf(d?.percentage);
   if (Number.isFinite(direct)) return clamp(direct);
 
-  // 2/3/4) Score-over-max patterns
-  const raw = [d?.score, d?.marks, d?.obtainedMarks, d?.marksObtained]
+  // 2/3/4/5) Score-over-max patterns. `mark` (singular) is gradebook_scores.
+  const raw = [d?.score, d?.mark, d?.marks, d?.obtainedMarks, d?.marksObtained]
     .map(numOf).find(Number.isFinite);
   const max = [d?.maxScore, d?.totalMarks, d?.maxMarks, d?.outOf]
     .map(numOf).find(Number.isFinite);
@@ -44,7 +52,7 @@ export function pctOfDoc(d: any): number | null {
     return clamp(((raw as number) / (max as number)) * 100);
   }
 
-  // 4) Score field already 0-100 (legacy test_scores)
+  // 6) Score field already 0-100 (legacy test_scores with no max)
   if (Number.isFinite(raw) && (raw as number) >= 0 && (raw as number) <= 100) {
     return clamp(raw as number);
   }

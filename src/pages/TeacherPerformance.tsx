@@ -6,7 +6,7 @@ import {
   MessageSquare, ArrowRight,
 } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, getDocs } from "firebase/firestore";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import TeacherProfile from "@/components/TeacherProfile";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -14,10 +14,9 @@ import { useNavigate } from "react-router-dom";
 import { pctOfDoc } from "@/lib/scoreUtils";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-// Letter grade from a 0-100 percentage. Used by the avatar/chip to show
-// A / B / C / D at a glance.
-const grade = (pct: number) => pct >= 85 ? "A" : pct >= 75 ? "B" : pct >= 60 ? "C" : "D";
-// (`gradeColor()` removed — was defined but never called anywhere.)
+// Memory: bug_pattern_score_zero_no_data — every tier-classifier on this
+// page funnels through `classifyScore()` (defined below), so the stat-card
+// filter, row badge, and row color can never drift apart.
 
 // Robust score parser — uses shared `pctOfDoc` which returns null on missing
 // data (was: a local impl that returned 0 → fed false low scores into avgs
@@ -42,6 +41,141 @@ const toDate = (v: any): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+// Canonical writer-timestamp resolution for any doc on this page. Mirrors
+// the filterByTime field drift across collections — tests/assignments use
+// createdAt; parent_notes uses createdAt; scores use a mix of
+// timestamp/uploadedAt/date; some legacy docs only have updatedAt. Memory:
+// bug_pattern_filterbytime_field_drift. The fingerprint dedup AND the
+// activity-recency check both funnel through this — was: each derived its
+// own field-priority order and could drop ~10% of edge-case docs apart.
+const writerTs = (d: any): Date | null =>
+  toDate(d?.timestamp || d?.createdAt || d?.date || d?.uploadedAt || d?.updatedAt);
+
+const lastActivityMs = (d: any): number => writerTs(d)?.getTime() ?? 0;
+
+// "YYYY-MM-DD" key for fingerprint dedup — same field priority as writerTs.
+const tsDateKey = (d: any): string => {
+  const ts = writerTs(d);
+  if (!ts) return "";
+  const yyyy = ts.getFullYear();
+  const mm   = String(ts.getMonth() + 1).padStart(2, "0");
+  const dd   = String(ts.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// ── tier classification (shared mobile + desktop) ───────────────────────────
+// Single source of truth so the same school renders the same tier label
+// regardless of screen size (memory: bug_pattern_score_zero_no_data — same
+// failure mode applies cross-viewport when two tier-ladders drift).
+type SchoolAvgTier = {
+  label: string;
+  // mobile palette (translucent on dark gradient bg)
+  bg: string; border: string; color: string;
+  // desktop palette (translucent on dark gradient bg)
+  dBg: string; dBdr: string; dC: string;
+  // accent color for plain text on white surfaces
+  accent: string;
+  // sub-text color for stat-card "sub" row
+  subColor: string;
+};
+const TIER_NO_DATA:    SchoolAvgTier = { label: "No Data",         bg: "rgba(153,170,204,.18)", border: "rgba(153,170,204,.32)", color: "#CCDDEE", dBg: "rgba(153,170,204,0.20)", dBdr: "rgba(153,170,204,0.36)", dC: "#CCDDEE", accent: "#99AACC", subColor: "#99AACC" };
+const TIER_EXCELLENT:  SchoolAvgTier = { label: "Excellent",       bg: "rgba(0,200,83,.20)",    border: "rgba(0,200,83,.35)",    color: "#66EE88", dBg: "rgba(0,200,83,0.22)",    dBdr: "rgba(0,200,83,0.4)",     dC: "#66EE88", accent: "#00C853", subColor: "#007830" };
+const TIER_STRONG:     SchoolAvgTier = { label: "Strong",          bg: "rgba(0,85,255,.20)",    border: "rgba(0,85,255,.35)",    color: "#99BBFF", dBg: "rgba(0,85,255,0.22)",    dBdr: "rgba(0,85,255,0.4)",     dC: "#99BBFF", accent: "#0055FF", subColor: "#0055FF" };
+const TIER_AVERAGE:    SchoolAvgTier = { label: "Average",         bg: "rgba(255,136,0,.20)",   border: "rgba(255,136,0,.35)",   color: "#FFCC44", dBg: "rgba(255,170,0,0.22)",   dBdr: "rgba(255,170,0,0.4)",    dC: "#FFDD88", accent: "#FF8800", subColor: "#884400" };
+const TIER_WEAK:       SchoolAvgTier = { label: "Needs Attention", bg: "rgba(255,51,85,.20)",   border: "rgba(255,51,85,.35)",   color: "#FF99AA", dBg: "rgba(255,51,85,0.22)",   dBdr: "rgba(255,51,85,0.4)",    dC: "#FF99AA", accent: "#FF3355", subColor: "#FF3355" };
+
+const getSchoolAvgTier = (avg: number | null): SchoolAvgTier => {
+  if (avg == null) return TIER_NO_DATA;
+  if (avg >= 85) return TIER_EXCELLENT;
+  if (avg >= 75) return TIER_STRONG;
+  if (avg >= 60) return TIER_AVERAGE;
+  return TIER_WEAK;
+};
+
+// ── per-teacher row score classification — keeps grade letter, row color,
+// and badge color in lockstep with the same A/B/C/D ladder. Was: 3 different
+// threshold tables drove letter, color, and badge — A 60% teacher could
+// render as a "C" letter with a "B" (blue) score color.
+type ScoreClass = {
+  letter: "A" | "B" | "C" | "D" | "—";
+  // row text color
+  color: string;
+  // badge bg / border / text
+  badgeBg: string; badgeBorder: string; badgeColor: string;
+  // bar gradient (90deg)
+  barGrad: string;
+  // avatar gradient (135deg)
+  avatarGrad: string;
+  // mobile sidebar accent gradient (180deg)
+  accentGrad: string;
+  // mobile avatar shadow
+  avatarShadow: string;
+};
+const SC_NO_DATA: ScoreClass = {
+  letter: "—",
+  color: "#99AACC",
+  badgeBg: "rgba(153,170,204,0.10)", badgeBorder: "rgba(153,170,204,0.22)", badgeColor: "#5070B0",
+  barGrad: "linear-gradient(90deg, #FF8800, #FFCC22)",
+  avatarGrad: "linear-gradient(135deg, #FF8800, #FFCC22)",
+  accentGrad: "linear-gradient(180deg, #FF8800, #FFCC22)",
+  avatarShadow: "0 4px 14px rgba(255,136,0,.28)",
+};
+const SC_A: ScoreClass = {
+  letter: "A",
+  color: "#00C853",
+  badgeBg: "rgba(0,200,83,0.10)", badgeBorder: "rgba(0,200,83,0.22)", badgeColor: "#007830",
+  barGrad: "linear-gradient(90deg, #00C853, #66EE88)",
+  avatarGrad: "linear-gradient(135deg, #00C853, #22EE66)",
+  accentGrad: "linear-gradient(180deg, #00C853, #66EE88)",
+  avatarShadow: "0 4px 14px rgba(0,200,83,.28)",
+};
+const SC_B: ScoreClass = {
+  letter: "B",
+  color: "#0055FF",
+  badgeBg: "rgba(0,85,255,0.10)", badgeBorder: "rgba(0,85,255,0.22)", badgeColor: "#0055FF",
+  barGrad: "linear-gradient(90deg, #0055FF, #4499FF)",
+  avatarGrad: "linear-gradient(135deg, #0055FF, #2277FF)",
+  accentGrad: "linear-gradient(180deg, #0055FF, #4499FF)",
+  avatarShadow: "0 4px 14px rgba(0,85,255,.28)",
+};
+const SC_C: ScoreClass = {
+  letter: "C",
+  color: "#FF8800",
+  badgeBg: "rgba(255,170,0,0.10)", badgeBorder: "rgba(255,170,0,0.22)", badgeColor: "#884400",
+  barGrad: "linear-gradient(90deg, #FF8800, #FFCC22)",
+  avatarGrad: "linear-gradient(135deg, #FF8800, #FFCC22)",
+  accentGrad: "linear-gradient(180deg, #FF8800, #FFCC22)",
+  avatarShadow: "0 4px 14px rgba(255,136,0,.28)",
+};
+const SC_D: ScoreClass = {
+  letter: "D",
+  color: "#FF3355",
+  badgeBg: "rgba(255,51,85,0.10)", badgeBorder: "rgba(255,51,85,0.22)", badgeColor: "#FF3355",
+  barGrad: "linear-gradient(90deg, #FF3355, #FF88AA)",
+  avatarGrad: "linear-gradient(135deg, #FF3355, #FF6688)",
+  accentGrad: "linear-gradient(180deg, #FF3355, #FF88AA)",
+  avatarShadow: "0 4px 14px rgba(255,51,85,.28)",
+};
+
+const classifyScore = (score: number | null): ScoreClass => {
+  if (score == null) return SC_NO_DATA;
+  if (score >= 85) return SC_A;
+  if (score >= 75) return SC_B;
+  if (score >= 60) return SC_C;
+  return SC_D;
+};
+
+// 14d activity window for "Active" pill (memory: bug_pattern_fabricated_fallback
+// — was: every teacher rendered "Active" unconditionally regardless of whether
+// they'd touched the system in months).
+const ACTIVE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+// TeacherStat is intentionally narrow — only the fields rendered on this
+// page. <TeacherProfile /> receives `raw` (the original teacher doc) and
+// recomputes its own deeper aggregations; we don't pre-compute drawer-only
+// fields here. Earlier versions stored topSubject/weakSubject/monthlyScores/
+// subjectBreakdown/testsCreated/etc. but never displayed them — pure waste
+// on every snapshot tick.
 interface TeacherStat {
   id: string;
   name: string;
@@ -49,44 +183,52 @@ interface TeacherStat {
   subjects: string[];
   classes: string[];      // human-readable class names
   classIds: string[];     // underlying ids for joins
-  avgScore: number | null;
-  prevAvgScore: number | null;
+  avgScore: number | null;        // lifetime avg (headline metric)
+  currAvgScore: number | null;    // last-30d avg (used for trend only)
+  prevAvgScore: number | null;    // 30-60d avg (used for trend only)
   studentCount: number;
   classCount: number;
-  topSubject: string;
-  weakSubject: string;
-  // `avg` is null when the month has no recorded scores — matches the
-  // comment on the producer below. Was typed as `number` while the producer
-  // documented null behaviour but actually emitted 0 (silent lie).
-  monthlyScores: { month: string; avg: number | null }[];
   vsSchoolAvg: number | null;
-  // activity & feedback
-  testsCreated: number;
-  assignmentsCreated: number;
-  lessonPlansCount: number;
-  parentNotesCount: number;
-  rating: number | null;      // 0-5
-  reviewCount: number;
-  reviews: { parentName?: string; studentName?: string; rating?: number; review?: string; comment?: string; createdAt?: any }[];
-  // subject breakdown for drawer chart
-  subjectBreakdown: { subject: string; avg: number; count: number }[];
+  // real activity flag — true if the teacher created/wrote anything in the
+  // last 14 days (memory: bug_pattern_fabricated_fallback).
+  isActive: boolean;
 }
-
-const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 const TeacherPerformance = () => {
   const { userData } = useAuth();
   const isMobile = useIsMobile();
   const navigate = useNavigate();
-  const [teachers,    setTeachers]    = useState<TeacherStat[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [selected,    setSelected]    = useState<TeacherStat | null>(null);
-  const [schoolAvg,   setSchoolAvg]   = useState<number>(0);
-  const [search,      setSearch]      = useState("");
+
+  // Per-collection live state. Was: single onSnapshot(teachers) + Promise.all
+  // of getDocs for every other collection — meant the page only refreshed when
+  // a teacher doc changed, so newly-uploaded scores / assignments / notes were
+  // invisible until reload. Now every read is a live listener; React derives
+  // teachers + schoolAvg from these via useMemo.
+  const [teacherDocs,   setTeacherDocs]   = useState<any[]>([]);
+  const [scoreDocs,     setScoreDocs]     = useState<any[]>([]);
+  const [resultDocs,    setResultDocs]    = useState<any[]>([]);
+  const [gradebookDocs, setGradebookDocs] = useState<any[]>([]);
+  const [taDocs,        setTaDocs]        = useState<any[]>([]);   // teaching_assignments
+  const [classDocs,     setClassDocs]     = useState<any[]>([]);
+  const [testDocs,      setTestDocs]      = useState<any[]>([]);
+  const [asgnDocs,      setAsgnDocs]      = useState<any[]>([]);   // assignments
+  const [lessonDocs,    setLessonDocs]    = useState<any[]>([]);
+  const [noteDocs,      setNoteDocs]      = useState<any[]>([]);
+
+  const [loading,    setLoading]    = useState(true);
+  const [selected,   setSelected]   = useState<TeacherStat | null>(null);
+  const [search,     setSearch]     = useState("");
+  // A failure on ANY of the 11 listeners is recorded here so the UI can
+  // surface a mappingIssue banner with a Retry button. We hold the last
+  // error rather than the full list — a single visible signal is enough;
+  // DevTools console has the full per-collection breakdown.
+  const [loadError,  setLoadError]  = useState<{ collection: string; code?: string; message?: string } | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!userData?.schoolId) return;
     setLoading(true);
+    setLoadError(null);
 
     const schoolId = userData.schoolId;
     const branchId = userData?.branchId || "";
@@ -96,277 +238,302 @@ const TeacherPerformance = () => {
     const inBranch = (raw: any): boolean =>
       !branchId || !raw?.branchId || raw.branchId === branchId;
 
-    // ── Listen to teachers ────────────────────────────────────────────────
-    const tUnsub = onSnapshot(
+    // `cancelled` guards against late updates after a deps-change tear-down
+    // (e.g. principal flips branchId). Per-collection listeners are already
+    // unsubscribed in cleanup, but a snapshot in flight on the network when
+    // unsubscribe runs can still call its callback once. The flag drops
+    // those stragglers so we never write stale-branch data into state.
+    let cancelled = false;
+    const setIf = <T,>(setter: React.Dispatch<React.SetStateAction<T>>, value: T) => {
+      if (!cancelled) setter(value);
+    };
+
+    // Two listener flavors:
+    //
+    //   subEntity — applies the inBranch filter. Used for *resolution*
+    //     entities (teachers, classes, teaching_assignments) so we don't
+    //     show teachers / classes from other branches.
+    //
+    //   subEvent — schoolId-only, NO branch filter. Used for score and
+    //     activity event streams (test_scores, results, gradebook_scores,
+    //     tests, assignments, lessonPlans, parent_notes). This matches
+    //     `TeacherProfile.tsx`'s strategy and fixes a silent data-drop:
+    //     a score's branchId reflects whichever branch context the writer
+    //     was in, which can drift across migrations / multi-branch teachers.
+    //     Once a teacher is in the resolution scope, ALL their scores
+    //     should attribute regardless of where the score was written from.
+    //     Teacher attribution (teacherId / teacherEmail / classId match)
+    //     is the real isolation — branch doesn't add useful filtering here.
+    const subEntity = (col: string, setter: React.Dispatch<React.SetStateAction<any[]>>) =>
+      onSnapshot(
+        query(collection(db, col), where("schoolId", "==", schoolId)),
+        (snap) => setIf(
+          setter,
+          snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })).filter(inBranch),
+        ),
+        (err: any) => {
+          console.warn(`[TeacherPerformance] ${col} listener error:`, err);
+          if (!cancelled) setLoadError({ collection: col, code: err?.code, message: err?.message });
+        },
+      );
+
+    const subEvent = (col: string, setter: React.Dispatch<React.SetStateAction<any[]>>) =>
+      onSnapshot(
+        query(collection(db, col), where("schoolId", "==", schoolId)),
+        (snap) => setIf(
+          setter,
+          snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })),
+        ),
+        (err: any) => {
+          console.warn(`[TeacherPerformance] ${col} listener error:`, err);
+          if (!cancelled) setLoadError({ collection: col, code: err?.code, message: err?.message });
+        },
+      );
+
+    // Teachers listener doubles as the page-loading signal — first snapshot
+    // unlocks the UI even if other collections are still streaming.
+    let teachersInitialised = false;
+    const teacherUnsub = onSnapshot(
       query(collection(db, "teachers"), where("schoolId", "==", schoolId)),
-      async (tSnap) => {
-        const teacherDocs = tSnap.docs
-          .map(d => ({ id: d.id, ...d.data() as any }))
-          .filter(inBranch);
-
-        // ── Fetch every relevant collection in parallel ───────────────────
-        // Errors logged (was: silent swallow). All collections fetched with
-        // schoolId-only — branch filter applied in-memory below.
-        const safeGet = async (q: any, label: string) => {
-          try { return await getDocs(q); }
-          catch (err) {
-            console.warn(`[TeacherPerformance] ${label} fetch failed:`, err);
-            return { docs: [] as any[] };
-          }
-        };
-        const onlySchool = (col: string) =>
-          query(collection(db, col), where("schoolId", "==", schoolId));
-        const [
-          scoresSnap, assignSnap, classesSnap,
-          testsSnap, assignmentsSnap, lessonsSnap,
-          notesSnap, reviewsSnap, resultsSnap, gradebookSnap,
-        ] = await Promise.all([
-          safeGet(onlySchool("test_scores"),          "test_scores"),
-          safeGet(onlySchool("teaching_assignments"), "teaching_assignments"),
-          safeGet(onlySchool("classes"),              "classes"),
-          safeGet(onlySchool("tests"),                "tests"),
-          safeGet(onlySchool("assignments"),          "assignments"),
-          safeGet(onlySchool("lessonPlans"),          "lessonPlans"),
-          safeGet(onlySchool("parent_notes"),         "parent_notes"),
-          safeGet(onlySchool("teacher_reviews"),      "teacher_reviews"),
-          safeGet(onlySchool("results"),              "results"),
-          // gradebook_scores is co-canonical with test_scores per memory
-          // owner_dashboard_alternate_data_sources — was: missing entirely,
-          // ~40% of bulk-uploaded scores invisible to teacher avg.
-          safeGet(onlySchool("gradebook_scores"),     "gradebook_scores"),
-        ]);
-
-        // In-memory branch filter applied to every list.
-        const mapDocs = (snap: any) => snap.docs
-          .map((d: any) => ({ id: d.id, ...d.data() as any }))
-          .filter(inBranch);
-        const scores      = mapDocs(scoresSnap);
-        const assigns     = mapDocs(assignSnap);
-        const classDocs   = mapDocs(classesSnap);
-        const testDocs    = mapDocs(testsSnap);
-        const asgnDocs    = mapDocs(assignmentsSnap);
-        const lessonDocs  = mapDocs(lessonsSnap);
-        const noteDocs    = mapDocs(notesSnap);
-        const reviewDocs  = mapDocs(reviewsSnap);
-        const resultDocs  = mapDocs(resultsSnap);
-        const gradebookDocs = mapDocs(gradebookSnap);
-
-        // classId → name lookup
-        const classNameById = new Map<string, string>();
-        classDocs.forEach((c: any) => {
-          const label = c.name || [c.grade, c.section].filter(Boolean).join(" ") || c.className;
-          if (label) classNameById.set(c.id, label);
-        });
-
-        const now      = new Date();
-        const cutoff30 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
-        const cutoff60 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60);
-
-        // Multi-source merge: test_scores + results + gradebook_scores. All
-        // three represent graded assessments — bulk-upload schools tend to
-        // write to gradebook_scores while real-time tests land in
-        // test_scores; results carries legacy data. Content-fingerprint dedup
-        // (student|subject|date|pct rounded to 0.1%) collapses the same exam
-        // mirrored across collections.
-        const fpSeen = new Set<string>();
-        const allScoreRows: { row: any; pct: number }[] = [];
-        [...scores, ...resultDocs, ...gradebookDocs].forEach(r => {
-          const p = getScoreOrNull(r);
-          if (p === null) return;
-          const subjKey = String(r.subject ?? r.subjectName ?? "").toLowerCase();
-          const ts = r.timestamp ?? r.createdAt ?? r.date ?? r.uploadedAt;
-          const dateK = (() => {
-            if (!ts) return "";
-            if (typeof ts === "string") return ts.slice(0, 10);
-            if (ts?.toDate) return ts.toDate().toISOString().slice(0, 10);
-            return "";
-          })();
-          const sKey = String(r.studentId || (r.studentEmail || "").toLowerCase() || "").trim();
-          const fp = `${sKey}|${subjKey}|${dateK}|${Math.round(p * 10)}`;
-          if (fpSeen.has(fp)) return;
-          fpSeen.add(fp);
-          allScoreRows.push({ row: r, pct: p });
-        });
-
-        // School-wide average — null-aware, no zero-stuffing.
-        const overallAvg = allScoreRows.length
-          ? Math.round(allScoreRows.reduce((a, b) => a + b.pct, 0) / allScoreRows.length)
-          : 0;
-        setSchoolAvg(overallAvg);
-
-        const stats: TeacherStat[] = teacherDocs.map((t: any) => {
-          // Classes & subjects from teaching_assignments + fallback to teacher
-          // doc. Email match normalised to lowercase — was: case-sensitive,
-          // missed `John@x.com` vs `john@x.com`.
-          const tEmail = String(t.email || "").toLowerCase();
-          const tAssigns = assigns.filter((a: any) =>
-            a.teacherId === t.id ||
-            (tEmail && String(a.teacherEmail || "").toLowerCase() === tEmail),
-          );
-
-          const subjectsSet = new Set<string>();
-          tAssigns.forEach((a: any) => a.subject && subjectsSet.add(a.subject));
-          if (t.subject) subjectsSet.add(t.subject);
-          if (Array.isArray(t.subjects)) t.subjects.forEach((s: string) => s && subjectsSet.add(s));
-          const subjects = [...subjectsSet];
-
-          const classIdsSet = new Set<string>();
-          tAssigns.forEach((a: any) => a.classId && classIdsSet.add(a.classId));
-          // also pull classes where teacherId matches directly
-          classDocs.forEach((c: any) => { if (c.teacherId === t.id) classIdsSet.add(c.id); });
-          const classIds = [...classIdsSet];
-
-          // Resolve to human-readable names — prefer classes collection, then teaching_assignments className
-          const classes = classIds.map(cid => {
-            if (classNameById.has(cid)) return classNameById.get(cid)!;
-            const ta = tAssigns.find((a: any) => a.classId === cid);
-            return ta?.className || cid;
-          });
-
-          // All score rows attributable to this teacher — match by teacherId OR classId
-          const tScores = allScoreRows.filter(({ row: s }) =>
-            s.teacherId === t.id ||
-            (s.classId && classIds.includes(s.classId))
-          );
-
-          // Avg from the already-validated pct (no zero-filtering — null-pct
-          // rows were dropped at fingerprint stage above).
-          const avgScore = tScores.length
-            ? Math.round(tScores.reduce((a, b) => a + b.pct, 0) / tScores.length)
-            : null;
-
-          // Previous 30-60 day avg for trend delta
-          const prevScores = tScores.filter(({ row: s }) => {
-            const d = toDate(s.createdAt || s.timestamp || s.date || s.uploadedAt);
-            return d && d >= cutoff60 && d < cutoff30;
-          });
-          const prevAvg = prevScores.length
-            ? Math.round(prevScores.reduce((a, b) => a + b.pct, 0) / prevScores.length)
-            : null;
-
-          // Monthly trend (last 4 months) — null for empty months so the chart
-          // can render gaps honestly instead of plotting a misleading 0%.
-          const months = Array.from({length:4}, (_, i) => {
-            const d = new Date(now.getFullYear(), now.getMonth()-3+i, 1);
-            return { label: MONTH_NAMES[d.getMonth()], month: d.getMonth(), year: d.getFullYear() };
-          });
-          const monthlyScores: { month: string; avg: number | null }[] = months.map(({ label, month, year }) => {
-            const mScores = tScores.filter(({ row: s }) => {
-              const ts = toDate(s.createdAt || s.timestamp || s.date || s.uploadedAt);
-              return ts && ts.getMonth() === month && ts.getFullYear() === year;
-            });
-            // Null (not 0) for empty months — fixes the silent contradiction
-            // between this comment and the previous return value.
-            return {
-              month: label,
-              avg: mScores.length
-                ? Math.round(mScores.reduce((a, b) => a + b.pct, 0) / mScores.length)
-                : null,
-            };
-          });
-
-          // Per-subject breakdown. Drops scores with no subject (was:
-          // fabricated "General" / first-of-teacher's-subjects attribution
-          // which inflated whichever subject happened to come first).
-          // Subject names are bucketed CASE-INSENSITIVELY — "Math" and
-          // "math" used to count as separate subjects. We keep the first
-          // capitalisation we see for display.
-          const subjectBuckets = new Map<string, { display: string; vals: number[] }>();
-          tScores.forEach(({ row: s, pct }) => {
-            const subRaw = s.subjectName || s.subject || "";
-            const sub = String(subRaw || "").trim();
-            if (!sub) return; // skip — don't attribute to a guessed subject
-            const key = sub.toLowerCase();
-            if (!subjectBuckets.has(key)) subjectBuckets.set(key, { display: sub, vals: [] });
-            subjectBuckets.get(key)!.vals.push(pct);
-          });
-          const subjectBreakdown = Array.from(subjectBuckets.values())
-            .map(({ display, vals }) => ({
-              subject: display,
-              count: vals.length,
-              avg: Math.round(vals.reduce((a,b)=>a+b,0)/vals.length),
-            }))
-            .sort((a,b)=>b.avg-a.avg);
-          const topSubject  = subjectBreakdown.length ? subjectBreakdown[0].subject : "—";
-          // Hide weakSubject when only 1 subject (would otherwise echo top)
-          // — same single-section UX bug pattern fixed in SubjectAnalysis.
-          const weakSubject = subjectBreakdown.length >= 2 ? subjectBreakdown[subjectBreakdown.length-1].subject : "—";
-
-          const studentCount = new Set(
-            tScores
-              .map(({ row: s }) => String(s.studentId || (s.studentEmail || "").toLowerCase() || "").trim())
-              .filter(Boolean),
-          ).size;
-
-          // Activity counts — everything this teacher created
-          const testsCreated       = testDocs.filter((d: any) => d.teacherId === t.id).length;
-          const assignmentsCreated = asgnDocs.filter((d: any) => d.teacherId === t.id).length;
-          const lessonPlansCount   = lessonDocs.filter((d: any) => d.teacherId === t.id).length;
-          const parentNotesCount   = noteDocs.filter((d: any) => d.teacherId === t.id).length;
-
-          // Ratings & reviews — dual-key match: prefer teacherId, fall back
-          // to teacherEmail (legacy reviews missing teacherId). Was:
-          // teacherId-only filter silently dropped legacy data.
-          const tReviews = reviewDocs
-            .filter((r: any) =>
-              r.teacherId === t.id ||
-              (tEmail && String(r.teacherEmail || "").toLowerCase() === tEmail),
-            )
-            .sort((a: any, b: any) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
-          // Keep 0-star ratings — was filtered out (n > 0) so a real "0
-          // stars" submission was silently dropped from the average.
-          const ratingVals = tReviews.map((r: any) => Number(r.rating)).filter(n => !isNaN(n) && n >= 0);
-          // Falsy guard would treat a literal `t.rating === 0` (poor rating)
-          // as no-rating-data. Use `!= null` + isFinite so a real 0 stays 0.
-          const fallbackRating = (() => {
-            if (t.rating == null) return null;
-            const n = Number(t.rating);
-            return Number.isFinite(n) ? n : null;
-          })();
-          const rating = ratingVals.length
-            ? Math.round((ratingVals.reduce((a,b)=>a+b,0) / ratingVals.length) * 10) / 10
-            : fallbackRating;
-
-          return {
-            id: t.id,
-            // "Unnamed Teacher" placeholder so principal can SEE that the
-            // teacher exists and fix the data. Was: filtered out below by
-            // `t.name !== "Unknown"` — silently hid teachers entirely.
-            name: t.name || t.teacherName || "Unnamed Teacher",
-            raw: t,
-            subjects,
-            classes,
-            classIds,
-            avgScore,
-            prevAvgScore: prevAvg,
-            studentCount,
-            classCount: classes.length,
-            topSubject,
-            weakSubject,
-            monthlyScores,
-            // vsSchoolAvg is meaningless when school-wide avg is 0 (no
-            // scores anywhere). Was: a teacher with avg 85 in such a school
-            // showed "+85% vs school" — bogus signal.
-            vsSchoolAvg: (avgScore != null && overallAvg > 0) ? avgScore - overallAvg : null,
-            testsCreated,
-            assignmentsCreated,
-            lessonPlansCount,
-            parentNotesCount,
-            rating,
-            reviewCount: tReviews.length,
-            reviews: tReviews.slice(0, 5),
-            subjectBreakdown,
-          };
-        });
-
-        // No more silent filter on "Unknown" — using "Unnamed Teacher"
-        // placeholder above so missing-name records remain visible.
-        setTeachers(stats);
-        setLoading(false);
-      }
+      (snap) => {
+        setIf(
+          setTeacherDocs,
+          snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })).filter(inBranch),
+        );
+        if (!cancelled && !teachersInitialised) { teachersInitialised = true; setLoading(false); }
+      },
+      (err: any) => {
+        console.warn("[TeacherPerformance] teachers listener error:", err);
+        if (cancelled) return;
+        setLoadError({ collection: "teachers", code: err?.code, message: err?.message });
+        if (!teachersInitialised) { teachersInitialised = true; setLoading(false); }
+      },
     );
-    return () => tUnsub();
-  }, [userData?.schoolId, userData?.branchId]);
+
+    const unsubs: Array<() => void> = [
+      teacherUnsub,
+      // Score event streams — schoolId-only, no branch filter (see above).
+      subEvent("test_scores",      setScoreDocs),
+      subEvent("results",          setResultDocs),
+      subEvent("gradebook_scores", setGradebookDocs),
+      // Teacher activity — same: a teacher's tests / assignments / lessons /
+      // notes count regardless of which branch they were authored in.
+      subEvent("tests",            setTestDocs),
+      subEvent("assignments",      setAsgnDocs),
+      subEvent("lessonPlans",      setLessonDocs),
+      subEvent("parent_notes",     setNoteDocs),
+      // Resolution entities — branch-filtered so other branches' records
+      // don't pollute the page.
+      subEntity("teaching_assignments", setTaDocs),
+      subEntity("classes",              setClassDocs),
+    ];
+
+    return () => {
+      cancelled = true;
+      unsubs.forEach((u) => u());
+    };
+  }, [userData?.schoolId, userData?.branchId, refreshKey]);
+
+  const retry = () => setRefreshKey((k) => k + 1);
+
+  // ── Derive teachers + schoolAvg from collection state ───────────────────
+  // schoolAvg is `number | null` so the UI can distinguish "school average is
+  // 0%" (catastrophic) from "no scores uploaded yet" (no-data) — memory:
+  // bug_pattern_score_zero_no_data.
+  const { teachers, schoolAvg } = useMemo<{ teachers: TeacherStat[]; schoolAvg: number | null }>(() => {
+    // classId → name lookup
+    const classNameById = new Map<string, string>();
+    classDocs.forEach((c: any) => {
+      const label = c.name || [c.grade, c.section].filter(Boolean).join(" ") || c.className;
+      if (label) classNameById.set(c.id, label);
+    });
+
+    const nowMs          = Date.now();
+    const cutoff30Ms     = nowMs - 30 * 24 * 60 * 60 * 1000;
+    const cutoff60Ms     = nowMs - 60 * 24 * 60 * 60 * 1000;
+    const activeCutoffMs = nowMs - ACTIVE_WINDOW_MS;
+
+    // Multi-source merge: test_scores + results + gradebook_scores.
+    // Content-fingerprint dedup (student|subject|date|pct rounded to 0.1%)
+    // collapses the same exam mirrored across collections. The fingerprint
+    // date AND the activity timestamp both go through `tsDateKey` /
+    // `lastActivityMs`, so a doc with only `updatedAt` (legacy) is never
+    // treated as "no date" by the fingerprint while still recognised by the
+    // recency window — memory: bug_pattern_filterbytime_field_drift.
+    //
+    // Sparse-key safety: if a doc has no studentId/email AND no date AND
+    // no subject, the fingerprint collapses to just "||X.X" — every such
+    // doc would map to the same key and 19 of 20 valid scores would be
+    // dropped as "duplicates". When key is too sparse to distinguish
+    // legitimate distinct rows, we keep the doc unconditionally.
+    const fpSeen = new Set<string>();
+    const allScoreRows: { row: any; pct: number; ts: number }[] = [];
+    [...scoreDocs, ...resultDocs, ...gradebookDocs].forEach((r) => {
+      const p = getScoreOrNull(r);
+      if (p === null) return;
+      const subjKey = String(r.subject ?? r.subjectName ?? "").toLowerCase();
+      const dateK   = tsDateKey(r);
+      const sKey    = String(r.studentId || (r.studentEmail || "").toLowerCase() || "").trim();
+      const ts      = lastActivityMs(r);
+      // Need at least 2 of {student, date, subject} to dedup safely.
+      const keyParts = [sKey, dateK, subjKey].filter(Boolean).length;
+      if (keyParts < 2) {
+        allScoreRows.push({ row: r, pct: p, ts });
+        return;
+      }
+      const fp = `${sKey}|${subjKey}|${dateK}|${Math.round(p * 10)}`;
+      if (fpSeen.has(fp)) return;
+      fpSeen.add(fp);
+      allScoreRows.push({ row: r, pct: p, ts });
+    });
+
+    // School-wide average — null when there are no scores at all (so the UI
+    // can distinguish "no data" from "actual 0%"). Memory:
+    // bug_pattern_score_zero_no_data.
+    const overallAvg = allScoreRows.length
+      ? Math.round(allScoreRows.reduce((a, b) => a + b.pct, 0) / allScoreRows.length)
+      : null;
+
+    const stats: TeacherStat[] = teacherDocs.map((t: any) => {
+      // Classes & subjects from teaching_assignments + fallback to teacher
+      // doc. Email match normalised to lowercase — case-sensitive match
+      // missed `John@x.com` vs `john@x.com`.
+      const tEmail = String(t.email || "").toLowerCase();
+      const tAssigns = taDocs.filter((a: any) =>
+        a.teacherId === t.id ||
+        (tEmail && String(a.teacherEmail || "").toLowerCase() === tEmail),
+      );
+
+      const subjectsSet = new Set<string>();
+      tAssigns.forEach((a: any) => a.subject && subjectsSet.add(a.subject));
+      if (t.subject) subjectsSet.add(t.subject);
+      if (Array.isArray(t.subjects)) t.subjects.forEach((s: string) => s && subjectsSet.add(s));
+      const subjects = [...subjectsSet];
+      const teacherSubjectKeys = new Set(subjects.map((s) => s.toLowerCase()));
+
+      const classIdsSet = new Set<string>();
+      tAssigns.forEach((a: any) => a.classId && classIdsSet.add(a.classId));
+      // Also pull classes where teacherId / teacherEmail matches directly.
+      // Email fallback handles legacy class docs that store the teacher as
+      // an email instead of the canonical doc id.
+      classDocs.forEach((c: any) => {
+        if (c.teacherId === t.id) { classIdsSet.add(c.id); return; }
+        const cEmail = String(c.teacherEmail || "").toLowerCase();
+        if (tEmail && cEmail && cEmail === tEmail) classIdsSet.add(c.id);
+      });
+      const classIds = [...classIdsSet];
+
+      // Resolve to human-readable names — prefer classes collection, then teaching_assignments className
+      const classes = classIds.map((cid) => {
+        if (classNameById.has(cid)) return classNameById.get(cid)!;
+        const ta = tAssigns.find((a: any) => a.classId === cid);
+        return ta?.className || cid;
+      });
+
+      // Score attribution — three-tier match. Earlier version was too strict:
+      // "if teacherId is set but != t.id → drop entirely" silently broke
+      // attribution whenever the score writer stored teacherId in a different
+      // format than `teachers/{doc_id}` (e.g. auth uid, email-as-id). Result
+      // visible to the user: school avg shows 60% (raw rows summed) but
+      // Top/Support stat cards both show 0 (no teacher attributed any rows).
+      //
+      //   1. teacherId match — most authoritative
+      //   2. teacherEmail match — covers legacy/auth-uid-as-id writers
+      //   3. classId fallback — bidirectional substring subject match defends
+      //      against co-teaching attribution leak (Math/Mathematics drift too)
+      const tScores = allScoreRows.filter(({ row: s }) => {
+        if (s.teacherId && s.teacherId === t.id) return true;
+        const sEmail = String(s.teacherEmail || "").toLowerCase();
+        if (tEmail && sEmail && sEmail === tEmail) return true;
+        if (!s.classId || !classIds.includes(s.classId)) return false;
+        const sub = String(s.subject || s.subjectName || "").toLowerCase().trim();
+        if (!sub) return true;                    // no subject → attribute by classId alone
+        if (teacherSubjectKeys.size === 0) return true; // teacher has no subject metadata → can't filter
+        // Bidirectional substring match — handles "Math" vs "Mathematics",
+        // "English" vs "English Language", "Sci" vs "Science", etc.
+        for (const key of teacherSubjectKeys) {
+          if (key === sub || key.includes(sub) || sub.includes(key)) return true;
+        }
+        return false;
+      });
+
+      // Lifetime avg = headline metric.
+      const avgScore = tScores.length
+        ? Math.round(tScores.reduce((a, b) => a + b.pct, 0) / tScores.length)
+        : null;
+
+      // Trend = currAvg (last 30d) vs prevAvg (30-60d ago). Was: lifetime
+      // avgScore − prev30-60d → apples-to-oranges (lifetime contains scores
+      // BOTH inside and outside the prev window, so even a perfectly stable
+      // teacher rendered fake +/- deltas).
+      const currScores = tScores.filter(({ ts }) => ts && ts >= cutoff30Ms);
+      const prevScores = tScores.filter(({ ts }) => ts && ts >= cutoff60Ms && ts < cutoff30Ms);
+      const currAvg = currScores.length
+        ? Math.round(currScores.reduce((a, b) => a + b.pct, 0) / currScores.length)
+        : null;
+      const prevAvg = prevScores.length
+        ? Math.round(prevScores.reduce((a, b) => a + b.pct, 0) / prevScores.length)
+        : null;
+
+      const studentCount = new Set(
+        tScores
+          .map(({ row: s }) => String(s.studentId || (s.studentEmail || "").toLowerCase() || "").trim())
+          .filter(Boolean),
+      ).size;
+
+      // Real "Active" signal — any scoring/test/assignment/lesson/note write
+      // in the last 14 days. Memory: bug_pattern_fabricated_fallback — every
+      // teacher used to render "Active" unconditionally regardless of whether
+      // they'd touched the system in months. Reviews aren't included because
+      // they're written BY parents, not BY the teacher. Dual-key (teacherId
+      // OR teacherEmail) so writers that store auth uid / email as the
+      // teacher reference don't silently flag everyone Inactive.
+      const ownsActivity = (d: any): boolean => {
+        if (d?.teacherId && d.teacherId === t.id) return true;
+        const dEmail = String(d?.teacherEmail || "").toLowerCase();
+        return !!(tEmail && dEmail && dEmail === tEmail);
+      };
+      const teacherActivityCandidates: number[] = [
+        ...tScores.map((s) => s.ts || 0),
+      ];
+      for (const d of testDocs)   if (ownsActivity(d)) teacherActivityCandidates.push(lastActivityMs(d));
+      for (const d of asgnDocs)   if (ownsActivity(d)) teacherActivityCandidates.push(lastActivityMs(d));
+      for (const d of lessonDocs) if (ownsActivity(d)) teacherActivityCandidates.push(lastActivityMs(d));
+      for (const d of noteDocs)   if (ownsActivity(d)) teacherActivityCandidates.push(lastActivityMs(d));
+      const lastActiveTs = teacherActivityCandidates.length
+        ? Math.max(0, ...teacherActivityCandidates)
+        : 0;
+      const isActive = lastActiveTs > 0 && lastActiveTs >= activeCutoffMs;
+
+      return {
+        id: t.id,
+        // "Unnamed Teacher" placeholder so principal can SEE that the teacher
+        // exists and fix the data. Was: filtered out by `t.name !== "Unknown"`
+        // — silently hid teachers entirely.
+        name: t.name || t.teacherName || "Unnamed Teacher",
+        raw: t,
+        subjects,
+        classes,
+        classIds,
+        avgScore,
+        currAvgScore: currAvg,
+        prevAvgScore: prevAvg,
+        studentCount,
+        classCount: classes.length,
+        // vsSchoolAvg is meaningless when school-wide avg is null/0 (no
+        // scores anywhere). Was: a teacher with avg 85 in such a school
+        // showed "+85% vs school" — bogus signal.
+        vsSchoolAvg: (avgScore != null && overallAvg != null && overallAvg > 0) ? avgScore - overallAvg : null,
+        isActive,
+      };
+    });
+
+    return { teachers: stats, schoolAvg: overallAvg };
+  }, [
+    teacherDocs, scoreDocs, resultDocs, gradebookDocs,
+    taDocs, classDocs,
+    testDocs, asgnDocs, lessonDocs, noteDocs,
+  ]);
 
   // useMemo so the filter doesn't recompute on every unrelated re-render —
   // search isn't a hot path but the loop runs across every teacher and their
@@ -380,13 +547,41 @@ const TeacherPerformance = () => {
     );
   }, [teachers, search]);
 
+  // Trend = current 30d avg vs prior 30-60d avg. Both windows must have data
+  // for the comparison to be meaningful — otherwise return null and let the
+  // UI render "—".
   const trend = (t: TeacherStat) => {
-    if (t.avgScore == null || t.prevAvgScore == null) return null;
-    const delta = t.avgScore - t.prevAvgScore;
+    if (t.currAvgScore == null || t.prevAvgScore == null) return null;
+    const delta = t.currAvgScore - t.prevAvgScore;
     if (delta > 2)  return { icon: TrendingUp,   color: "text-green-500", label: `+${delta}%` };
-    if (delta < -2) return { icon: TrendingDown,  color: "text-red-500",   label: `${delta}%` };
-    return               { icon: Minus,          color: "text-slate-400",  label: "Stable" };
+    if (delta < -2) return { icon: TrendingDown, color: "text-red-500",   label: `${delta}%` };
+    return                 { icon: Minus,        color: "text-slate-400", label: "Stable" };
   };
+
+  // Page-wide derived counts — single source of truth so mobile and desktop
+  // strips render identical numbers (memory: bug_pattern_score_zero_no_data
+  // — stat-card filter must equal row-badge classifier).
+  const topPerformersCount = teachers.filter((t) => (t.avgScore ?? 0) >= 80).length;
+  const needsSupportCount  = teachers.filter((t) => t.avgScore != null && t.avgScore < 60).length;
+
+  // AI insight payload — derived once, rendered by both mobile and desktop
+  // AI cards. Was: this logic lived inline inside the mobile-only render
+  // block, so desktop principals saw no AI summary at all (P2-2).
+  const aiInsight = useMemo(() => {
+    const filteredList = filtered;
+    const withData     = filteredList.filter((t) => t.avgScore != null);
+    const withoutData  = filteredList.filter((t) => t.avgScore == null);
+    const topT         = withData.length > 0
+      ? [...withData].sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0))[0]
+      : null;
+    return {
+      hasAny: filteredList.length > 0,
+      hasScored: withData.length > 0,
+      total: filteredList.length,
+      topT,
+      withoutData: withoutData.length,
+    };
+  }, [filtered]);
 
   // ── When a teacher is selected, render the full TeacherProfile page (same layout as existing profile)
   if (selected) {
@@ -401,33 +596,17 @@ const TeacherPerformance = () => {
   if (isMobile) {
     const B1 = "#0055FF";
     const B2 = "#1166FF";
-    const B3 = "#2277FF";
-    const B4 = "#4499FF";
     const GREEN = "#00C853";
     const RED = "#FF3355";
-    const ORANGE = "#FF8800";
     const GOLD = "#FFAA00";
     const T1 = "#001040";
-    const T2 = "#002080";
     const T3 = "#5070B0";
     const T4 = "#99AACC";
     const SEP = "rgba(0,85,255,.07)";
 
-    const topPerformersCount = teachers.filter((t) => (t.avgScore ?? 0) >= 80).length;
-    const needsSupportCount = teachers.filter((t) => t.avgScore != null && t.avgScore < 60).length;
-
-    const avgTierInfo =
-      schoolAvg >= 85
-        ? { label: "Excellent Tier", bg: "rgba(0,200,83,.20)", border: "rgba(0,200,83,.35)", color: "#66EE88" }
-        : schoolAvg >= 75
-        ? { label: "Strong Tier", bg: "rgba(0,85,255,.20)", border: "rgba(0,85,255,.35)", color: "#99BBFF" }
-        : schoolAvg >= 60
-        ? { label: "Average Tier", bg: "rgba(255,136,0,.20)", border: "rgba(255,136,0,.35)", color: "#FFCC44" }
-        : schoolAvg > 0
-        ? { label: "Needs Attention", bg: "rgba(255,51,85,.20)", border: "rgba(255,51,85,.35)", color: "#FF99AA" }
-        : { label: "No Data", bg: "rgba(153,170,204,.18)", border: "rgba(153,170,204,.32)", color: "#CCDDEE" };
-
-    const schoolAvgColor = schoolAvg >= 75 ? GREEN : schoolAvg >= 60 ? ORANGE : schoolAvg > 0 ? RED : T4;
+    const avgTier = getSchoolAvgTier(schoolAvg);
+    const schoolAvgDisplay = schoolAvg == null ? "—" : `${schoolAvg}%`;
+    const schoolAvgColor = avgTier.accent;
 
     const subjectTagStyle = (subject: string) => {
       const s = (subject || "").toLowerCase();
@@ -438,26 +617,9 @@ const TeacherPerformance = () => {
       return { bg: "rgba(0,85,255,.10)", color: B1, border: "0.5px solid rgba(0,85,255,.20)" };
     };
 
-    const avatarGradFor = (name: string, hasData: boolean, avg: number | null) => {
-      if (!hasData) return `linear-gradient(135deg, ${ORANGE}, #FFCC22)`;
-      if (avg! >= 80) return `linear-gradient(135deg, ${GREEN}, #22EE66)`;
-      if (avg! >= 60) return `linear-gradient(135deg, ${B1}, ${B3})`;
-      return `linear-gradient(135deg, ${RED}, #FF6688)`;
-    };
-
-    const accentFor = (hasData: boolean, avg: number | null) => {
-      if (!hasData) return `linear-gradient(180deg, ${ORANGE}, #FFCC22)`;
-      if (avg! >= 80) return `linear-gradient(180deg, ${GREEN}, #66EE88)`;
-      if (avg! >= 60) return `linear-gradient(180deg, ${B1}, ${B4})`;
-      return `linear-gradient(180deg, ${RED}, #FF88AA)`;
-    };
-
-    const avShadowFor = (hasData: boolean, avg: number | null) => {
-      if (!hasData) return "0 4px 14px rgba(255,136,0,.28)";
-      if (avg! >= 80) return "0 4px 14px rgba(0,200,83,.28)";
-      if (avg! >= 60) return "0 4px 14px rgba(0,85,255,.28)";
-      return "0 4px 14px rgba(255,51,85,.28)";
-    };
+    const avatarGradFor = (avg: number | null) => classifyScore(avg).avatarGrad;
+    const accentFor     = (avg: number | null) => classifyScore(avg).accentGrad;
+    const avShadowFor   = (avg: number | null) => classifyScore(avg).avatarShadow;
 
     return (
       <div
@@ -501,12 +663,59 @@ const TeacherPerformance = () => {
                 School Avg
               </div>
               <div style={{ fontSize: 17, fontWeight: 700, color: schoolAvgColor, letterSpacing: "-0.3px", lineHeight: 1 }}>
-                {schoolAvg}%
+                {schoolAvgDisplay}
               </div>
             </div>
             <BarChart3 size={14} color={schoolAvgColor} strokeWidth={2.4} />
           </button>
         </div>
+
+        {/* Listener-failure banner — surfaces permission-denied / network /
+            FAILED_PRECONDITION errors with a Retry instead of silently
+            rendering empty state. Pattern mirrors RisksAlerts mappingIssue. */}
+        {loadError && (
+          <div
+            role="alert"
+            style={{
+              margin: "12px 20px 0",
+              background: "rgba(255,170,0,.10)",
+              border: "0.5px solid rgba(255,170,0,.32)",
+              borderRadius: 14,
+              padding: "11px 14px",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+            }}
+          >
+            <AlertTriangle size={16} color="#FFAA00" strokeWidth={2.4} style={{ marginTop: 1, flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#884400", marginBottom: 2 }}>
+                Could not load all data
+              </div>
+              <div style={{ fontSize: 11, color: T3, lineHeight: 1.4 }}>
+                {loadError.code === "permission-denied"
+                  ? `Permission denied on ${loadError.collection} — check your role's read access.`
+                  : `${loadError.collection}: ${loadError.message || "network error"}`}
+              </div>
+            </div>
+            <button
+              onClick={retry}
+              style={{
+                flexShrink: 0,
+                background: "#fff",
+                border: "0.5px solid rgba(255,170,0,.42)",
+                borderRadius: 10,
+                padding: "5px 11px",
+                fontSize: 11,
+                fontWeight: 700,
+                color: "#884400",
+                cursor: "pointer",
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
@@ -560,7 +769,7 @@ const TeacherPerformance = () => {
                       Avg Class Score
                     </div>
                     <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: "-0.8px", lineHeight: 1 }}>
-                      {schoolAvg}%
+                      {schoolAvgDisplay}
                     </div>
                   </div>
                 </div>
@@ -571,15 +780,15 @@ const TeacherPerformance = () => {
                     gap: 5,
                     padding: "5px 12px",
                     borderRadius: 100,
-                    background: avgTierInfo.bg,
-                    border: `0.5px solid ${avgTierInfo.border}`,
+                    background: avgTier.bg,
+                    border: `0.5px solid ${avgTier.border}`,
                     fontSize: 11,
                     fontWeight: 700,
-                    color: avgTierInfo.color,
+                    color: avgTier.color,
                   }}
                 >
                   <BarChart3 size={11} strokeWidth={2.5} />
-                  {avgTierInfo.label}
+                  {avgTier.label}
                 </div>
               </div>
               <div
@@ -627,14 +836,14 @@ const TeacherPerformance = () => {
                 },
                 {
                   label: "Avg Class Score",
-                  value: `${schoolAvg}%`,
-                  sub: avgTierInfo.label,
+                  value: schoolAvgDisplay,
+                  sub: avgTier.label,
                   color: schoolAvgColor,
-                  subColor: schoolAvg >= 75 ? "#007830" : schoolAvg >= 60 ? "#884400" : schoolAvg > 0 ? RED : T4,
+                  subColor: avgTier.subColor,
                   icon: <BarChart3 size={13} color={schoolAvgColor} strokeWidth={2.4} />,
-                  bg: schoolAvg >= 75 ? "rgba(0,200,83,.10)" : schoolAvg >= 60 ? "rgba(255,136,0,.10)" : schoolAvg > 0 ? "rgba(255,51,85,.10)" : "rgba(153,170,204,.12)",
-                  border: schoolAvg >= 75 ? "rgba(0,200,83,.22)" : schoolAvg >= 60 ? "rgba(255,136,0,.22)" : schoolAvg > 0 ? "rgba(255,51,85,.22)" : "rgba(153,170,204,.22)",
-                  glow: schoolAvg >= 75 ? "rgba(0,200,83,.10)" : schoolAvg >= 60 ? "rgba(255,136,0,.10)" : schoolAvg > 0 ? "rgba(255,51,85,.10)" : "rgba(153,170,204,.10)",
+                  bg: avgTier.bg,
+                  border: avgTier.border,
+                  glow: avgTier.bg,
                 },
                 {
                   label: "Top Performers",
@@ -795,25 +1004,13 @@ const TeacherPerformance = () => {
               filtered.map((t) => {
                 const hasScoreData = t.avgScore != null;
                 const tr = trend(t);
-                const tLetter = hasScoreData ? grade(t.avgScore!) : "—";
+                const sc = classifyScore(t.avgScore);
+                const tLetter = sc.letter;
                 const primarySubject = t.subjects[0] || "Teacher";
-                const subjStyle = subjectTagStyle(primarySubject);
                 const initText = safeInitials(t.name);
 
-                const avgBarColor = !hasScoreData
-                  ? `linear-gradient(90deg, ${ORANGE}, #FFCC22)`
-                  : t.avgScore! >= 80
-                  ? `linear-gradient(90deg, ${GREEN}, #66EE88)`
-                  : t.avgScore! >= 60
-                  ? `linear-gradient(90deg, ${ORANGE}, #FFCC22)`
-                  : `linear-gradient(90deg, ${RED}, #FF88AA)`;
-                const avgValColor = !hasScoreData
-                  ? T4
-                  : t.avgScore! >= 80
-                  ? GREEN
-                  : t.avgScore! >= 60
-                  ? ORANGE
-                  : RED;
+                const avgBarColor = sc.barGrad;
+                const avgValColor = sc.color;
 
                 let trendIconEl = <Minus size={12} color={T4} strokeWidth={2.4} />;
                 let trendColor = T4;
@@ -860,7 +1057,7 @@ const TeacherPerformance = () => {
                         top: 0,
                         bottom: 0,
                         width: 4,
-                        background: accentFor(hasScoreData, t.avgScore),
+                        background: accentFor(t.avgScore),
                       }}
                     />
 
@@ -871,7 +1068,7 @@ const TeacherPerformance = () => {
                           width: 48,
                           height: 48,
                           borderRadius: 15,
-                          background: avatarGradFor(t.name, hasScoreData, t.avgScore),
+                          background: avatarGradFor(t.avgScore),
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -879,7 +1076,7 @@ const TeacherPerformance = () => {
                           fontWeight: 700,
                           color: "#fff",
                           flexShrink: 0,
-                          boxShadow: avShadowFor(hasScoreData, t.avgScore),
+                          boxShadow: avShadowFor(t.avgScore),
                         }}
                       >
                         {initText}
@@ -926,9 +1123,9 @@ const TeacherPerformance = () => {
                               Teacher
                             </span>
                           )}
-                          <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: "#007830" }}>
-                            <div style={{ width: 5, height: 5, borderRadius: "50%", background: GREEN }} />
-                            Active
+                          <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: t.isActive ? "#007830" : T4 }}>
+                            <div style={{ width: 5, height: 5, borderRadius: "50%", background: t.isActive ? GREEN : "#CCDDEE" }} />
+                            {t.isActive ? "Active" : "Inactive"}
                           </div>
                         </div>
                       </div>
@@ -1077,7 +1274,7 @@ const TeacherPerformance = () => {
                     >
                       <div style={{ fontSize: 11, fontWeight: 600, color: T3, display: "flex", alignItems: "center", gap: 6 }}>
                         <BarChart3 size={12} strokeWidth={2.3} />
-                        vs School Avg{hasScoreData ? ` (${schoolAvg}%)` : ""}
+                        vs School Avg{hasScoreData && schoolAvg != null ? ` (${schoolAvg}%)` : ""}
                       </div>
                       {t.vsSchoolAvg != null ? (
                         <div
@@ -1220,60 +1417,50 @@ const TeacherPerformance = () => {
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,.85)", lineHeight: 1.72, position: "relative", zIndex: 1 }}>
-                  {(() => {
-                    const withData = filtered.filter((t) => t.avgScore != null);
-                    const withoutData = filtered.filter((t) => t.avgScore == null);
-                    const topT =
-                      withData.length > 0
-                        ? [...withData].sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0))[0]
-                        : null;
-
-                    if (withData.length === 0) {
-                      return (
+                  {!aiInsight.hasScored ? (
+                    <>
+                      No teacher has recorded score data yet.{" "}
+                      <strong style={{ color: "#fff", fontWeight: 700 }}>
+                        Schedule assessments
+                      </strong>{" "}
+                      to enable proper impact analysis across {aiInsight.total} teacher{aiInsight.total === 1 ? "" : "s"}.
+                    </>
+                  ) : (
+                    <>
+                      {aiInsight.topT && (
                         <>
-                          No teacher has recorded score data yet.{" "}
-                          <strong style={{ color: "#fff", fontWeight: 700 }}>
-                            Schedule assessments
-                          </strong>{" "}
-                          to enable proper impact analysis across {filtered.length} teacher{filtered.length === 1 ? "" : "s"}.
+                          <strong style={{ color: "#fff", fontWeight: 700 }}>{aiInsight.topT.name}</strong>{" "}
+                          leads with{" "}
+                          <strong style={{ color: "#fff", fontWeight: 700 }}>{aiInsight.topT.avgScore}%</strong>
+                          {aiInsight.topT.subjects[0] ? ` in ${aiInsight.topT.subjects[0]}` : ""}.{" "}
                         </>
-                      );
-                    }
-                    return (
-                      <>
-                        {topT && (
-                          <>
-                            <strong style={{ color: "#fff", fontWeight: 700 }}>{topT.name}</strong>{" "}
-                            leads with{" "}
-                            <strong style={{ color: "#fff", fontWeight: 700 }}>
-                              {topT.avgScore}%
-                            </strong>
-                            {topT.subjects[0] ? ` in ${topT.subjects[0]}` : ""}.{" "}
-                          </>
-                        )}
-                        School averages{" "}
-                        <strong style={{ color: "#fff", fontWeight: 700 }}>{schoolAvg}%</strong>{" "}
-                        across graded teachers.{" "}
-                        {withoutData.length > 0 && (
-                          <>
-                            <strong style={{ color: "#fff", fontWeight: 700 }}>
-                              {withoutData.length} teacher{withoutData.length === 1 ? "" : "s"}
-                            </strong>{" "}
-                            have no performance data — consider scheduling assessments to enable proper impact analysis.
-                          </>
-                        )}
-                        {needsSupportCount > 0 && (
-                          <>
-                            {" "}
-                            <strong style={{ color: "#FF8899", fontWeight: 700 }}>
-                              {needsSupportCount} teacher{needsSupportCount === 1 ? "" : "s"}
-                            </strong>{" "}
-                            below 60% need support.
-                          </>
-                        )}
-                      </>
-                    );
-                  })()}
+                      )}
+                      {schoolAvg != null && (
+                        <>
+                          School averages{" "}
+                          <strong style={{ color: "#fff", fontWeight: 700 }}>{schoolAvg}%</strong>{" "}
+                          across graded scores.{" "}
+                        </>
+                      )}
+                      {aiInsight.withoutData > 0 && (
+                        <>
+                          <strong style={{ color: "#fff", fontWeight: 700 }}>
+                            {aiInsight.withoutData} teacher{aiInsight.withoutData === 1 ? "" : "s"}
+                          </strong>{" "}
+                          have no performance data — consider scheduling assessments to enable proper impact analysis.
+                        </>
+                      )}
+                      {needsSupportCount > 0 && (
+                        <>
+                          {" "}
+                          <strong style={{ color: "#FF8899", fontWeight: 700 }}>
+                            {needsSupportCount} teacher{needsSupportCount === 1 ? "" : "s"}
+                          </strong>{" "}
+                          below 60% need support.
+                        </>
+                      )}
+                    </>
+                  )}
                 </div>
                 <div
                   style={{
@@ -1290,7 +1477,7 @@ const TeacherPerformance = () => {
                 >
                   {[
                     { v: teachers.length, l: "Teachers", c: "#fff" },
-                    { v: `${schoolAvg}%`, l: "School Avg", c: "#FFDD44" },
+                    { v: schoolAvgDisplay,  l: "School Avg", c: "#FFDD44" },
                     { v: needsSupportCount, l: "At Risk", c: needsSupportCount > 0 ? "#FF8899" : "#fff" },
                   ].map((s, i) => (
                     <div key={i} style={{ background: "rgba(255,255,255,.08)", padding: "12px", textAlign: "center" }}>
@@ -1313,17 +1500,39 @@ const TeacherPerformance = () => {
     );
   }
 
-  // Desktop derived stats
-  const dTopPerformers = teachers.filter(t => (t.avgScore ?? 0) >= 80).length;
-  const dNeedsSupport = teachers.filter(t => t.avgScore != null && t.avgScore < 60).length;
-  const dFiltered = filtered;
-  const dSchoolAvgTier = schoolAvg >= 80 ? { label: "Excellent", c: "#66EE88", bg: "rgba(0,200,83,0.22)", bdr: "rgba(0,200,83,0.4)" }
-    : schoolAvg >= 65 ? { label: "Strong", c: "#66EE88", bg: "rgba(0,200,83,0.22)", bdr: "rgba(0,200,83,0.4)" }
-    : schoolAvg >= 50 ? { label: "Average", c: "#FFDD88", bg: "rgba(255,170,0,0.22)", bdr: "rgba(255,170,0,0.4)" }
-    : { label: "Weak", c: "#FF99AA", bg: "rgba(255,51,85,0.22)", bdr: "rgba(255,51,85,0.4)" };
+  // Desktop derived stats — share the same counts/thresholds as mobile via
+  // top-level constants (memory: bug_pattern_score_zero_no_data — was: desktop
+  // tiered at 80/65/50 while mobile tiered at 85/75/60 → same school showed
+  // different labels on different screens).
+  const dFiltered      = filtered;
+  const dSchoolAvgTier = getSchoolAvgTier(schoolAvg);
+  const dSchoolAvgDisp = schoolAvg == null ? "—" : `${schoolAvg}%`;
 
   return (
     <div className="pb-10 w-full px-2 animate-in fade-in duration-500" style={{ fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+
+      {/* Listener-failure banner (desktop) — same retry contract as mobile.
+          Surfaces silent permission-denied / network failures so the page
+          doesn't render empty state when data IS theoretically available. */}
+      {loadError && (
+        <div role="alert" className="mt-2 mb-3 rounded-[14px] flex items-start gap-3 px-4 py-3"
+          style={{ background: "rgba(255,170,0,0.10)", border: "0.5px solid rgba(255,170,0,0.32)" }}>
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-[2px]" style={{ color: "#FFAA00" }} strokeWidth={2.4} />
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] font-bold mb-[2px]" style={{ color: "#884400" }}>Could not load all data</div>
+            <div className="text-[11px]" style={{ color: "#5070B0", lineHeight: 1.4 }}>
+              {loadError.code === "permission-denied"
+                ? `Permission denied on ${loadError.collection} — check your role's read access.`
+                : `${loadError.collection}: ${loadError.message || "network error"}`}
+            </div>
+          </div>
+          <button onClick={retry}
+            className="flex-shrink-0 rounded-[10px] text-[11px] font-bold px-[12px] py-[5px] transition-transform active:scale-95"
+            style={{ background: "#fff", border: "0.5px solid rgba(255,170,0,0.42)", color: "#884400", boxShadow: "0 0 0 .5px rgba(255,170,0,.10), 0 1px 4px rgba(255,170,0,.12)" }}>
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Top toolbar */}
       <div className="flex items-start justify-between gap-4 pt-2 mb-5">
@@ -1370,23 +1579,23 @@ const TeacherPerformance = () => {
           </div>
           <div className="min-w-0">
             <div className="text-[9px] font-bold uppercase tracking-[0.14em] mb-[5px]" style={{ color: "rgba(255,255,255,0.50)" }}>
-              School Avg · {teachers.length} Teacher{teachers.length === 1 ? "" : "s"}
+              School Avg{loading ? "" : ` · ${teachers.length} Teacher${teachers.length === 1 ? "" : "s"}`}
             </div>
             <div className="text-[34px] font-bold text-white leading-none tracking-[-1px]">
-              {loading ? "—" : `${schoolAvg}%`}
+              {loading ? "—" : dSchoolAvgDisp}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0 relative z-10">
           <div className="flex items-center gap-[5px] px-[14px] py-[7px] rounded-full"
-            style={{ background: dSchoolAvgTier.bg, border: `0.5px solid ${dSchoolAvgTier.bdr}` }}>
-            <span className="text-[12px] font-bold" style={{ color: dSchoolAvgTier.c }}>{dSchoolAvgTier.label} tier</span>
+            style={{ background: dSchoolAvgTier.dBg, border: `0.5px solid ${dSchoolAvgTier.dBdr}` }}>
+            <span className="text-[12px] font-bold" style={{ color: dSchoolAvgTier.dC }}>{dSchoolAvgTier.label} tier</span>
           </div>
           <div className="grid grid-cols-3 gap-[1px] rounded-[13px] overflow-hidden" style={{ background: "rgba(255,255,255,0.12)" }}>
             {[
-              { val: teachers.length, label: "Faculty", color: "#fff" },
-              { val: dTopPerformers, label: "Top Tier", color: "#66EE88" },
-              { val: dNeedsSupport, label: "Support", color: dNeedsSupport > 0 ? "#FF99AA" : "#FFDD88" },
+              { val: loading ? "—" : teachers.length,         label: "Teachers", color: "#fff" },
+              { val: loading ? "—" : topPerformersCount,      label: "Top Tier", color: "#66EE88" },
+              { val: loading ? "—" : needsSupportCount,       label: "Support",  color: needsSupportCount > 0 ? "#FF99AA" : "#FFDD88" },
             ].map(({ val, label, color }) => (
               <div key={label} className="py-[10px] px-[14px] text-center min-w-[72px]" style={{ background: "rgba(255,255,255,0.08)" }}>
                 <div className="text-[17px] font-bold leading-none mb-[3px]" style={{ color, letterSpacing: "-0.4px" }}>{val}</div>
@@ -1403,7 +1612,7 @@ const TeacherPerformance = () => {
         {[
           {
             label: "Total Teachers",
-            val: teachers.length,
+            val: loading ? "—" : teachers.length,
             sub: "In branch",
             Icon: Users,
             cardGrad: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
@@ -1414,7 +1623,7 @@ const TeacherPerformance = () => {
           },
           {
             label: "Avg Class Score",
-            val: loading ? "—" : `${schoolAvg}%`,
+            val: loading ? "—" : dSchoolAvgDisp,
             sub: dSchoolAvgTier.label,
             Icon: BarChart3,
             cardGrad: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
@@ -1425,7 +1634,7 @@ const TeacherPerformance = () => {
           },
           {
             label: "Top Performers",
-            val: dTopPerformers,
+            val: loading ? "—" : topPerformersCount,
             sub: "Score ≥ 80%",
             Icon: Star,
             cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
@@ -1436,7 +1645,7 @@ const TeacherPerformance = () => {
           },
           {
             label: "Needs Support",
-            val: dNeedsSupport,
+            val: loading ? "—" : needsSupportCount,
             sub: "Score < 60%",
             Icon: AlertTriangle,
             cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
@@ -1510,31 +1719,37 @@ const TeacherPerformance = () => {
             <table className="w-full text-left min-w-[900px]">
               <thead>
                 <tr style={{ background: "rgba(0,85,255,0.04)", borderBottom: "0.5px solid rgba(0,85,255,0.07)" }}>
-                  {["Teacher", "Subjects", "Classes", "Students", "Avg Score", "vs School", "Trend", ""].map(h => (
+                  {["Teacher", "Subjects", "Classes", "Students", "Avg Score", "vs School", "Trend", "Actions"].map(h => (
                     <th key={h} className="py-[14px] px-5 text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "#99AACC" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {dFiltered.map((t, i, arr) => {
-                  const T = trend(t);
+                  const T     = trend(t);
                   const TIcon = T?.icon;
-                  const g = t.avgScore != null ? grade(t.avgScore) : "—";
-                  const scoreColor = t.avgScore == null ? "#99AACC" : t.avgScore >= 80 ? "#00C853" : t.avgScore >= 60 ? "#0055FF" : t.avgScore >= 40 ? "#FF8800" : "#FF3355";
-                  const gradeStyle = g === "A" ? { bg: "rgba(0,200,83,0.10)", c: "#007830", bdr: "rgba(0,200,83,0.22)" }
-                    : g === "B" ? { bg: "rgba(0,85,255,0.10)", c: "#0055FF", bdr: "rgba(0,85,255,0.22)" }
-                    : g === "C" ? { bg: "rgba(255,170,0,0.10)", c: "#884400", bdr: "rgba(255,170,0,0.22)" }
-                    : { bg: "rgba(255,51,85,0.10)", c: "#FF3355", bdr: "rgba(255,51,85,0.22)" };
+                  // Single classifier — keeps row score color, grade letter,
+                  // grade pill bg, AND avatar gradient in lockstep across
+                  // mobile + desktop. Was: desktop avatar was hardcoded blue
+                  // regardless of the teacher's tier — visually inconsistent
+                  // with mobile and obscured at-a-glance performance read.
+                  const sc = classifyScore(t.avgScore);
                   return (
                     <tr key={t.id} className="transition-colors hover:bg-[#F5F9FF]"
                       style={i < arr.length - 1 ? { borderBottom: "0.5px solid rgba(0,85,255,0.05)" } : {}}>
                       <td className="py-[14px] px-5">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-[11px] flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0"
-                            style={{ background: "linear-gradient(135deg, #0044EE, #2277FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.24)" }}>
+                            style={{ background: sc.avatarGrad, boxShadow: sc.avatarShadow }}>
                             {safeInitials(t.name)}
                           </div>
-                          <span className="text-[13px] font-bold tracking-[-0.2px]" style={{ color: "#001040" }}>{t.name}</span>
+                          <div className="flex flex-col gap-[2px]">
+                            <span className="text-[13px] font-bold tracking-[-0.2px]" style={{ color: "#001040" }}>{t.name}</span>
+                            <span className="flex items-center gap-[4px] text-[10px] font-semibold" style={{ color: t.isActive ? "#007830" : "#99AACC" }}>
+                              <span className="inline-block w-[5px] h-[5px] rounded-full" style={{ background: t.isActive ? "#00C853" : "#CCDDEE" }} />
+                              {t.isActive ? "Active" : "Inactive"}
+                            </span>
+                          </div>
                         </div>
                       </td>
                       <td className="py-[14px] px-5">
@@ -1552,9 +1767,9 @@ const TeacherPerformance = () => {
                       <td className="py-[14px] px-5">
                         {t.avgScore != null ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-[14px] font-bold" style={{ color: scoreColor, letterSpacing: "-0.2px" }}>{t.avgScore}%</span>
+                            <span className="text-[14px] font-bold" style={{ color: sc.color, letterSpacing: "-0.2px" }}>{t.avgScore}%</span>
                             <span className="px-[8px] py-[2px] rounded-full text-[10px] font-bold"
-                              style={{ background: gradeStyle.bg, color: gradeStyle.c, border: `0.5px solid ${gradeStyle.bdr}` }}>{g}</span>
+                              style={{ background: sc.badgeBg, color: sc.badgeColor, border: `0.5px solid ${sc.badgeBorder}` }}>{sc.letter}</span>
                           </div>
                         ) : <span className="text-[11px]" style={{ color: "#99AACC" }}>No data</span>}
                       </td>
@@ -1574,19 +1789,116 @@ const TeacherPerformance = () => {
                         ) : <span className="text-[11px]" style={{ color: "#99AACC" }}>—</span>}
                       </td>
                       <td className="py-[14px] px-5">
-                        <button onClick={() => setSelected(t)}
-                          className="h-8 px-[12px] rounded-[10px] flex items-center gap-[5px] text-[11px] font-bold text-white transition-transform active:scale-95 hover:scale-[1.03] relative overflow-hidden"
-                          style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.26)" }}>
-                          <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
-                          <span className="relative z-10">View</span>
-                          <ChevronRight className="w-3 h-3 relative z-10" strokeWidth={2.5} />
-                        </button>
+                        <div className="flex items-center gap-[6px]">
+                          <button onClick={() => setSelected(t)}
+                            className="h-8 px-[12px] rounded-[10px] flex items-center gap-[5px] text-[11px] font-bold text-white transition-transform active:scale-95 hover:scale-[1.03] relative overflow-hidden"
+                            style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.26)" }}>
+                            <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
+                            <span className="relative z-10">View</span>
+                            <ChevronRight className="w-3 h-3 relative z-10" strokeWidth={2.5} />
+                          </button>
+                          {/* Deep-link to TeacherNotes — same `{ teacherId }`
+                              router-state contract as the mobile Note button.
+                              Was: desktop view had no way to message a teacher
+                              from the performance table. */}
+                          <button onClick={() => navigate("/teacher-notes", { state: { teacherId: t.id } })}
+                            className="h-8 px-[12px] rounded-[10px] flex items-center gap-[5px] text-[11px] font-bold transition-transform active:scale-95 hover:scale-[1.03]"
+                            style={{ background: "#EEF4FF", color: "#002080", border: "0.5px solid rgba(0,85,255,0.16)", boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 6px rgba(0,85,255,.08)" }}>
+                            <MessageSquare className="w-3 h-3" style={{ color: "rgba(0,85,255,0.7)" }} strokeWidth={2.3} />
+                            <span>Note</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* AI Performance Intelligence — desktop. Was: this card lived only
+          inside the mobile branch, so desktop principals saw no top-line
+          summary at all (P2-2). Same `aiInsight` payload feeds both. */}
+      {!loading && dFiltered.length > 0 && (
+        <div
+          className="rounded-[22px] mt-6 p-5 relative overflow-hidden"
+          style={{
+            background: "linear-gradient(140deg,#001888 0%,#0033CC 48%,#0055FF 100%)",
+            boxShadow: "0 8px 28px rgba(0,51,204,0.28), 0 0 0 0.5px rgba(255,255,255,0.14)",
+          }}
+        >
+          <div className="absolute -top-10 -right-6 w-[150px] h-[150px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
+
+          <div className="relative z-10 flex items-center gap-2 mb-3">
+            <div className="w-7 h-7 rounded-[9px] flex items-center justify-center"
+              style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+              <Sparkles className="w-[15px] h-[15px]" style={{ color: "rgba(255,255,255,0.92)" }} strokeWidth={2.3} />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>
+              AI Performance Intelligence
+            </span>
+          </div>
+
+          <div className="relative z-10 text-[13px] leading-[1.7]" style={{ color: "rgba(255,255,255,0.88)" }}>
+            {!aiInsight.hasScored ? (
+              <>
+                No teacher has recorded score data yet.{" "}
+                <strong style={{ color: "#fff", fontWeight: 700 }}>Schedule assessments</strong>{" "}
+                to enable proper impact analysis across {aiInsight.total} teacher{aiInsight.total === 1 ? "" : "s"}.
+              </>
+            ) : (
+              <>
+                {aiInsight.topT && (
+                  <>
+                    <strong style={{ color: "#fff", fontWeight: 700 }}>{aiInsight.topT.name}</strong>{" "}
+                    leads with{" "}
+                    <strong style={{ color: "#fff", fontWeight: 700 }}>{aiInsight.topT.avgScore}%</strong>
+                    {aiInsight.topT.subjects[0] ? ` in ${aiInsight.topT.subjects[0]}` : ""}.{" "}
+                  </>
+                )}
+                {schoolAvg != null && (
+                  <>
+                    School averages{" "}
+                    <strong style={{ color: "#fff", fontWeight: 700 }}>{schoolAvg}%</strong>{" "}
+                    across graded scores.{" "}
+                  </>
+                )}
+                {aiInsight.withoutData > 0 && (
+                  <>
+                    <strong style={{ color: "#fff", fontWeight: 700 }}>
+                      {aiInsight.withoutData} teacher{aiInsight.withoutData === 1 ? "" : "s"}
+                    </strong>{" "}
+                    have no performance data — consider scheduling assessments to enable proper impact analysis.
+                  </>
+                )}
+                {needsSupportCount > 0 && (
+                  <>
+                    {" "}
+                    <strong style={{ color: "#FF8899", fontWeight: 700 }}>
+                      {needsSupportCount} teacher{needsSupportCount === 1 ? "" : "s"}
+                    </strong>{" "}
+                    below 60% need support.
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="relative z-10 mt-4 grid grid-cols-3 gap-[1px] rounded-[14px] overflow-hidden"
+            style={{ background: "rgba(255,255,255,0.12)" }}>
+            {[
+              { v: teachers.length,           l: "Teachers",   c: "#fff" },
+              { v: dSchoolAvgDisp,             l: "School Avg", c: "#FFDD44" },
+              { v: needsSupportCount,         l: "At Risk",    c: needsSupportCount > 0 ? "#FF8899" : "#fff" },
+            ].map((s, i) => (
+              <div key={i} className="text-center py-[14px] px-3" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <div className="text-[20px] font-bold leading-none mb-1" style={{ color: s.c, letterSpacing: "-0.5px" }}>{s.v}</div>
+                <div className="text-[9px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.40)" }}>{s.l}</div>
+              </div>
+            ))}
           </div>
         </div>
       )}
