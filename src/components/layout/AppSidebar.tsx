@@ -24,7 +24,8 @@ import {
   Brain,
   DollarSign,
   Library,
-  Trophy
+  Trophy,
+  Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -49,6 +50,7 @@ const PRINCIPAL_MENU = [
   { title: "Principal Leaderboards", icon: Award,           path: "/principal-leaderboards" },
   { title: "Fee Structure",          icon: DollarSign,      path: "/fee-structure" },
   { title: "Exam Structure",         icon: Award,           path: "/exam-structure" },
+  { title: "Alumni",                 icon: Sparkles,        path: "/alumni" },
   { title: "Timetable Setup",        icon: Clock,           path: "/timetable" },
   { title: "Staff Access",           icon: ShieldCheck,     path: "/access-requests" },
   { title: "Reports",                icon: BarChart3,       path: "/reports" },

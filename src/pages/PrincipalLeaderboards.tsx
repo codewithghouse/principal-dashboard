@@ -144,7 +144,12 @@ const DetailPanel: React.FC<{ entity: DetailEntity; schoolId: string }> = ({ ent
   }, [entity.type, entity.row.id]);
 
   const isTop = entity.row.rank === 1;
-  const hasSolutions = !isTop && (insight?.solutions?.length ?? 0) > 0;
+  // Solutions render for ANY rank — even #1 may have weak teachers /
+  // subjects to lift, or maintenance routines to protect the lead. The
+  // `solutionLabel` from the AI/fallback distinguishes "What to keep
+  // doing" (healthy top) vs "Lift the floor" (struggling top) vs
+  // "How to climb to #N-1" (non-top).
+  const hasSolutions = (insight?.solutions?.length ?? 0) > 0;
 
   return (
     <div style={{ background: T.cardBg, border: `0.5px solid rgba(0,85,255,0.12)`, borderRadius: 16, margin: "0 0 4px", overflow: "hidden", boxShadow: T.SH_LG }}>

@@ -41,6 +41,16 @@ const matchesStudent=(r:any,sid:string,email:string):boolean=>{
   const rsem=String(r?.studentEmail||"").toLowerCase();
   return (!!sid&&rsid===sid)||(!!email&&rsem===email.toLowerCase());
 };
+// Broad writer-timestamp probe — different writers stamp different fields
+// (test_scores: timestamp, gradebook_scores: uploadedAt, results: createdAt,
+// imports: updatedAt, attendance: date+timestamp). Strict probe of just 3
+// silently dropped ~40% of recent records (memory: bug_pattern_filterbytime_field_drift).
+const writerTs=(d:any):Date|null=>
+  toDate(d?.timestamp||d?.createdAt||d?.date||d?.uploadedAt||d?.updatedAt);
+const writerMs=(d:any):number=>writerTs(d)?.getTime()??0;
+const writerDateKey=(d:any):string=>{
+  const t=writerTs(d);return t?ymdLocal(t):"";
+};
 
 // ── Card wrapper — matches dashboard pop hover (via global CSS) ─────────
 const Card=({children,title,action,style:st}:{children:React.ReactNode;title?:string;action?:React.ReactNode;style?:React.CSSProperties})=>(
@@ -70,6 +80,14 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
   const testsRef=useRef<any[]>([]);const assignmentsRef=useRef<any[]>([]);
   const lessonPlansRef=useRef<any[]>([]);const parentNotesRef=useRef<any[]>([]);
   const testScoresRef=useRef<any[]>([]);
+  // gradebook_scores is co-canonical with test_scores — gradebook bulk
+  // uploads land here; missing this listener silently dropped ~all
+  // gradebook entries (memory: owner_dashboard_alternate_data_sources).
+  const gradebookScoresRef=useRef<any[]>([]);
+  // Raw attendance buffers feed compute()'s attribution + synthesis pipeline.
+  // tAttRef holds the FINAL synthesized output (consumed by calendar render).
+  const rawAttRef=useRef<any[]>([]);
+  const rawTeacherAttRef=useRef<any[]>([]);
   // Debounce timer — all 11 listeners share one timer so compute() runs
   // ONCE after the initial burst settles (was: 11 simultaneous compute()
   // calls on first mount, each O(scores) work — visible jank on big data).
@@ -121,30 +139,114 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
   //  - Student/enrollment counts deduped by studentId/email.
   const compute=()=>{
     const classes=classesRef.current,enrolls=enrollRef.current;
-    // Cross-collection dedup
-    const allRaw=[...resultsRef.current,...testScoresRef.current];
+
+    // ── 3-tier attribution (memory: pattern_3tier_attribution) ──────────────
+    // Event streams are now school-scoped at the listener level (no strict
+    // teacherId filter — that was the silent killer that hid every doc
+    // whose teacherId field was missing/email-keyed/legacy-formatted, per
+    // bug_pattern_branch_filter_on_event_streams). Attribution moves here:
+    //   Tier 1: direct teacherId match
+    //   Tier 2: teacherEmail match (case-insensitive)
+    //   Tier 3: classId ∈ teacher's resolved classes (+ optional lenient
+    //           subject substring match for score docs to avoid stealing
+    //           a co-teacher's score in the same class)
+    const teacherEmail=String(teacher.email||"").toLowerCase();
+    const teacherSubj=String(teacher.subject||"").toLowerCase();
+    const classIdSet=new Set(classes.map(c=>c.id).filter(Boolean));
+    const matchByIdOrEmail=(d:any):boolean=>{
+      if(teacher.id&&String(d?.teacherId||"")===teacher.id)return true;
+      if(teacherEmail&&String(d?.teacherEmail||"").toLowerCase()===teacherEmail)return true;
+      return false;
+    };
+    const matchTeacherEvent=(d:any,opts?:{lenientSubject?:boolean}):boolean=>{
+      if(matchByIdOrEmail(d))return true;
+      if(d?.classId&&classIdSet.has(d.classId)){
+        if(opts?.lenientSubject){
+          const s=String(d?.subject||d?.subjectName||"").toLowerCase();
+          if(!teacherSubj||!s)return true;
+          return s.includes(teacherSubj)||teacherSubj.includes(s);
+        }
+        return true;
+      }
+      return false;
+    };
+
+    // Apply attribution BEFORE any aggregation. Score docs use lenient
+    // subject (handles "Math" vs "Mathematics" drift). Author/recipient
+    // docs (reviews/meetings/tests/assignments/plans/notes) stay strict
+    // id|email so we never wrongly attribute a co-teacher's artifact.
+    // gradebook_scores merged into the score pool — co-canonical with
+    // test_scores (memory: owner_dashboard_alternate_data_sources).
+    const filteredResults     = resultsRef.current        .filter(d=>matchTeacherEvent(d,{lenientSubject:true}));
+    const filteredTestScores  = testScoresRef.current     .filter(d=>matchTeacherEvent(d,{lenientSubject:true}));
+    const filteredGradebook   = gradebookScoresRef.current.filter(d=>matchTeacherEvent(d,{lenientSubject:true}));
+    const filteredReviews     = reviewsRef.current        .filter(matchByIdOrEmail);
+    const filteredMeetings    = meetingsRef.current       .filter(matchByIdOrEmail);
+    const filteredTests       = testsRef.current          .filter(matchByIdOrEmail);
+    const filteredAssignments = assignmentsRef.current    .filter(matchByIdOrEmail);
+    const filteredLessonPlans = lessonPlansRef.current    .filter(matchByIdOrEmail);
+    const filteredParentNotes = parentNotesRef.current    .filter(matchByIdOrEmail);
+
+    // ── Attendance synthesis ───────────────────────────────────────────────
+    // Prefer real teacher_attendance docs (id/email matched). Otherwise
+    // synthesize one entry per (date, classId) from student-attendance docs
+    // belonging to this teacher's resolved classes — that's the real proxy
+    // for "classes this teacher took" since the attendance writer rarely
+    // tags teacherId on student-attendance rows.
+    // Merge real teacher_attendance docs WITH synthesized sessions from
+    // student-attendance — keyed by (date, classId). Real docs win on dupe
+    // keys (authoritative status). Earlier "either/or" logic silently
+    // discarded ALL synthesized sessions whenever even ONE legacy
+    // teacher_attendance doc existed — that's why fresh class-marking
+    // didn't show up in "This Month" until both sources merged.
+    const dateKeyOf=(r:any):string=>{
+      if(!r?.date)return"";
+      if(typeof r.date==="string")return r.date.slice(0,10);
+      const dt=toDate(r.date);return dt?ymd(dt):"";
+    };
+    const filteredTeacherAtt=rawTeacherAttRef.current.filter(matchByIdOrEmail);
+    const sessions=new Map<string,{date:any;classId:string;status:string}>();
+    // Pass 1: real teacher_attendance — preserve writer-supplied status.
+    filteredTeacherAtt.forEach(r=>{
+      const k=`${dateKeyOf(r)}|${r.classId||""}`;
+      sessions.set(k,{date:r.date,classId:r.classId||"",status:String(r?.status||"present").toLowerCase()});
+    });
+    // Pass 2: synth from student-attendance — only fills gaps (won't
+    // overwrite a real teacher_attendance entry for the same session).
+    rawAttRef.current.forEach(r=>{
+      if(!matchTeacherEvent(r))return;
+      const k=`${dateKeyOf(r)}|${r.classId||""}`;
+      if(!sessions.has(k))sessions.set(k,{date:r.date,classId:r.classId||"",status:"present"});
+    });
+    tAttRef.current = Array.from(sessions.values());
+
+    // Cross-collection dedup — same fingerprint key across results +
+    // test_scores + gradebook_scores so a single exam mirrored into
+    // multiple collections doesn't triple-count. Date key uses the broad
+    // writerTs probe (timestamp/createdAt/date/uploadedAt/updatedAt) so
+    // dedup works whichever field the writer stamped.
+    const allRaw=[...filteredResults,...filteredTestScores,...filteredGradebook];
     const fpSeen=new Set<string>();
     const results:{raw:any;_pct:number}[]=[];
     allRaw.forEach(r=>{
       const p=getScore(r);
       if(p===null)return;
       const subj=String(r.subject??r.subjectName??"").toLowerCase();
-      const ts=r.timestamp??r.createdAt??r.date;
-      const dateK=ts?(typeof ts==="string"?ts.slice(0,10):ts?.toDate?ymd(ts.toDate()):""):"";
+      const dateK=writerDateKey(r);
       const studentKey=String(r.studentId||r.studentEmail||"").toLowerCase();
       const fp=`${studentKey}|${subj}|${dateK}|${Math.round(p*10)}`;
       if(fpSeen.has(fp))return;
       fpSeen.add(fp);
       results.push({raw:r,_pct:p});
     });
-    const rvList=reviewsRef.current,tAtt=tAttRef.current,meetings=meetingsRef.current;
+    const rvList=filteredReviews,tAtt=tAttRef.current,meetings=filteredMeetings;
 
     // Activity counters — teacher-created artifacts (real Firebase counts)
     setActivity({
-      testsCreated:       testsRef.current.length,
-      assignmentsCreated: assignmentsRef.current.length,
-      lessonPlansCount:   lessonPlansRef.current.length,
-      parentNotesCount:   parentNotesRef.current.length,
+      testsCreated:       filteredTests.length,
+      assignmentsCreated: filteredAssignments.length,
+      lessonPlansCount:   filteredLessonPlans.length,
+      parentNotesCount:   filteredParentNotes.length,
     });
 
     // Per-class averages — null when no scores for that class.
@@ -178,12 +280,14 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
       classesTaken,
       totalClasses:mAtt.length,
       attPct:mAtt.length?pct(classesTaken,mAtt.length):null,
+      // Use broad writerMs probe so gradebook_scores (uploadedAt-stamped)
+      // and import-only docs (updatedAt) get counted in this-month tests.
       testsCount:new Set(
         results
-          .filter(({raw})=>(toDate(raw.createdAt||raw.timestamp)?.getTime()||0)>=startOfMonth.getTime())
+          .filter(({raw})=>writerMs(raw)>=startOfMonth.getTime())
           .map(({raw})=>raw.testId||raw.subject)
       ).size,
-      meetingsCount:meetings.filter(m=>(toDate(m.date||m.createdAt)?.getTime()||0)>=startOfMonth.getTime()).length,
+      meetingsCount:meetings.filter(m=>writerMs(m)>=startOfMonth.getTime()).length,
     });
 
     // Subject grouping — falls back to teacher.subject ONLY when result has
@@ -229,7 +333,7 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
     setMonthlyTrend(Array.from({length:6},(_,i)=>{
       const d=new Date(now.getFullYear(),now.getMonth()-(5-i),1);
       const monthRes=results.filter(({raw})=>{
-        const dt=toDate(raw.createdAt||raw.timestamp||raw.date);
+        const dt=writerTs(raw);
         return dt&&dt.getMonth()===d.getMonth()&&dt.getFullYear()===d.getFullYear();
       });
       const sc=monthRes.map(r=>r._pct);
@@ -341,68 +445,38 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
       unsubs.push(()=>clearInterval(recomputeEnrollments));
     }).catch(err=>console.warn("[TeacherProfile] teaching_assignments fetch failed:",err));
 
-    // Per-collection listeners — all scoped by schoolId + teacherId.
-    // Uses scheduleCompute() so the initial burst of 8+ listener fires
-    // collapses into a single recompute after 80ms.
-    const sub=(coll:string,setter:(s:any)=>void,label:string)=>onSnapshot(
-      query(collection(db,coll),where("schoolId","==",schoolId),where("teacherId","==",teacher.id)),
+    // Per-collection listeners — school-scoped at Firestore (NO teacherId
+    // filter — that was the silent killer per memory
+    // bug_pattern_branch_filter_on_event_streams). Attribution lives in
+    // compute() via 3-tier matcher (pattern_3tier_attribution).
+    // scheduleCompute() collapses the initial burst into one recompute.
+    const subSchool=(coll:string,setter:(s:any)=>void,label:string)=>onSnapshot(
+      query(collection(db,coll),where("schoolId","==",schoolId)),
       s=>{setter(s.docs.map(d=>({id:d.id,...d.data()})));scheduleCompute();},
       errLog(label),
     );
 
-    unsubs.push(sub("results",         arr=>{resultsRef.current=arr;},      "results"));
-    unsubs.push(sub("teacher_reviews", arr=>{reviewsRef.current=arr;},      "teacher_reviews"));
-    unsubs.push(sub("parent_meetings", arr=>{meetingsRef.current=arr;},     "parent_meetings"));
-    unsubs.push(sub("tests",           arr=>{testsRef.current=arr;},        "tests"));
-    unsubs.push(sub("assignments",     arr=>{assignmentsRef.current=arr;},  "assignments"));
-    unsubs.push(sub("lessonPlans",     arr=>{lessonPlansRef.current=arr;},  "lessonPlans"));
-    unsubs.push(sub("parent_notes",    arr=>{parentNotesRef.current=arr;},  "parent_notes"));
-    unsubs.push(sub("test_scores",     arr=>{testScoresRef.current=arr;},   "test_scores"));
+    unsubs.push(subSchool("results",         arr=>{resultsRef.current=arr;},      "results"));
+    unsubs.push(subSchool("teacher_reviews", arr=>{reviewsRef.current=arr;},      "teacher_reviews"));
+    unsubs.push(subSchool("parent_meetings", arr=>{meetingsRef.current=arr;},     "parent_meetings"));
+    unsubs.push(subSchool("tests",           arr=>{testsRef.current=arr;},        "tests"));
+    unsubs.push(subSchool("assignments",     arr=>{assignmentsRef.current=arr;},  "assignments"));
+    unsubs.push(subSchool("lessonPlans",     arr=>{lessonPlansRef.current=arr;},  "lessonPlans"));
+    unsubs.push(subSchool("parent_notes",    arr=>{parentNotesRef.current=arr;},  "parent_notes"));
+    unsubs.push(subSchool("test_scores",     arr=>{testScoresRef.current=arr;},   "test_scores"));
+    unsubs.push(subSchool("gradebook_scores",arr=>{gradebookScoresRef.current=arr;},"gradebook_scores"));
 
-    // Teacher attendance — derived from TWO sources:
-    //  (A) `teacher_attendance` collection (proper HR-style — 1 doc per
-    //      session per teacher with status). Most setups don't write this.
-    //  (B) `attendance` collection (student attendance docs the teacher
-    //      marked). Always populated for active teachers. We synthesize
-    //      one teacher-attendance entry per unique (date, classId) session
-    //      that the teacher actually marked — that's a real proxy for
-    //      "classes this teacher took".
-    // We listen to BOTH and prefer (A) when non-empty.
-    let teacherAttDocs:any[]=[];let synthAttDocs:any[]=[];
-    const mergeAtt=()=>{
-      // Prefer real teacher_attendance docs; otherwise use synthesized ones
-      // from student-attendance sessions. Either way, status is normalized.
-      tAttRef.current = teacherAttDocs.length>0 ? teacherAttDocs : synthAttDocs;
-    };
-    unsubs.push(onSnapshot(
-      query(collection(db,"teacher_attendance"),where("schoolId","==",schoolId),where("teacherId","==",teacher.id)),
-      s=>{teacherAttDocs=s.docs.map(d=>({id:d.id,...d.data()}));mergeAtt();scheduleCompute();},
-      errLog("teacher_attendance"),
-    ));
-    unsubs.push(onSnapshot(
-      query(collection(db,"attendance"),where("schoolId","==",schoolId),where("teacherId","==",teacher.id)),
-      s=>{
-        // Dedup student-attendance docs by (date, classId) → one synthetic
-        // teacher-attendance entry per class session marked. Status:
-        // "present" if teacher marked any students that day in that class
-        // (since the teacher being present is what enabled marking).
-        const sessions=new Map<string,{date:any;classId:string;status:string}>();
-        s.docs.forEach(d=>{
-          const r=d.data() as any;
-          const dateKey=(()=>{
-            if(!r.date)return"";
-            if(typeof r.date==="string")return r.date.slice(0,10);
-            const dt=toDate(r.date);return dt?ymd(dt):"";
-          })();
-          const k=`${dateKey}|${r.classId||""}`;
-          if(!sessions.has(k))sessions.set(k,{date:r.date,classId:r.classId||"",status:"present"});
-        });
-        synthAttDocs=Array.from(sessions.values());
-        mergeAtt();
-        scheduleCompute();
-      },
-      errLog("attendance(teacher-marked)"),
-    ));
+    // Teacher attendance — derived from TWO sources, both school-scoped at
+    // Firestore. Attribution + synthesis lives in compute() so the result
+    // always reflects the latest classIdSet (resolved from teaching_assignments).
+    //  (A) `teacher_attendance` — proper HR-style 1-doc-per-session.
+    //      Filtered by id|email match in compute().
+    //  (B) `attendance` — student attendance the teacher marked. Filtered
+    //      by classId∈teacher's classes in compute(), then deduped per
+    //      (date, classId) into synthetic teacher-attendance entries.
+    // compute() prefers (A) when non-empty, else falls back to (B).
+    unsubs.push(subSchool("teacher_attendance", arr=>{rawTeacherAttRef.current=arr;}, "teacher_attendance"));
+    unsubs.push(subSchool("attendance",         arr=>{rawAttRef.current=arr;},        "attendance"));
 
     // Safety net — unblock spinner after 8s if listeners haven't all settled
     const safetyTimer=setTimeout(()=>setLoading(false),8000);

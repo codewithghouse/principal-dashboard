@@ -58,6 +58,15 @@ function filterByTime<T>(items: T[], cutoff: Date | null, keys: string[]): T[] {
   });
 }
 
+// Canonical writer-timestamp probe order. Different collections + writers
+// stamp different fields (test_scores: timestamp; gradebook_scores:
+// updatedAt; results: timestamp; assignments: createdAt; attendance:
+// date+timestamp; legacy imports: updatedAt). A strict 2-3 key probe
+// silently drops ~40% of recent records (memory:
+// bug_pattern_filterbytime_field_drift). Keep this list as the single
+// source of truth for any time-windowed filter on event streams.
+const TS_KEYS = ["timestamp", "createdAt", "uploadedAt", "updatedAt", "date"];
+
 // ═════════════════════════════════════════════════════════════════════════
 export default function TeacherLeaderboard() {
   const { userData } = useAuth();
@@ -85,9 +94,15 @@ export default function TeacherLeaderboard() {
   // schoolId-only server-side; branchId in-memory (memory:
   // branchid_inference_lag — server-side branchId silently drops freshly
   // written records during the enforceBranchId trigger backfill window).
-  // Error handlers now log to console (was: silent `() => markLoaded()` —
-  // a permission denial or rule mismatch would just clear loading without
-  // any signal).
+  //
+  // CRITICAL: branch isolation lives ONLY on resolution entities (teachers /
+  // classes / teaching_assignments). Event streams (scores, attendance,
+  // assignments, teacher_attendance) get schoolId-only — applying branchId
+  // to events was the silent killer that hid every doc whose branchId
+  // drifted via legacy/migration/multi-branch teacher writes (memory:
+  // bug_pattern_branch_filter_on_event_streams). teacherScorer's 3-tier
+  // attribution (teacherId / classId+subject) is the real isolation; a
+  // branchId filter on events only over-restricts.
   useEffect(() => {
     if (!schoolId) { setLoading(false); return; }
 
@@ -101,23 +116,32 @@ export default function TeacherLeaderboard() {
 
     const inBranch = (raw: any): boolean =>
       !branchId || !raw?.branchId || raw.branchId === branchId;
-    const filterDocs = <T,>(snap: any, withId = false): T[] => snap.docs
+
+    // Resolution entities: branch-filtered (don't show teachers/classes
+    // from other branches).
+    const mapEntity = <T,>(snap: any, withId = false): T[] => snap.docs
       .map((d: any) => withId ? { id: d.id, ...(d.data() as any) } : (d.data() as any))
       .filter(inBranch);
+
+    // Event streams: schoolId-only at server, NO client-side branch filter.
+    const mapEvent = <T,>(snap: any, withId = false): T[] => snap.docs
+      .map((d: any) => withId ? { id: d.id, ...(d.data() as any) } : (d.data() as any));
 
     const scoped = (col: string) =>
       query(collection(db, col), where("schoolId", "==", schoolId));
 
     const unsubs = [
-      onSnapshot(scoped("teachers"),            (s) => { setTeachers(filterDocs<TeacherDoc>(s, true)); markLoaded(); }, onError("teachers")),
-      onSnapshot(scoped("test_scores"),         (s) => { setTestScores(filterDocs<ScoreDoc>(s)); markLoaded(); }, onError("test_scores")),
-      onSnapshot(scoped("results"),             (s) => { setResults(filterDocs<ScoreDoc>(s)); markLoaded(); }, onError("results")),
-      onSnapshot(scoped("gradebook_scores"),    (s) => { setGradebook(filterDocs<ScoreDoc>(s)); markLoaded(); }, onError("gradebook_scores")),
-      onSnapshot(scoped("attendance"),          (s) => { setAttendance(filterDocs<AttendanceDoc>(s)); markLoaded(); }, onError("attendance")),
-      onSnapshot(scoped("assignments"),         (s) => { setAssignments(filterDocs<AssignmentDoc>(s)); markLoaded(); }, onError("assignments")),
-      onSnapshot(scoped("teacher_attendance"),  (s) => { setTAttendance(filterDocs<TeacherAttendanceDoc>(s)); markLoaded(); }, onError("teacher_attendance")),
-      onSnapshot(scoped("classes"),             (s) => { setClasses(filterDocs<any>(s, true)); markLoaded(); }, onError("classes")),
-      onSnapshot(scoped("teaching_assignments"),(s) => { setTeachingAssignments(filterDocs<any>(s)); markLoaded(); }, onError("teaching_assignments")),
+      // Resolution entities — branch-filtered
+      onSnapshot(scoped("teachers"),            (s) => { setTeachers(mapEntity<TeacherDoc>(s, true)); markLoaded(); }, onError("teachers")),
+      onSnapshot(scoped("classes"),             (s) => { setClasses(mapEntity<any>(s, true)); markLoaded(); }, onError("classes")),
+      onSnapshot(scoped("teaching_assignments"),(s) => { setTeachingAssignments(mapEntity<any>(s)); markLoaded(); }, onError("teaching_assignments")),
+      // Event streams — schoolId-only
+      onSnapshot(scoped("test_scores"),         (s) => { setTestScores(mapEvent<ScoreDoc>(s)); markLoaded(); }, onError("test_scores")),
+      onSnapshot(scoped("results"),             (s) => { setResults(mapEvent<ScoreDoc>(s)); markLoaded(); }, onError("results")),
+      onSnapshot(scoped("gradebook_scores"),    (s) => { setGradebook(mapEvent<ScoreDoc>(s)); markLoaded(); }, onError("gradebook_scores")),
+      onSnapshot(scoped("attendance"),          (s) => { setAttendance(mapEvent<AttendanceDoc>(s)); markLoaded(); }, onError("attendance")),
+      onSnapshot(scoped("assignments"),         (s) => { setAssignments(mapEvent<AssignmentDoc>(s)); markLoaded(); }, onError("assignments")),
+      onSnapshot(scoped("teacher_attendance"),  (s) => { setTAttendance(mapEvent<TeacherAttendanceDoc>(s)); markLoaded(); }, onError("teacher_attendance")),
     ];
 
     return () => unsubs.forEach((u) => u());
@@ -158,16 +182,34 @@ export default function TeacherLeaderboard() {
       scopedTeachers = teachers.filter((t) => allowedIds.has(t.id));
     }
 
-    // Score using class-scoped data if class filter applied
-    const byClass = (items: any[]) =>
-      classFilter === "All" ? items : items.filter((x: any) => x.classId === classFilter);
+    // Score using class-scoped data if class filter applied. When narrowing
+    // to a specific class, two paths are accepted:
+    //   (a) direct: doc.classId === classFilter (modern writers)
+    //   (b) fallback: doc has NO classId but a teacherId belonging to a
+    //       teacher of this class (legacy/imported docs, e.g., older
+    //       gradebook entries written before classId tracking landed)
+    // Strict classId-only filter was silently dropping such legacy docs
+    // for class-filtered views even when their teacher clearly teaches
+    // that class — making the same teacher's metrics differ by filter.
+    const byClass = (items: any[]) => {
+      if (classFilter === "All") return items;
+      const allowedTeachers = classToTeachers.get(classFilter) || new Set<string>();
+      return items.filter((x: any) => {
+        if (x?.classId === classFilter) return true;
+        if (!x?.classId && x?.teacherId && allowedTeachers.has(x.teacherId)) return true;
+        return false;
+      });
+    };
 
     const scored = scoreTeachers({
       teachers:           scopedTeachers,
-      scores:             filterByTime(byClass([...testScores, ...results, ...gradebook]), cut, ["date", "createdAt", "uploadedAt"]),
-      attendance:         filterByTime(byClass(attendance), cut, ["date", "createdAt"]),
-      assignments:        filterByTime(byClass(assignments), cut, ["createdAt", "uploadedAt", "date"]),
-      teacherAttendance:  filterByTime(tAttendance, cut, ["date", "createdAt"]),
+      // All event streams use the broad TS_KEYS probe — was strict 2-3 keys
+      // per collection, which silently dropped EnterScores test_scores
+      // (timestamp-only) and any legacy import using updatedAt.
+      scores:             filterByTime(byClass([...testScores, ...results, ...gradebook]), cut, TS_KEYS),
+      attendance:         filterByTime(byClass(attendance), cut, TS_KEYS),
+      assignments:        filterByTime(byClass(assignments), cut, TS_KEYS),
+      teacherAttendance:  filterByTime(tAttendance, cut, TS_KEYS),
       teachingAssignments: classFilter === "All"
         ? teachingAssignments
         : teachingAssignments.filter((ta: any) => ta.classId === classFilter),
@@ -181,20 +223,39 @@ export default function TeacherLeaderboard() {
     );
   }, [teachers, testScores, results, gradebook, attendance, assignments, tAttendance, classToTeachers, classFilter, timeRange, search]);
 
-  const stats = useMemo(() => {
-    const total = ranked.length;
-    const avg = total > 0 ? ranked.reduce((a, b) => a + b.composite, 0) / total : 0;
-    const top = ranked[0];
-    const active = ranked.filter((r) => r.testCount > 0 || r.assignments > 0).length;
-    return { total, avg, top, active };
-  }, [ranked]);
-
+  // hasData = does this teacher have ANY measured signal? Each clause maps
+  // to one of the 5 weighted signals in teacherScorer:
+  //   testCount > 0       → has scores  (classAvg + passRate signals)
+  //   assignments > 0     → has activity
+  //   attendance !== null → has class-attendance signal
+  //   punctuality !== null → has teacher-attendance signal
+  // Note: NO `composite > 0` gate. A teacher with real 0% scores has
+  // composite = 0 yet clearly has data — gating on composite would have
+  // misclassified them as "New · No data yet" (memory:
+  // bug_pattern_score_zero_no_data: tier classifier must short-circuit on
+  // no-data first, never conflate "real zero" with "missing").
   const hasData = (r: TeacherScore) =>
-    r.composite > 0 && (r.testCount > 0 || r.assignments > 0 || r.attendance !== null);
+    r.testCount > 0 || r.assignments > 0 || r.attendance !== null || r.punctuality !== null;
   const dataTeachers   = ranked.filter(hasData);
   const noDataTeachers = ranked.filter((r) => !hasData(r));
   const top3 = dataTeachers.slice(0, 3);
   const rest = [...dataTeachers.slice(3), ...noDataTeachers];
+
+  // Branch avg = avg composite of teachers WITH data only. Including
+  // composite=0 entries from new/empty teachers dragged the displayed
+  // "Branch Avg Score" artificially down (a school of 4 @ 80% + 1 new
+  // showed 64% instead of 80%). `stats.active` aligned with the same
+  // hasData definition for consistency — same predicate of "this teacher
+  // contributes to KPIs". hasData inlined so useMemo deps stay [ranked].
+  const stats = useMemo(() => {
+    const dataOnly = ranked.filter(
+      (r) => r.testCount > 0 || r.assignments > 0 || r.attendance !== null || r.punctuality !== null,
+    );
+    const avg = dataOnly.length > 0
+      ? dataOnly.reduce((a, b) => a + b.composite, 0) / dataOnly.length
+      : 0;
+    return { total: ranked.length, avg, top: ranked[0], active: dataOnly.length };
+  }, [ranked]);
 
   // ═══════════════════════════════════════════════════════════════════════
   if (loading) {

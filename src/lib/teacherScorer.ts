@@ -96,8 +96,13 @@ function numOf(v: any): number {
 /** Normalize a raw score doc into a 0-100 percentage. Returns null if unusable.
  *  Supports multiple field-name conventions that show up across schools:
  *    percentage — direct 0-100
- *    score      | marks | obtainedMarks | marksObtained
- *    maxScore   | totalMarks | maxMarks | outOf
+ *    score | mark | marks | obtainedMarks | marksObtained
+ *    maxScore | totalMarks | maxMarks | outOf
+ *
+ *  IMPORTANT: `mark` (singular) is the gradebook_scores schema —
+ *  Gradebook.tsx writes `mark: Number(...)`. Without this alias, 100% of
+ *  gradebook docs return null pct → silent drop, since gradebook is the
+ *  bulk-upload path on most schools (memory: bug_pattern_score_field_singular_mark).
  */
 function pctOf(s: ScoreDoc & Record<string, any>): number | null {
   // 1) Direct percentage
@@ -113,7 +118,7 @@ function pctOf(s: ScoreDoc & Record<string, any>): number | null {
     }
     return NaN;
   };
-  const raw = firstFinite(s.score, s.marks, s.obtainedMarks, s.marksObtained);
+  const raw = firstFinite(s.score, s.mark, s.marks, s.obtainedMarks, s.marksObtained);
   const max = firstFinite(s.maxScore, s.totalMarks, s.maxMarks, s.outOf);
 
   if (Number.isFinite(raw) && Number.isFinite(max) && max > 0) {
@@ -150,6 +155,17 @@ export interface ScoreInput {
 export function scoreTeachers(input: ScoreInput): TeacherScore[] {
   const { teachers, scores, attendance, assignments, teacherAttendance, teachingAssignments = [] } = input;
 
+  // Lookups: teacherId → TeacherDoc (Tier 3 subject narrowing) and
+  // teacherEmail → TeacherDoc (Tier 2 email match). Email keys are
+  // lowercased + trimmed once here so doc lookups stay O(1).
+  const teachersById = new Map<string, TeacherDoc>();
+  const teachersByEmail = new Map<string, TeacherDoc>();
+  teachers.forEach((t) => {
+    if (t.id) teachersById.set(t.id, t);
+    const e = String(t.email || "").toLowerCase().trim();
+    if (e) teachersByEmail.set(e, t);
+  });
+
   // Build classId → Set<teacherId> from teaching_assignments (active only)
   // for fallback matching when score/attendance/assignment docs lack
   // teacherId but have classId.
@@ -163,17 +179,45 @@ export function scoreTeachers(input: ScoreInput): TeacherScore[] {
     classTeachers.get(cid)!.add(tid);
   });
 
-  // Resolve a doc to one or more teacherIds:
-  //   1. If doc.teacherId is present → use that
-  //   2. Else fall back to classId → all teachers teaching that class (from teaching_assignments)
-  const resolveTeacherIds = (doc: { teacherId?: string; classId?: string }): string[] => {
-    if (doc.teacherId) return [doc.teacherId];
-    if (doc.classId) {
-      const set = classTeachers.get(doc.classId);
-      if (set && set.size > 0) return Array.from(set);
+  // Resolve a doc to one or more teacherIds (memory: pattern_3tier_attribution):
+  //   Tier 1: direct teacherId match
+  //   Tier 2: teacherEmail → registered teacher (clean single match, defends
+  //           against id-format drift / legacy docs keyed by email only)
+  //   Tier 3: classId → teachers of that class, NARROWED by lenient subject
+  //           match when both the doc and the teacher carry subject info.
+  //           Prevents a Math score (no teacherId) from fanning out to
+  //           Math + Science + English teachers of the same class.
+  const resolveTeacherIds = (doc: any): string[] => {
+    // Tier 1
+    if (doc?.teacherId) return [doc.teacherId];
+    // Tier 2 — case-insensitive email match against teachers index
+    const docEmail = String(doc?.teacherEmail || "").toLowerCase().trim();
+    if (docEmail) {
+      const t = teachersByEmail.get(docEmail);
+      if (t?.id) return [t.id];
     }
-    return [];
+    // Tier 3 — classId fallback with optional subject narrowing
+    if (!doc?.classId) return [];
+    const set = classTeachers.get(doc.classId);
+    if (!set || set.size === 0) return [];
+    const docSubj = String(doc.subject || doc.subjectName || "").toLowerCase().trim();
+    if (docSubj && set.size > 1) {
+      const matching = Array.from(set).filter((tid) => {
+        const t = teachersById.get(tid);
+        const tSubj = String(t?.subject || "").toLowerCase().trim();
+        if (!tSubj) return true; // teacher missing subject — keep as fallback (don't exclude)
+        return docSubj.includes(tSubj) || tSubj.includes(docSubj);
+      });
+      if (matching.length > 0) return matching;
+    }
+    return Array.from(set);
   };
+
+  // Stable per-student key (memory: dual_query_pattern_studentid_email).
+  // Used by studentCount Set so a legacy email-only score doc and a
+  // newer studentId-keyed attendance doc for the SAME student count once.
+  const stuKey = (s: any): string =>
+    String(s?.studentId || String(s?.studentEmail || "").toLowerCase() || "");
 
   // Index data by teacherId, with classId fallback
   const scoresByTeacher    = new Map<string, ScoreDoc[]>();
@@ -237,12 +281,14 @@ export function scoreTeachers(input: ScoreInput): TeacherScore[] {
     }).length;
     const punctuality = tAttOwn.length > 0 ? (punctualCount / tAttOwn.length) * 100 : null;
 
-    // Student count = union of students seen across scores AND attendance.
-    // This gives a useful count even if the teacher has attendance data but
-    // no scores entered yet.
+    // Student count = union of students seen across scores AND attendance,
+    // deduped by studentId OR studentEmail (lowercased). Was studentId-only
+    // — legacy/imported docs that only carry studentEmail were silently
+    // skipped, undercounting students for any teacher with mixed-source
+    // history (memory: dual_query_pattern_studentid_email).
     const studentCount = new Set([
-      ...tScores.map((s) => s.studentId),
-      ...tAtt.map((a) => a.studentId),
+      ...tScores.map(stuKey),
+      ...tAtt.map(stuKey),
     ].filter(Boolean)).size;
 
     return {
