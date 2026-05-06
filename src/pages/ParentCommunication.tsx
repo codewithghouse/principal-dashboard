@@ -257,7 +257,13 @@ const ParentCommunication = () => {
           style={{
             fontFamily: "'DM Sans', -apple-system, sans-serif",
             background: "#EEF4FF",
-            height: "100vh",
+            // Reserve space for the header (56px) + the floating
+            // MobileTabBar (68px bar + 12px gap above + iOS safe-area).
+            // `100vh` would extend the chat past the visible area and
+            // tuck the input bar behind the navbar. `100dvh` is the
+            // dynamic viewport so it adapts to the mobile address bar
+            // collapsing/expanding.
+            height: "calc(100dvh - 56px - 80px - env(safe-area-inset-bottom))",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",

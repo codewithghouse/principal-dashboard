@@ -980,83 +980,95 @@ const Teachers = () => {
                   {/* Left accent */}
                   <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-[2px]" style={{ background: accentBar(t.color) }} />
 
-                  {/* Card header */}
-                  <div className="flex items-start gap-[14px] pl-[22px] pr-[18px] pt-[18px] pb-4 relative" style={{ borderBottom: `0.5px solid ${SEP}` }}>
-                    {/* Avatar */}
-                    <div className="w-[52px] h-[52px] rounded-[17px] flex items-center justify-center text-[18px] font-bold text-white shrink-0"
-                      style={{ background: av.bg, boxShadow: av.shadow }}>
-                      {t.initials}
-                    </div>
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      {editingId === t.id ? (
-                        <div className="flex items-center gap-[6px] mb-[3px]">
-                          <input
-                            autoFocus
-                            value={editName}
-                            onChange={e => setEditName(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") handleSaveName(t.id);
-                              if (e.key === "Escape") { setEditingId(null); setEditName(""); }
-                            }}
-                            className="flex-1 text-[15px] font-bold px-2 py-1 rounded-[8px] outline-none"
-                            style={{ border: `1px solid ${B1}66`, color: T1 }}
-                          />
-                          <button onClick={() => handleSaveName(t.id)} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-white shrink-0 active:scale-95 transition-transform"
-                            style={{ background: GREEN, boxShadow: "0 2px 6px rgba(0,200,83,0.30)" }}
-                            title="Save">
-                            <Check className="w-[15px] h-[15px]" strokeWidth={3} />
-                          </button>
-                          <button onClick={() => { setEditingId(null); setEditName(""); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center shrink-0 active:scale-95 transition-transform"
-                            style={{ background: "rgba(255,51,85,0.10)", border: "0.5px solid rgba(255,51,85,0.22)", color: RED }}
-                            title="Cancel">
-                            <X className="w-[15px] h-[15px]" strokeWidth={3} />
-                          </button>
+                  {/* Card header — restructured: Row 1 (avatar + name, full width)
+                      and Row 2 (icon tray, own row). Old absolute-positioned tray
+                      stole horizontal width from the name causing truncation. */}
+                  <div className="px-[18px] pt-[18px] pb-[14px]" style={{ borderBottom: `0.5px solid ${SEP}` }}>
+                    {/* Row 1: Avatar + Info — name now has full width */}
+                    <div className="flex items-start gap-[14px]">
+                      {/* Avatar */}
+                      <div className="w-[52px] h-[52px] rounded-[17px] flex items-center justify-center text-[18px] font-bold text-white shrink-0"
+                        style={{ background: av.bg, boxShadow: av.shadow }}>
+                        {t.initials}
+                      </div>
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        {editingId === t.id ? (
+                          <div className="flex items-center gap-[6px] mb-[3px]">
+                            <input
+                              autoFocus
+                              value={editName}
+                              onChange={e => setEditName(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") handleSaveName(t.id);
+                                if (e.key === "Escape") { setEditingId(null); setEditName(""); }
+                              }}
+                              className="flex-1 text-[15px] font-bold px-2 py-1 rounded-[8px] outline-none"
+                              style={{ border: `1px solid ${B1}66`, color: T1 }}
+                            />
+                            <button onClick={() => handleSaveName(t.id)} className="w-7 h-7 rounded-[8px] flex items-center justify-center text-white shrink-0 active:scale-95 transition-transform"
+                              style={{ background: GREEN, boxShadow: "0 2px 6px rgba(0,200,83,0.30)" }}
+                              title="Save">
+                              <Check className="w-[15px] h-[15px]" strokeWidth={3} />
+                            </button>
+                            <button onClick={() => { setEditingId(null); setEditName(""); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center shrink-0 active:scale-95 transition-transform"
+                              style={{ background: "rgba(255,51,85,0.10)", border: "0.5px solid rgba(255,51,85,0.22)", color: RED }}
+                              title="Cancel">
+                              <X className="w-[15px] h-[15px]" strokeWidth={3} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-[17px] font-bold mb-[3px] truncate" style={{ color: T1, letterSpacing: "-0.3px" }}>{t.name}</div>
+                        )}
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.06em] mb-2" style={{ color: t.subject ? T3 : T4 }}>{t.subject || "No subject"}</div>
+                        <div className="inline-flex items-center gap-1 px-[11px] py-[4px] rounded-full text-[10px] font-bold"
+                          style={{ background: chip.bg, color: chip.color, border: `0.5px solid ${chip.border}` }}>
+                          <span className="w-[5px] h-[5px] rounded-full" style={{ background: chip.dotColor, boxShadow: `0 0 0 1.5px ${chip.dotColor}33` }} />
+                          {t.status}
                         </div>
-                      ) : (
-                        <div className="text-[17px] font-bold mb-[3px] truncate" style={{ color: T1, letterSpacing: "-0.3px" }}>{t.name}</div>
-                      )}
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.06em] mb-2" style={{ color: t.subject ? T3 : T4 }}>{t.subject || "No subject"}</div>
-                      <div className="inline-flex items-center gap-1 px-[11px] py-[4px] rounded-full text-[10px] font-bold"
-                        style={{ background: chip.bg, color: chip.color, border: `0.5px solid ${chip.border}` }}>
-                        <span className="w-[5px] h-[5px] rounded-full" style={{ background: chip.dotColor, boxShadow: `0 0 0 1.5px ${chip.dotColor}33` }} />
-                        {t.status}
                       </div>
                     </div>
-                    {/* Icon tray */}
-                    <div className="flex gap-[6px] absolute top-[16px] right-[16px]">
+                    {/* Row 2: Icon tray — own row, larger taps, evenly distributed.
+                        SOLID color buttons + WHITE icons for max contrast. */}
+                    <div className="flex gap-[10px] mt-[14px] pl-[66px]">
                       <button
                         onClick={() => setSelectedTeacher(t)}
-                        className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center active:scale-[0.90] transition-transform"
-                        style={{ background: BG, border: "0.5px solid rgba(0,85,255,0.12)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
+                        className="flex-1 h-[40px] rounded-[12px] flex items-center justify-center active:scale-[0.92] transition-transform"
+                        style={{ background: B1, boxShadow: "0 3px 10px rgba(0,85,255,0.32)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
                         aria-label="View">
-                        <Eye className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.55)" }} strokeWidth={2.3} />
+                        <Eye size={20} color="#FFFFFF" strokeWidth={2.6} />
                       </button>
                       <button
                         onClick={() => handleTogglePrimary(t)}
-                        className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center active:scale-[0.90] transition-transform"
+                        className="flex-1 h-[40px] rounded-[12px] flex items-center justify-center active:scale-[0.92] transition-transform"
                         style={{
-                          background: t.isPrimarySchool ? "rgba(255,170,0,0.10)" : BG,
-                          border: `0.5px solid ${t.isPrimarySchool ? "rgba(255,170,0,0.24)" : "rgba(0,85,255,0.12)"}`,
+                          background: t.isPrimarySchool ? GOLD : "#94A3B8",
+                          boxShadow: t.isPrimarySchool
+                            ? "0 3px 10px rgba(255,170,0,0.40)"
+                            : "0 3px 10px rgba(148,163,184,0.32)",
                           transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
                         }}
                         aria-label="Primary">
-                        <Star className={`w-[13px] h-[13px] ${t.isPrimarySchool ? "fill-current" : ""}`}
-                          style={{ color: t.isPrimarySchool ? GOLD : "rgba(0,85,255,0.55)" }} strokeWidth={2.3} />
+                        <Star
+                          size={20}
+                          color="#FFFFFF"
+                          fill={t.isPrimarySchool ? "#FFFFFF" : "none"}
+                          strokeWidth={2.6}
+                        />
                       </button>
                       <button
                         onClick={() => handleStartEdit(t)}
-                        className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center active:scale-[0.90] transition-transform"
-                        style={{ background: BG, border: "0.5px solid rgba(0,85,255,0.12)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
+                        className="flex-1 h-[40px] rounded-[12px] flex items-center justify-center active:scale-[0.92] transition-transform"
+                        style={{ background: T2, boxShadow: "0 3px 10px rgba(0,32,128,0.32)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
                         aria-label="Edit">
-                        <Edit3 className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.55)" }} strokeWidth={2.3} />
+                        <Edit3 size={20} color="#FFFFFF" strokeWidth={2.6} />
                       </button>
                       <button
                         onClick={() => handleDeleteTeacher(t.id, t.name)}
-                        className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center active:scale-[0.90] transition-transform"
-                        style={{ background: RED_S, border: `0.5px solid ${RED_B}`, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
+                        className="flex-1 h-[40px] rounded-[12px] flex items-center justify-center active:scale-[0.92] transition-transform"
+                        style={{ background: RED, boxShadow: "0 3px 10px rgba(255,51,85,0.36)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
                         aria-label="Archive">
-                        <Trash2 className="w-[13px] h-[13px]" style={{ color: RED }} strokeWidth={2.3} />
+                        <Trash2 size={20} color="#FFFFFF" strokeWidth={2.6} />
                       </button>
                     </div>
                   </div>
@@ -1151,9 +1163,9 @@ const Teachers = () => {
                     <button
                       onClick={() => handleOpenRoster(t)}
                       className="w-[48px] h-[42px] rounded-[13px] flex items-center justify-center active:scale-[0.90] transition-transform"
-                      style={{ background: BG, border: "0.5px solid rgba(0,85,255,0.16)", color: T2, boxShadow: SH, transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
+                      style={{ background: T2, boxShadow: "0 4px 14px rgba(0,32,128,0.32)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
                       aria-label="More">
-                      <MoreHorizontal className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
+                      <MoreHorizontal size={20} color="#FFFFFF" strokeWidth={2.6} />
                     </button>
                   </div>
                 </div>

@@ -5,6 +5,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { tilt3D, tilt3DStyle } from "@/lib/use3DTilt";
 
 // ── Tokens — aligned to principal-dashboard palette ─────────────────────────
@@ -117,11 +118,12 @@ const Card = ({
   watermark?: React.ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: React.CSSProperties }>;
 }) => {
   const tk = THEME[theme];
+  const isMobile = useIsMobile();
   return (
     <div
       {...tilt3D}
       style={{
-        borderRadius: 18,
+        borderRadius: isMobile ? 14 : 18,
         overflow: "hidden",
         position: "relative",
         background: tk.surface,
@@ -156,7 +158,7 @@ const Card = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "14px 18px",
+            padding: isMobile ? "11px 14px" : "14px 18px",
             borderBottom: `0.5px solid rgba(0,0,0,0.04)`,
             background: "rgba(255,255,255,0.45)", // soft frosted band so the title stays legible over the gradient
             backdropFilter: "blur(6px)",
@@ -188,7 +190,7 @@ const Card = ({
           {action || null}
         </div>
       )}
-      <div style={{ padding: "16px 20px", position: "relative" }}>{children}</div>
+      <div style={{ padding: isMobile ? "12px 14px" : "16px 20px", position: "relative" }}>{children}</div>
     </div>
   );
 };
@@ -202,6 +204,7 @@ const StudentProfilePage = () => {
   const { studentId } = useParams<{ studentId: string }>();
   const { userData } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const [loading, setLoading] = useState(true);
   const [student, setStudent] = useState<any>(null);
@@ -458,28 +461,32 @@ const StudentProfilePage = () => {
   // RENDER
   // ══════════════════════════════════════════════════════════════════════════════
   return (
-    <div style={{ minHeight: "100vh", background: T.bg, padding: "20px 24px 60px", fontFamily: "'Inter','Plus Jakarta Sans',-apple-system,sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: T.bg, padding: isMobile ? "14px 12px 80px" : "20px 24px 60px", fontFamily: "'Inter','Plus Jakarta Sans',-apple-system,sans-serif" }}>
 
       {/* ═══ TOP BAR ══════════════════════════════════════════════════════════ */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <button onClick={() => navigate("/students")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, border: `1px solid ${T.bdr}`, background: T.white, color: T.ink2, fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
-          <ArrowLeft size={14} /> RETURN
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: isMobile ? 14 : 24, gap: 8 }}>
+        <button onClick={() => navigate("/students")} aria-label="Return to students" style={{ display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "7px 12px" : "8px 16px", borderRadius: 10, border: `1px solid ${T.bdr}`, background: T.white, color: T.ink2, fontSize: isMobile ? 11 : 13, fontWeight: 500, cursor: "pointer", flexShrink: 0 }}>
+          <ArrowLeft size={isMobile ? 13 : 14} /> {isMobile ? "BACK" : "RETURN"}
         </button>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => window.print()} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, border: `1px solid ${T.bdr}`, background: T.white, color: T.ink2, fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
-            <Printer size={13} /> EXPORT
+        <div style={{ display: "flex", gap: isMobile ? 6 : 8 }}>
+          <button onClick={() => window.print()} aria-label="Export profile as PDF" style={{ display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "7px 12px" : "8px 16px", borderRadius: 10, border: `1px solid ${T.bdr}`, background: T.white, color: T.ink2, fontSize: isMobile ? 11 : 12, fontWeight: 500, cursor: "pointer" }}>
+            <Printer size={isMobile ? 12 : 13} /> {isMobile ? "PDF" : "EXPORT"}
           </button>
-          <button onClick={() => navigate("/parent-communication")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, border: "none", background: T.blue, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-            <MessageSquare size={13} /> CONTACT
+          <button onClick={() => navigate("/parent-communication")} aria-label="Contact parent" style={{ display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "7px 12px" : "8px 16px", borderRadius: 10, border: "none", background: T.blue, color: "#fff", fontSize: isMobile ? 11 : 12, fontWeight: 600, cursor: "pointer" }}>
+            <MessageSquare size={isMobile ? 12 : 13} /> CONTACT
           </button>
         </div>
       </div>
 
-      {/* ═══ HERO: 3-COLUMN — Left stats | Center photo | Right cards ═══════ */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px 1fr", gap: 20, marginBottom: 20 }}>
+      {/* ═══ HERO: 3-COLUMN — Left stats | Center photo | Right cards ═══════
+           Mobile: stack to a single column with the photo/identity FIRST
+           (so principals see who they're looking at without scrolling), then
+           the left and right card stacks below. CSS `order` handles the
+           reorder without needing to duplicate JSX. */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 280px 1fr", gap: isMobile ? 12 : 20, marginBottom: isMobile ? 14 : 20 }}>
 
         {/* ── LEFT: Academic + Attendance + Subject Mastery ──────────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 12 : 16, order: isMobile ? 2 : 0 }}>
           {/* Academic Performance */}
           <Card title="Academic Performance" theme="blue" icon={GraduationCap} watermark={GraduationCap}>
             <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
@@ -570,13 +577,13 @@ const StudentProfilePage = () => {
         </div>
 
         {/* ── CENTER: Student Photo + Identity ──────────────────────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 20 }}>
-          <div style={{ width: 140, height: 140, borderRadius: "50%", border: `4px solid ${T.blue}`, background: T.blBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16, boxShadow: "0 8px 30px rgba(59,91,219,0.15)" }}>
-            <span style={{ fontSize: 42, fontWeight: 800, color: T.blue }}>{initials}</span>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: isMobile ? 4 : 20, order: isMobile ? 1 : 0 }}>
+          <div style={{ width: isMobile ? 100 : 140, height: isMobile ? 100 : 140, borderRadius: "50%", border: `${isMobile ? 3 : 4}px solid ${T.blue}`, background: T.blBg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: isMobile ? 10 : 16, boxShadow: "0 8px 30px rgba(59,91,219,0.15)" }}>
+            <span style={{ fontSize: isMobile ? 32 : 42, fontWeight: 800, color: T.blue }}>{initials}</span>
           </div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: T.ink, textAlign: "center", marginBottom: 4 }}>{student.name}</h2>
+          <h2 style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: T.ink, textAlign: "center", marginBottom: 4, padding: "0 8px" }}>{student.name}</h2>
           <p style={{ fontSize: 12, color: T.ink3, textAlign: "center", marginBottom: 4 }}>{student.className || student.class || "—"}</p>
-          <p style={{ fontSize: 11, color: T.ink3, textAlign: "center", marginBottom: 12 }}>Roll: {student.rollNo || student.roll || "—"} // ID: {(student.id || "").slice(0, 6).toUpperCase()}</p>
+          <p style={{ fontSize: 11, color: T.ink3, textAlign: "center", marginBottom: isMobile ? 10 : 12 }}>Roll: {student.rollNo || student.roll || "—"} // ID: {(student.id || "").slice(0, 6).toUpperCase()}</p>
           <div style={{ display: "flex", gap: 6 }}>
             <span style={{ padding: "4px 12px", borderRadius: 20, background: T.glBg, color: T.grn, fontSize: 10, fontWeight: 600 }}>ACTIVE</span>
             <span style={{ padding: "4px 12px", borderRadius: 20, background: riskColor === T.grn ? T.glBg : riskColor === T.amb ? T.alBg : T.rlBg, color: riskColor, fontSize: 10, fontWeight: 600 }}>{riskLevel}</span>
@@ -584,7 +591,7 @@ const StudentProfilePage = () => {
         </div>
 
         {/* ── RIGHT: Behaviour + AI Intelligence + Parent Comms + Teacher Obs ── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 12 : 16, order: isMobile ? 3 : 0 }}>
           {/* Behaviour Record */}
           <Card title="Behaviour Record" action={<DetailLink />} theme="red" icon={Shield} watermark={AlertCircle}>
             {incidents.length === 0 ? (
@@ -683,18 +690,19 @@ const StudentProfilePage = () => {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
-          gap: 16,
-          marginBottom: 20,
+          // Inline gridTemplateColumns wins over the Tailwind `md:grid-cols-4`
+          // class — must drive the breakpoint switch from `isMobile` instead.
+          gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
+          gap: isMobile ? 10 : 16,
+          marginBottom: isMobile ? 14 : 20,
         }}
-        className="md:grid-cols-4"
       >
         {/* Academic Score — blue */}
         <div
           {...tilt3D}
           style={{
-            padding: 20,
-            borderRadius: 20,
+            padding: isMobile ? 14 : 20,
+            borderRadius: isMobile ? 16 : 20,
             background: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
             border: `0.5px solid ${T.bdr}`,
             boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.12), 0 18px 44px rgba(0,85,255,.15)",
@@ -705,33 +713,33 @@ const StudentProfilePage = () => {
         >
           <div
             style={{
-              width: 56,
-              height: 56,
-              borderRadius: 14,
+              width: isMobile ? 40 : 56,
+              height: isMobile ? 40 : 56,
+              borderRadius: isMobile ? 12 : 14,
               background: "linear-gradient(135deg, #0055FF, #1166FF)",
               boxShadow: "0 4px 14px rgba(0,85,255,0.28)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              marginBottom: 12,
+              marginBottom: isMobile ? 8 : 12,
             }}
           >
-            <GraduationCap size={26} color="#fff" strokeWidth={2.3} />
+            <GraduationCap size={isMobile ? 20 : 26} color="#fff" strokeWidth={2.3} />
           </div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T.ink3, marginBottom: 6 }}>
-            Academic Score
+          <div style={{ fontSize: isMobile ? 9 : 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T.ink3, marginBottom: isMobile ? 4 : 6 }}>
+            Academic
           </div>
-          <div style={{ fontSize: 34, fontWeight: 700, color: T.blue, letterSpacing: "-1.2px", lineHeight: 1, marginBottom: 6 }}>
+          <div style={{ fontSize: isMobile ? 24 : 34, fontWeight: 700, color: T.blue, letterSpacing: "-1.2px", lineHeight: 1, marginBottom: isMobile ? 4 : 6 }}>
             {m.usableScoreCount === 0 ? "—" : `${Math.round(m.avg)}%`}
           </div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: T.ink2 }}>
+          <div style={{ fontSize: isMobile ? 10 : 11, fontWeight: 600, color: T.ink2 }}>
             {/* Match the AVG calc — graded tests only, not raw test count. */}
-            {m.usableScoreCount} graded · {m.trend === "up" ? "↑ trending up" : m.trend === "down" ? "↓ declining" : "→ stable"}
+            {m.usableScoreCount} graded · {m.trend === "up" ? "↑ up" : m.trend === "down" ? "↓ decline" : "→ stable"}
           </div>
           <GraduationCap
-            size={56}
+            size={isMobile ? 40 : 56}
             strokeWidth={2}
-            style={{ position: "absolute", bottom: 12, right: 12, color: T.blue, opacity: 0.18, pointerEvents: "none" }}
+            style={{ position: "absolute", bottom: isMobile ? 8 : 12, right: isMobile ? 8 : 12, color: T.blue, opacity: 0.18, pointerEvents: "none" }}
           />
         </div>
 
@@ -739,8 +747,8 @@ const StudentProfilePage = () => {
         <div
           {...tilt3D}
           style={{
-            padding: 20,
-            borderRadius: 20,
+            padding: isMobile ? 14 : 20,
+            borderRadius: isMobile ? 16 : 20,
             background: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
             border: `0.5px solid ${T.bdr}`,
             boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.12), 0 18px 44px rgba(0,85,255,.15)",
@@ -751,32 +759,32 @@ const StudentProfilePage = () => {
         >
           <div
             style={{
-              width: 56,
-              height: 56,
-              borderRadius: 14,
+              width: isMobile ? 40 : 56,
+              height: isMobile ? 40 : 56,
+              borderRadius: isMobile ? 12 : 14,
               background: "linear-gradient(135deg, #FFAA00, #FFDD44)",
               boxShadow: "0 4px 14px rgba(255,170,0,0.28)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              marginBottom: 12,
+              marginBottom: isMobile ? 8 : 12,
             }}
           >
-            <CalendarCheck size={26} color="#fff" strokeWidth={2.3} />
+            <CalendarCheck size={isMobile ? 20 : 26} color="#fff" strokeWidth={2.3} />
           </div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T.ink3, marginBottom: 6 }}>
+          <div style={{ fontSize: isMobile ? 9 : 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T.ink3, marginBottom: isMobile ? 4 : 6 }}>
             Attendance
           </div>
-          <div style={{ fontSize: 34, fontWeight: 700, color: "#FFAA00", letterSpacing: "-1.2px", lineHeight: 1, marginBottom: 6 }}>
+          <div style={{ fontSize: isMobile ? 24 : 34, fontWeight: 700, color: "#FFAA00", letterSpacing: "-1.2px", lineHeight: 1, marginBottom: isMobile ? 4 : 6 }}>
             {m.tot === 0 ? "—" : `${Math.round(m.attRate)}%`}
           </div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: T.ink2 }}>
-            {m.pres + m.late} / {m.tot} day{m.tot === 1 ? "" : "s"} present
+          <div style={{ fontSize: isMobile ? 10 : 11, fontWeight: 600, color: T.ink2 }}>
+            {m.pres + m.late} / {m.tot} day{m.tot === 1 ? "" : "s"}
           </div>
           <BarChart3
-            size={56}
+            size={isMobile ? 40 : 56}
             strokeWidth={2}
-            style={{ position: "absolute", bottom: 12, right: 12, color: "#FFAA00", opacity: 0.22, pointerEvents: "none" }}
+            style={{ position: "absolute", bottom: isMobile ? 8 : 12, right: isMobile ? 8 : 12, color: "#FFAA00", opacity: 0.22, pointerEvents: "none" }}
           />
         </div>
 
@@ -784,8 +792,8 @@ const StudentProfilePage = () => {
         <div
           {...tilt3D}
           style={{
-            padding: 20,
-            borderRadius: 20,
+            padding: isMobile ? 14 : 20,
+            borderRadius: isMobile ? 16 : 20,
             background: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
             border: `0.5px solid ${T.bdr}`,
             boxShadow: "0 0 0 .5px rgba(0,85,255,.10), 0 4px 16px rgba(0,85,255,.12), 0 18px 44px rgba(0,85,255,.15)",
@@ -796,32 +804,32 @@ const StudentProfilePage = () => {
         >
           <div
             style={{
-              width: 56,
-              height: 56,
-              borderRadius: 14,
+              width: isMobile ? 40 : 56,
+              height: isMobile ? 40 : 56,
+              borderRadius: isMobile ? 12 : 14,
               background: "linear-gradient(135deg, #00C853, #22EE66)",
               boxShadow: "0 4px 14px rgba(0,200,83,0.26)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              marginBottom: 12,
+              marginBottom: isMobile ? 8 : 12,
             }}
           >
-            <CheckCircle2 size={26} color="#fff" strokeWidth={2.3} />
+            <CheckCircle2 size={isMobile ? 20 : 26} color="#fff" strokeWidth={2.3} />
           </div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T.ink3, marginBottom: 6 }}>
+          <div style={{ fontSize: isMobile ? 9 : 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T.ink3, marginBottom: isMobile ? 4 : 6 }}>
             Submissions
           </div>
-          <div style={{ fontSize: 34, fontWeight: 700, color: "#007830", letterSpacing: "-1.2px", lineHeight: 1, marginBottom: 6 }}>
+          <div style={{ fontSize: isMobile ? 24 : 34, fontWeight: 700, color: "#007830", letterSpacing: "-1.2px", lineHeight: 1, marginBottom: isMobile ? 4 : 6 }}>
             {m.asgCount === 0 ? "—" : `${Math.round(m.completion)}%`}
           </div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: "#007830" }}>
-            {m.subCount} of {m.asgCount} assignment{m.asgCount === 1 ? "" : "s"}
+          <div style={{ fontSize: isMobile ? 10 : 11, fontWeight: 600, color: "#007830" }}>
+            {m.subCount} of {m.asgCount}
           </div>
           <TrendingUp
-            size={56}
+            size={isMobile ? 40 : 56}
             strokeWidth={2}
-            style={{ position: "absolute", bottom: 12, right: 12, color: "#00C853", opacity: 0.22, pointerEvents: "none" }}
+            style={{ position: "absolute", bottom: isMobile ? 8 : 12, right: isMobile ? 8 : 12, color: "#00C853", opacity: 0.22, pointerEvents: "none" }}
           />
         </div>
 
@@ -829,8 +837,8 @@ const StudentProfilePage = () => {
         <div
           {...tilt3D}
           style={{
-            padding: 20,
-            borderRadius: 20,
+            padding: isMobile ? 14 : 20,
+            borderRadius: isMobile ? 16 : 20,
             background: overallRisk >= 45
               ? "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)"
               : "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
@@ -843,9 +851,9 @@ const StudentProfilePage = () => {
         >
           <div
             style={{
-              width: 56,
-              height: 56,
-              borderRadius: 14,
+              width: isMobile ? 40 : 56,
+              height: isMobile ? 40 : 56,
+              borderRadius: isMobile ? 12 : 14,
               background: overallRisk >= 45
                 ? "linear-gradient(135deg, #FF3355, #FF6688)"
                 : "linear-gradient(135deg, #7B3FF4, #A07CF8)",
@@ -855,40 +863,40 @@ const StudentProfilePage = () => {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              marginBottom: 12,
+              marginBottom: isMobile ? 8 : 12,
             }}
           >
-            <ShieldAlert size={26} color="#fff" strokeWidth={2.3} />
+            <ShieldAlert size={isMobile ? 20 : 26} color="#fff" strokeWidth={2.3} />
           </div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T.ink3, marginBottom: 6 }}>
+          <div style={{ fontSize: isMobile ? 9 : 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T.ink3, marginBottom: isMobile ? 4 : 6 }}>
             Risk Level
           </div>
           <div
             style={{
-              fontSize: 28,
+              fontSize: isMobile ? 18 : 28,
               fontWeight: 700,
               color: overallRisk >= 45 ? "#FF3355" : T.pur,
               letterSpacing: "-0.8px",
               lineHeight: 1,
-              marginBottom: 6,
+              marginBottom: isMobile ? 4 : 6,
             }}
           >
             {riskLevel}
           </div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: overallRisk >= 45 ? "#FF3355" : T.ink2 }}>
-            {overallRisk}/100 composite · {incidents.length} incident{incidents.length === 1 ? "" : "s"}
+          <div style={{ fontSize: isMobile ? 10 : 11, fontWeight: 600, color: overallRisk >= 45 ? "#FF3355" : T.ink2 }}>
+            {overallRisk}/100 · {incidents.length} inc.
           </div>
           <Shield
-            size={56}
+            size={isMobile ? 40 : 56}
             strokeWidth={2}
-            style={{ position: "absolute", bottom: 12, right: 12, color: overallRisk >= 45 ? "#FF3355" : T.pur, opacity: 0.22, pointerEvents: "none" }}
+            style={{ position: "absolute", bottom: isMobile ? 8 : 12, right: isMobile ? 8 : 12, color: overallRisk >= 45 ? "#FF3355" : T.pur, opacity: 0.22, pointerEvents: "none" }}
           />
         </div>
       </div>
 
       {/* ═══ PERFORMANCE TIMELINE (full width) ════════════════════════════════ */}
-      <Card title="Performance Timeline" action={<DetailLink />} theme="blue" icon={TrendingUp} watermark={Activity} style={{ marginBottom: 20 }}>
-        <div style={{ height: 200 }}>
+      <Card title="Performance Timeline" action={<DetailLink />} theme="blue" icon={TrendingUp} watermark={Activity} style={{ marginBottom: isMobile ? 14 : 20 }}>
+        <div style={{ height: isMobile ? 160 : 200 }}>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={m.monthly}>
               <defs>
@@ -909,7 +917,7 @@ const StudentProfilePage = () => {
       </Card>
 
       {/* ═══ ASSIGNMENTS + RISK ASSESSMENT (2 col) ════════════════════════════ */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 20, marginBottom: isMobile ? 14 : 20 }}>
         {/* Assignments */}
         <Card title={`Assignments · ${m.subCount}/${m.asgCount}`} action={<span style={{ fontSize: 11, color: T.blue, fontWeight: 500, cursor: "pointer" }}>View All →</span>} theme="green" icon={CheckCircle2} watermark={FileText}>
           {[...assignments].sort((a, b) => (toDate(b.dueDate)?.getTime() || 0) - (toDate(a.dueDate)?.getTime() || 0)).slice(0, 5).map(a => {
@@ -958,7 +966,7 @@ const StudentProfilePage = () => {
       </div>
 
       {/* ═══ ATTENDANCE CALENDAR + SUPPORT ACTIONS (2 col) ════════════════════ */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 20, marginBottom: isMobile ? 14 : 20 }}>
         {/* Calendar */}
         <Card title="Attendance Calendar" action={<span style={{ fontSize: 11, color: T.ink3 }}>Daily attendance record</span>} theme="gold" icon={Calendar} watermark={CalendarCheck}>
           {/* Month nav */}
@@ -1035,8 +1043,10 @@ const StudentProfilePage = () => {
         </Card>
       </div>
 
-      {/* ═══ BOTTOM: Subject Mastery + Incidents + Overview (3 col) ════════════ */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
+      {/* ═══ BOTTOM: Subject Mastery + Incidents + Overview (3 col) ════════════
+           Only 2 cards actually render here (radar duplicate is skipped per
+           the comment below). Desktop uses 2-col, mobile stacks. */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 20, marginBottom: isMobile ? 14 : 20 }}>
         {/* Already covered in left column - skip radar duplicate */}
         {/* Incidents */}
         <Card title="Incidents" action={<DetailLink />} theme="red" icon={AlertCircle} watermark={AlertCircle}>
@@ -1083,7 +1093,7 @@ const StudentProfilePage = () => {
       </div>
 
       {/* ═══ COMMUNICATIONS + SCORE HISTORY (2 col) ═══════════════════════════ */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 20, marginBottom: isMobile ? 14 : 20 }}>
         {/* Communications */}
         <Card title={`Communications · ${parentNotes.length} entries`} action={<span style={{ fontSize: 11, color: T.blue, cursor: "pointer" }}>View All →</span>} theme="green" icon={MessageSquare} watermark={MessageSquare}>
           {sortedParentNotes.slice(0, 3).map(n => {
@@ -1142,8 +1152,10 @@ const StudentProfilePage = () => {
         </Card>
       </div>
 
-      {/* ═══ BOTTOM STATUS BAR ════════════════════════════════════════════════ */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 20px", background: T.white, border: `1px solid ${T.bdr}`, borderRadius: 12, fontSize: 10, color: T.ink3 }}>
+      {/* ═══ BOTTOM STATUS BAR ════════════════════════════════════════════════
+           Mobile: flex-wrap so the 6 chips stack/wrap instead of overflowing
+           past the viewport edge. Gap is the row spacing once wrapped. */}
+      <div style={{ display: "flex", flexWrap: isMobile ? "wrap" : "nowrap", alignItems: "center", justifyContent: isMobile ? "flex-start" : "space-between", gap: isMobile ? "6px 12px" : 0, padding: isMobile ? "10px 14px" : "10px 20px", background: T.white, border: `1px solid ${T.bdr}`, borderRadius: 12, fontSize: 10, color: T.ink3 }}>
         <span>★ PARENT ENGAGEMENT: {Math.min(100, parentNotes.length * 20)}%</span>
         <span>★ Status: Active</span>
         <span>★ Data: Live</span>

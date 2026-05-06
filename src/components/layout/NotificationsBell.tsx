@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { useAuth } from "../../lib/AuthContext";
+import { useIsMobile } from "../../hooks/use-mobile";
 
 // NotificationsBell aggregates the principal's most recent actionable
 // activity (reports published + discipline incidents) into a dropdown.
@@ -30,6 +31,7 @@ const LS_LAST_SEEN_KEY_PREFIX = "principal_notifications_last_seen:";
 const NotificationsBell = () => {
   const { userData } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [reports, setReports] = useState<FeedItem[]>([]);
   const [incidents, setIncidents] = useState<FeedItem[]>([]);
@@ -192,7 +194,18 @@ const NotificationsBell = () => {
       {open && (
         <div
           ref={popRef}
-          className="absolute right-0 mt-2 w-[360px] max-w-[92vw] rounded-[18px] bg-white overflow-hidden z-[60] animate-in fade-in slide-in-from-top-2 duration-150"
+          /* Desktop: anchored absolute right of bell.
+             Mobile: position fixed with viewport-relative 8px gutters so the
+             dropdown can't overflow past the left edge into the off-canvas
+             drawer area. The previous `absolute right-0 w-[360px]
+             max-w-[92vw]` extended ~92vw leftward from the bell's right
+             edge → on narrow screens the left edge clipped under the side
+             drawer. Fixed-with-gutters keeps it visually contained. */
+          className={
+            isMobile
+              ? "fixed left-2 right-2 top-[64px] rounded-[18px] bg-white overflow-hidden z-[60] animate-in fade-in slide-in-from-top-2 duration-150"
+              : "absolute right-0 mt-2 w-[360px] max-w-[92vw] rounded-[18px] bg-white overflow-hidden z-[60] animate-in fade-in slide-in-from-top-2 duration-150"
+          }
           style={{
             boxShadow: "0 0 0 0.5px rgba(0,85,255,0.10), 0 8px 28px rgba(0,8,60,0.18), 0 24px 56px rgba(0,8,60,0.20)",
             border: "0.5px solid rgba(0,85,255,0.10)",

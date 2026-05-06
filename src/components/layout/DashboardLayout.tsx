@@ -24,8 +24,20 @@ const DashboardLayout = ({ children }: { children: ReactNode }) => {
         >
           <AppSidebar onClose={() => setSidebarOpen(false)} />
         </div>
-        <main className="flex-1 px-3 pt-3 pb-24 sm:px-4 sm:py-4 md:px-5 md:py-6 md:pb-6 overflow-y-auto md:h-[calc(100vh-64px)] min-w-0">
+        <main className="flex-1 px-3 pt-3 sm:px-4 sm:py-4 md:px-5 md:py-6 overflow-y-auto md:h-[calc(100vh-64px)] min-w-0">
           {children}
+          {/* Mobile-only bottom safe-zone for the floating MobileTabBar.
+             Bar consumes ~80px+safe-area (12px gap + 68px height) plus
+             ~30px shadow/blur halo. 160px+safe gives the last card on
+             ANY page comfortable clearance with no overlap when fully
+             scrolled. Rendered as a plain div (not padding-bottom +
+             useIsMobile JS gate) to avoid hydration race conditions
+             and Tailwind JIT stripping `env()` inside arbitrary calc. */}
+          <div
+            className="md:hidden"
+            aria-hidden
+            style={{ height: "calc(160px + env(safe-area-inset-bottom))" }}
+          />
         </main>
       </div>
       <MobileTabBar />

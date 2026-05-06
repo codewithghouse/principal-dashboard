@@ -426,9 +426,9 @@ const ClassesSectionsMobile = ({
                     </button>
                     <button onClick={() => onViewSection(cls)}
                       aria-label="More options"
-                      className="w-10 h-10 rounded-[13px] flex items-center justify-center transition-transform active:scale-90 bg-white"
-                      style={{ border: "0.5px solid rgba(0,85,255,0.16)", boxShadow: SHADOW_SM, flex: "0 0 auto" }}>
-                      <MoreHorizontal className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.2} />
+                      className="w-10 h-10 rounded-[13px] flex items-center justify-center transition-transform active:scale-90"
+                      style={{ background: T2, boxShadow: "0 2px 6px rgba(0,32,128,0.32)", flex: "0 0 auto" }}>
+                      <MoreHorizontal size={18} color="#FFFFFF" strokeWidth={2.6} />
                     </button>
                   </div>
                 </div>

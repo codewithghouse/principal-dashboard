@@ -374,24 +374,12 @@ const AccessRequests = () => {
     return AV_PALETTE[h % AV_PALETTE.length];
   };
 
-  const statTabs: Array<{ k: TabKey; label: string; color: "yellow" | "green" | "red" | "grey"; icon: any; iconColor: string; numColor: string; lblColor: string }> = [
-    { k: "pending",  label: "Pending",  color: "yellow", icon: Clock,        iconColor: "#FF8800", numColor: "#664400", lblColor: "#664400" },
-    { k: "approved", label: "Approved", color: "green",  icon: CheckCircle2, iconColor: GREEN,     numColor: "#004018", lblColor: "#005A20" },
-    { k: "rejected", label: "Rejected", color: "red",    icon: XCircle,      iconColor: RED,       numColor: "#60081A", lblColor: "#8A0A22" },
-    { k: "revoked",  label: "Revoked",  color: "grey",   icon: Shield,       iconColor: "#3A4358", numColor: "#3A4358", lblColor: "#3A4358" },
+  const statTabs: Array<{ k: TabKey; label: string; color: "yellow" | "green" | "red" | "grey"; icon: any }> = [
+    { k: "pending",  label: "Pending",  color: "yellow", icon: Clock        },
+    { k: "approved", label: "Approved", color: "green",  icon: CheckCircle2 },
+    { k: "rejected", label: "Rejected", color: "red",    icon: XCircle      },
+    { k: "revoked",  label: "Revoked",  color: "grey",   icon: Shield       },
   ];
-  const tabBgMap: Record<"yellow" | "green" | "red" | "grey", string> = {
-    yellow: "linear-gradient(135deg,#FFF4D1 0%,#FFE58A 55%,#FFD55C 100%)",
-    green:  "linear-gradient(135deg,#DEFCE8 0%,#8CF0B0 55%,#50E088 100%)",
-    red:    "linear-gradient(135deg,#FFE3E8 0%,#FFA8B8 55%,#FF7085 100%)",
-    grey:   "linear-gradient(135deg,#E8ECF5 0%,#C8D0E0 55%,#AEB8CC 100%)",
-  };
-  const tabBorderMap: Record<"yellow" | "green" | "red" | "grey", string> = {
-    yellow: "rgba(255,170,0,0.4)",
-    green:  "rgba(0,200,83,0.4)",
-    red:    "rgba(255,51,85,0.4)",
-    grey:   "rgba(120,130,155,0.4)",
-  };
   const slblBadgeStyle: Record<TabKey, React.CSSProperties> = {
     pending:  { background: "rgba(255,170,0,0.14)", color: "#885500", border: "0.5px solid rgba(255,170,0,0.32)" },
     approved: { background: "rgba(0,200,83,0.10)", color: GREEN_D, border: "0.5px solid rgba(0,200,83,0.22)" },
@@ -823,34 +811,102 @@ const AccessRequests = () => {
           </div>
         </div>
 
-        {/* Status Tab Grid */}
+        {/* Status Tab Grid — dashboard 4-card vibe (same palette as desktop
+             below: pastel cardGrad surface + solid tileGrad icon badge +
+             watermark icon faded in bottom-right). Sized down for mobile. */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 20px 0" }}>
           {statTabs.map((t) => {
             const active = tab === t.k;
             const Ico = t.icon;
+            // Mirror of the desktop palette object — keeping both inline so
+            // each render site stays self-contained and easy to read.
+            const palette: Record<typeof t.color, { cardGrad: string; tileGrad: string; tileShadow: string; valColor: string; decorColor: string; ringColor: string }> = {
+              yellow: {
+                cardGrad: "linear-gradient(135deg, #FBE5B6 0%, #FEFAEE 100%)",
+                tileGrad: "linear-gradient(135deg, #FFAA00, #FFDD44)",
+                tileShadow: "0 4px 14px rgba(255,170,0,0.28)",
+                valColor: "#FFAA00",
+                decorColor: "#FFAA00",
+                ringColor: "rgba(255,170,0,0.42)",
+              },
+              green: {
+                cardGrad: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
+                tileGrad: "linear-gradient(135deg, #00C853, #22EE66)",
+                tileShadow: "0 4px 14px rgba(0,200,83,0.26)",
+                valColor: "#007830",
+                decorColor: "#00C853",
+                ringColor: "rgba(0,200,83,0.42)",
+              },
+              red: {
+                cardGrad: "linear-gradient(135deg, #F5CFD7 0%, #FDF3F5 100%)",
+                tileGrad: "linear-gradient(135deg, #FF3355, #FF6688)",
+                tileShadow: "0 4px 14px rgba(255,51,85,0.28)",
+                valColor: "#FF3355",
+                decorColor: "#FF3355",
+                ringColor: "rgba(255,51,85,0.42)",
+              },
+              grey: {
+                cardGrad: "linear-gradient(135deg, #E2E5EC 0%, #F7F9FC 100%)",
+                tileGrad: "linear-gradient(135deg, #475569, #64748B)",
+                tileShadow: "0 4px 14px rgba(71,85,105,0.26)",
+                valColor: "#475569",
+                decorColor: "#475569",
+                ringColor: "rgba(71,85,105,0.36)",
+              },
+            };
+            const p = palette[t.color];
             return (
               <button
                 key={t.k}
                 onClick={() => setTab(t.k)}
                 style={{
-                  borderRadius: 18,
+                  borderRadius: 16,
                   padding: 14,
                   position: "relative",
                   overflow: "hidden",
                   cursor: "pointer",
-                  background: tabBgMap[t.color],
-                  border: active ? "2px solid #000820" : `0.5px solid ${tabBorderMap[t.color]}`,
-                  boxShadow: active ? "0 0 0 3px rgba(0,0,0,.08), 0 10px 28px rgba(0,0,0,.1)" : "0 8px 22px rgba(0,0,0,.06)",
+                  background: p.cardGrad,
+                  border: `0.5px solid ${active ? p.ringColor : "rgba(0,85,255,0.08)"}`,
+                  boxShadow: active
+                    ? `0 0 0 2px ${p.ringColor}, 0 6px 20px rgba(0,85,255,0.10), 0 16px 40px rgba(0,85,255,0.10)`
+                    : "0 0 0 0.5px rgba(0,85,255,0.14), 0 6px 20px rgba(0,85,255,0.10), 0 16px 40px rgba(0,85,255,0.10)",
                   fontFamily: "inherit",
                   textAlign: "left",
+                  transition: "transform .18s cubic-bezier(.34,1.56,.64,1)",
                 }}
               >
-                <div style={{ position: "absolute", top: -18, right: -18, width: 80, height: 80, borderRadius: "50%", background: "radial-gradient(circle,rgba(255,255,255,.65) 0%,transparent 70%)", pointerEvents: "none" }} />
-                <div style={{ width: 30, height: 30, borderRadius: 10, background: "rgba(255,255,255,.75)", border: "0.5px solid rgba(255,255,255,.95)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8, position: "relative", zIndex: 1, boxShadow: "0 2px 6px rgba(0,0,0,.05)" }}>
-                  <Ico size={15} color={t.iconColor} strokeWidth={2.5} />
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    background: p.tileGrad,
+                    boxShadow: p.tileShadow,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: 8,
+                    position: "relative",
+                    zIndex: 1,
+                  }}
+                >
+                  <Ico size={20} color="#fff" strokeWidth={2.3} />
                 </div>
-                <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.9px", lineHeight: 1, marginBottom: 4, color: t.numColor, position: "relative", zIndex: 1 }}>{counts[t.k]}</div>
-                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: t.lblColor, position: "relative", zIndex: 1 }}>{t.label}</div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: "#99AACC", marginBottom: 4, position: "relative", zIndex: 1 }}>
+                  {t.label}
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.9px", lineHeight: 1, marginBottom: 4, color: p.valColor, position: "relative", zIndex: 1 }}>
+                  {counts[t.k]}
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: "#5070B0", position: "relative", zIndex: 1 }}>
+                  {active ? "Filtering" : "Tap to filter"}
+                </div>
+                <Ico
+                  size={40}
+                  color={p.decorColor}
+                  strokeWidth={2}
+                  style={{ position: "absolute", bottom: 8, right: 8, opacity: 0.18, pointerEvents: "none" }}
+                />
               </button>
             );
           })}

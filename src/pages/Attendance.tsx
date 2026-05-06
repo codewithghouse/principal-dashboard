@@ -650,7 +650,10 @@ const Attendance = () => {
                       height: "100%",
                       background: "linear-gradient(90deg,#4499FF,#00C853)",
                       borderRadius: 3,
-                      width: `${Math.min(100, Math.max(0, monthlyAvgVal))}%`,
+                      // `monthlyAvgVal` was a useEffect-scoped local — out of
+                      // scope in render. Use stats.monthlyAvgVal and treat
+                      // the null sentinel (no data) as 0% width.
+                      width: `${Math.min(100, Math.max(0, stats.monthlyAvgVal ?? 0))}%`,
                     }}
                   />
                 </div>
