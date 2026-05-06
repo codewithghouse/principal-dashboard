@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   BookOpen, Plus, Trash2, Save, Loader2, CheckCircle,
   ClipboardList, Percent, Award, ChevronDown, ChevronUp, X,
   Sparkles, Layers, ClipboardCheck, Tag,
 } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, doc, getDocs, setDoc, deleteDoc, query, where, serverTimestamp } from "firebase/firestore";
+import { collection, doc, onSnapshot, setDoc, deleteDoc, query, where, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -51,6 +51,57 @@ const emptyExam = (): Omit<ExamType, "id" | "createdAt"> => ({
   gradingScale: DEFAULT_GRADING.map(g => ({ ...g })),
 });
 
+// ── Validation ────────────────────────────────────────────────────────────────
+// Returns null when valid, or a human-readable error string for the toast.
+// Validates EVERY rule that protects downstream consumers — teacher's
+// CreateTest auto-fills marks=maxMarks, parent's grade-display reads the
+// gradingScale ranges. A bad save here breaks both dashboards silently.
+function validateExam(
+  exam: { name: string; maxMarks: number; passingMarks: number; weightPct: number; gradingScale: GradeRule[] },
+): string | null {
+  const name = (exam.name || "").trim();
+  if (!name) return "Exam name is required.";
+
+  if (!Number.isFinite(exam.maxMarks) || exam.maxMarks <= 0) {
+    return "Max marks must be a positive number.";
+  }
+  if (!Number.isFinite(exam.passingMarks) || exam.passingMarks < 0) {
+    return "Passing marks must be 0 or positive.";
+  }
+  if (exam.passingMarks > exam.maxMarks) {
+    return `Passing marks (${exam.passingMarks}) cannot exceed max marks (${exam.maxMarks}).`;
+  }
+  if (!Number.isFinite(exam.weightPct) || exam.weightPct < 0 || exam.weightPct > 100) {
+    return "Weight % must be between 0 and 100.";
+  }
+
+  // gradingScale validation
+  if (!Array.isArray(exam.gradingScale) || exam.gradingScale.length === 0) {
+    return "Add at least one grading rule.";
+  }
+  for (const g of exam.gradingScale) {
+    const lbl = String(g?.label || "").trim();
+    if (!lbl) return "Each grade rule needs a label (e.g. A+, B, F).";
+    if (!Number.isFinite(g.minPct) || !Number.isFinite(g.maxPct)) {
+      return `Grade "${lbl}": min% and max% must be numbers.`;
+    }
+    if (g.minPct < 0 || g.maxPct > 100) {
+      return `Grade "${lbl}": ranges must be within 0–100 (got ${g.minPct}–${g.maxPct}).`;
+    }
+    if (g.minPct > g.maxPct) {
+      return `Grade "${lbl}": min ${g.minPct}% cannot be greater than max ${g.maxPct}%.`;
+    }
+  }
+  // Overlap check (sort by minPct and ensure no two ranges overlap)
+  const sorted = [...exam.gradingScale].sort((a, b) => a.minPct - b.minPct);
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].minPct <= sorted[i - 1].maxPct) {
+      return `Grade ranges overlap: "${sorted[i - 1].label}" (${sorted[i - 1].minPct}–${sorted[i - 1].maxPct}%) and "${sorted[i].label}" (${sorted[i].minPct}–${sorted[i].maxPct}%).`;
+    }
+  }
+  return null;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 const ExamStructure = () => {
   const { userData } = useAuth();
@@ -62,12 +113,23 @@ const ExamStructure = () => {
   const [expandedId, setExpandedId]     = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newExam, setNewExam]           = useState(emptyExam());
+  // Dirty tracking — per-row "modified, not yet saved" flag drives the
+  // "Modified" badge + helps the listener avoid clobbering in-progress edits
+  // when a remote snapshot fires concurrently.
+  const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
+  // Delete confirmation modal target. Uses a controlled modal instead of
+  // window.confirm() so the UX matches the rest of the dashboard + works
+  // properly on mobile.
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const dirtyIdsRef = useRef(dirtyIds);
+  dirtyIdsRef.current = dirtyIds;
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // ── Live subscription ─────────────────────────────────────────────────────
   // schoolId-only server-side; branchId in-memory (memory:
-  // branchid_inference_lag). Was: hard-required branchId — single-branch
-  // schools whose userData.branchId was undefined could not load OR save
-  // exam structures at all.
+  // branchid_inference_lag). Real-time onSnapshot replaces the prior one-shot
+  // getDocs — concurrent edits by other principals/admins now show up
+  // without a manual refresh, AND the dirty-row guard prevents the listener
+  // from reverting in-progress unsaved edits when a remote snapshot fires.
   useEffect(() => {
     const schoolId = userData?.schoolId;
     if (!schoolId) { setLoading(false); return; }
@@ -75,39 +137,87 @@ const ExamStructure = () => {
     const inBranch = (raw: any): boolean =>
       !branchId || !raw?.branchId || raw.branchId === branchId;
 
-    getDocs(query(
-      collection(db, "exam_structure"),
-      where("schoolId", "==", schoolId),
-    )).then(snap => {
-      setExamTypes(
-        snap.docs
+    const unsub = onSnapshot(
+      query(collection(db, "exam_structure"), where("schoolId", "==", schoolId)),
+      (snap) => {
+        const fromDb = snap.docs
           .map(d => ({ id: d.id, ...d.data() } as ExamType & { branchId?: string }))
-          .filter(inBranch),
-      );
-    }).catch(err => {
-      console.error("[ExamStructure] fetch failed:", err);
-      toast.error("Failed to load exam structure.");
-    }).finally(() => setLoading(false));
+          .filter(inBranch);
+        // Merge: for rows the user is currently editing (dirty), keep their
+        // local edits. Rows that were dirty but no longer exist on the
+        // server (e.g., still being typed for a never-saved new entry) are
+        // also preserved via the prev-state union below.
+        setExamTypes(prev => {
+          const dirty = dirtyIdsRef.current;
+          const out: ExamType[] = fromDb.map(dbDoc =>
+            dirty.has(dbDoc.id)
+              ? (prev.find(p => p.id === dbDoc.id) ?? dbDoc)
+              : dbDoc,
+          );
+          // Preserve locally-added rows not yet on server (rare but safe).
+          for (const local of prev) {
+            if (!fromDb.some(d => d.id === local.id) && dirty.has(local.id)) {
+              out.push(local);
+            }
+          }
+          return out;
+        });
+        setLoading(false);
+      },
+      (err) => {
+        console.error("[ExamStructure] listener failed:", err);
+        toast.error("Failed to load exam structure.");
+        setLoading(false);
+      },
+    );
+    return () => unsub();
   }, [userData?.schoolId, userData?.branchId]);
 
   // ── Save single exam type ─────────────────────────────────────────────────
+  // Pre-flight validation prevents illogical saves (passing > max, weight out
+  // of 0–100, overlapping/empty grading scale) — these silently broke the
+  // teacher's CreateTest auto-fill + parent's grade display before. Post-save
+  // info-toast nudges the principal to rebalance other exam weights when the
+  // total drifts away from 100%.
   const handleSave = async (exam: ExamType) => {
     const schoolId = userData?.schoolId;
     if (!schoolId) {
       toast.error("School context missing — please re-login.");
       return;
     }
-    const branchId = userData?.branchId || null; // null is valid for single-branch tenants
+    const validationError = validateExam(exam);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+    const branchId = userData?.branchId || null;
 
     setSaving(exam.id);
     try {
       await setDoc(doc(db, "exam_structure", exam.id), {
         ...exam,
+        name: exam.name.trim(),
+        applicableClasses: (exam.applicableClasses || "").trim() || "All",
         schoolId,
         branchId,
         updatedAt: serverTimestamp(),
       });
-      toast.success(`"${exam.name}" saved.`);
+      // Clear dirty flag for this row
+      setDirtyIds(prev => {
+        const next = new Set(prev);
+        next.delete(exam.id);
+        return next;
+      });
+      toast.success(`"${exam.name.trim()}" saved.`);
+      // Total-weight rebalance hint (informational — does NOT block save)
+      const newTotal = examTypes.reduce(
+        (sum, e) => sum + (e.id === exam.id ? exam.weightPct : (e.weightPct || 0)),
+        0,
+      );
+      if (newTotal !== 100) {
+        const delta = newTotal > 100 ? `${newTotal - 100}% over` : `${100 - newTotal}% short`;
+        toast.message(`Total weight is ${newTotal}% (${delta}). Adjust other exam types to reach 100%.`);
+      }
     } catch (e: any) {
       toast.error("Save failed: " + e.message);
     }
@@ -115,11 +225,27 @@ const ExamStructure = () => {
   };
 
   // ── Add new exam type ─────────────────────────────────────────────────────
+  // Same validation as handleSave + a case-insensitive duplicate-name guard
+  // (otherwise the teacher's CreateTest dropdown ends up with two identical
+  // entries — confusing UX, downstream attribution gets ambiguous too).
   const handleAdd = async () => {
-    if (!newExam.name.trim()) return toast.error("Exam name is required.");
     const schoolId = userData?.schoolId;
     if (!schoolId) {
       toast.error("School context missing — please re-login.");
+      return;
+    }
+    const validationError = validateExam(newExam);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+    const trimmedName = newExam.name.trim();
+    const lowerName = trimmedName.toLowerCase();
+    const isDuplicate = examTypes.some(
+      e => (e.name || "").trim().toLowerCase() === lowerName,
+    );
+    if (isDuplicate) {
+      toast.error(`Exam type "${trimmedName}" already exists. Pick a different name or edit the existing one.`);
       return;
     }
     const branchId = userData?.branchId || null;
@@ -127,9 +253,14 @@ const ExamStructure = () => {
     setSaving("new");
     try {
       const ref = doc(collection(db, "exam_structure"));
-      const entry: ExamType = { id: ref.id, ...newExam };
+      const entry: ExamType = {
+        id: ref.id,
+        ...newExam,
+        name: trimmedName,
+        applicableClasses: (newExam.applicableClasses || "").trim() || "All",
+      };
       await setDoc(ref, { ...entry, schoolId, branchId, createdAt: serverTimestamp() });
-      setExamTypes(prev => [...prev, entry]);
+      // No need to setExamTypes manually — onSnapshot will deliver the new doc.
       setNewExam(emptyExam());
       setShowAddModal(false);
       setExpandedId(ref.id);
@@ -141,11 +272,25 @@ const ExamStructure = () => {
   };
 
   // ── Delete exam type ──────────────────────────────────────────────────────
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  // Two-step delete: handleDelete opens the confirmation modal,
+  // confirmDelete actually executes (when user clicks the modal's Delete
+  // button). Replaces the prior window.confirm() which broke design
+  // consistency + had poor mobile UX.
+  const handleDelete = (id: string, name: string) => {
+    setDeleteTarget({ id, name });
+  };
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const { id, name } = deleteTarget;
+    setDeleteTarget(null);
     try {
       await deleteDoc(doc(db, "exam_structure", id));
-      setExamTypes(prev => prev.filter(e => e.id !== id));
+      // onSnapshot will remove the row; clear any dirty flag.
+      setDirtyIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       toast.success(`"${name}" deleted.`);
     } catch (e: any) {
       toast.error("Delete failed: " + e.message);
@@ -153,29 +298,43 @@ const ExamStructure = () => {
   };
 
   // ── Update field in state ─────────────────────────────────────────────────
-  const updateExam = (id: string, patch: Partial<ExamType>) =>
-    setExamTypes(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
+  // Each editor mutation also marks the row dirty — the listener uses this
+  // to skip overwriting in-progress edits when a remote snapshot arrives,
+  // and the UI uses it to show a "Modified" badge until the user saves.
+  const markDirty = (id: string) =>
+    setDirtyIds(prev => prev.has(id) ? prev : new Set(prev).add(id));
 
-  const updateGrade = (examId: string, gradeId: string, patch: Partial<GradeRule>) =>
+  const updateExam = (id: string, patch: Partial<ExamType>) => {
+    setExamTypes(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
+    markDirty(id);
+  };
+
+  const updateGrade = (examId: string, gradeId: string, patch: Partial<GradeRule>) => {
     setExamTypes(prev => prev.map(e =>
       e.id === examId
         ? { ...e, gradingScale: e.gradingScale.map(g => g.id === gradeId ? { ...g, ...patch } : g) }
         : e
     ));
+    markDirty(examId);
+  };
 
-  const addGradeRow = (examId: string) =>
+  const addGradeRow = (examId: string) => {
     setExamTypes(prev => prev.map(e =>
       e.id === examId
         ? { ...e, gradingScale: [...e.gradingScale, { id: Date.now().toString(), label: "", minPct: 0, maxPct: 0, color: "#6366f1" }] }
         : e
     ));
+    markDirty(examId);
+  };
 
-  const removeGradeRow = (examId: string, gradeId: string) =>
+  const removeGradeRow = (examId: string, gradeId: string) => {
     setExamTypes(prev => prev.map(e =>
       e.id === examId
         ? { ...e, gradingScale: e.gradingScale.filter(g => g.id !== gradeId) }
         : e
     ));
+    markDirty(examId);
+  };
 
   // ───────────────────────── MOBILE RETURN ─────────────────────────────────
   if (isMobile) {
@@ -595,8 +754,24 @@ const ExamStructure = () => {
                     <BookOpen size={18} color={B1} strokeWidth={2.2} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: T1, letterSpacing: "-0.2px", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {exam.name || "Untitled Exam"}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: T1, letterSpacing: "-0.2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+                        {exam.name || "Untitled Exam"}
+                      </div>
+                      {dirtyIds.has(exam.id) && (
+                        <span style={{
+                          padding: "2px 7px",
+                          borderRadius: 100,
+                          background: "rgba(255,170,0,.15)",
+                          border: "0.5px solid rgba(255,170,0,.32)",
+                          fontSize: 8,
+                          fontWeight: 800,
+                          color: GOLD,
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                          flexShrink: 0,
+                        }}>● Modified</span>
+                      )}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                       {[
@@ -1376,6 +1551,46 @@ const ExamStructure = () => {
         )}
         {/* keep Tag referenced (unused placeholder) */}
         <span style={{ display: "none" }}><Tag size={1} /></span>
+
+        {/* ── Delete confirmation modal (mobile) ── */}
+        {deleteTarget && (
+          <div
+            onClick={() => setDeleteTarget(null)}
+            style={{
+              position: "fixed", inset: 0, background: "rgba(0,16,64,.45)", backdropFilter: "blur(4px)",
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 60,
+            }}
+          >
+            <div onClick={(e) => e.stopPropagation()}
+              style={{
+                background: "#fff", borderRadius: 18, width: "100%", maxWidth: 360,
+                boxShadow: "0 24px 60px rgba(0,8,60,.40)", overflow: "hidden",
+              }}
+            >
+              <div style={{ padding: "18px 18px 12px", display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 12, background: "rgba(255,51,85,.10)", border: "0.5px solid rgba(255,51,85,.20)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Trash2 size={17} color={RED} strokeWidth={2.3} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: T1, marginBottom: 4 }}>Delete exam type?</div>
+                  <div style={{ fontSize: 11, color: T3, fontWeight: 500, lineHeight: 1.5 }}>
+                    "{deleteTarget.name}" will be removed for everyone in your school. Teachers + parents will no longer see this exam type. This cannot be undone.
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, padding: "0 18px 18px" }}>
+                <button onClick={() => setDeleteTarget(null)}
+                  style={{ flex: 1, padding: "10px", borderRadius: 11, background: "#EEF4FF", border: `0.5px solid rgba(0,85,255,.14)`, color: T2, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  Cancel
+                </button>
+                <button onClick={confirmDelete}
+                  style={{ flex: 1, padding: "10px", borderRadius: 11, background: `linear-gradient(135deg, ${RED}, #FF6677)`, color: "#fff", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 12px rgba(255,51,85,0.32)" }}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1576,7 +1791,15 @@ const ExamStructure = () => {
                     <BookOpen className="w-[19px] h-[19px]" style={{ color: isExp ? "#fff" : "#0055FF" }} strokeWidth={2.3} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[17px] font-bold tracking-[-0.3px] truncate" style={{ color: "#001040" }}>{exam.name}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-[17px] font-bold tracking-[-0.3px] truncate" style={{ color: "#001040" }}>{exam.name}</div>
+                      {dirtyIds.has(exam.id) && (
+                        <span className="px-[8px] py-[2px] rounded-full text-[9px] font-extrabold uppercase tracking-[0.06em] flex-shrink-0"
+                          style={{ background: "rgba(255,170,0,0.15)", color: "#B07000", border: "0.5px solid rgba(255,170,0,0.36)" }}>
+                          ● Modified
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-[10px] mt-[3px] flex-wrap">
                       <span className="text-[11px] font-semibold" style={{ color: "#5070B0" }}>Max {exam.maxMarks}</span>
                       <span className="w-[3px] h-[3px] rounded-full" style={{ background: "#99AACC" }} />
@@ -1845,6 +2068,47 @@ const ExamStructure = () => {
                   {saving === "new" ? "Creating..." : "Create Exam Type"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete confirmation modal (desktop) ── */}
+      {deleteTarget && (
+        <div
+          onClick={() => setDeleteTarget(null)}
+          className="fixed inset-0 flex items-center justify-center p-4 z-[60]"
+          style={{ background: "rgba(0,16,64,.45)", backdropFilter: "blur(4px)" }}
+        >
+          <div onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl w-full max-w-[420px] overflow-hidden"
+            style={{ boxShadow: "0 24px 60px rgba(0,8,60,.40)" }}
+          >
+            <div className="flex items-start gap-3 p-5 pb-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: "rgba(255,51,85,.10)", border: "0.5px solid rgba(255,51,85,.20)" }}>
+                <Trash2 className="w-[18px] h-[18px]" style={{ color: "#FF3355" }} strokeWidth={2.3} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[15px] font-bold mb-1" style={{ color: "#001040" }}>
+                  Delete exam type?
+                </div>
+                <div className="text-[12px] font-medium leading-relaxed" style={{ color: "#5070B0" }}>
+                  "<strong style={{ color: "#001040" }}>{deleteTarget.name}</strong>" will be removed for everyone in your school. Teachers + parents will no longer see this exam type. This cannot be undone.
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 px-5 pb-5">
+              <button onClick={() => setDeleteTarget(null)}
+                className="flex-1 h-11 rounded-xl text-xs font-bold transition-colors"
+                style={{ background: "#EEF4FF", border: "0.5px solid rgba(0,85,255,.14)", color: "#002080" }}>
+                Cancel
+              </button>
+              <button onClick={confirmDelete}
+                className="flex-1 h-11 rounded-xl text-xs font-bold text-white transition-transform active:scale-95"
+                style={{ background: "linear-gradient(135deg, #FF3355, #FF6677)", boxShadow: "0 4px 12px rgba(255,51,85,0.32)" }}>
+                Delete
+              </button>
             </div>
           </div>
         </div>
