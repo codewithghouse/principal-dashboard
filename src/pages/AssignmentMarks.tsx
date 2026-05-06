@@ -590,8 +590,12 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
                 </>
               )}
               {sorted.some((r) => {
-                const sc = r.score !== null && r.score !== undefined ? parseFloat(r.score) : null;
-                return sc !== null && !isNaN(sc) && sc < 40;
+                // Use pctOfDoc — handles all 4 score field shapes (mark/marks/
+                // percentage/score). Bare parseFloat(r.score) silently dropped
+                // submissions that wrote `mark` (singular) instead of `score`.
+                // Memory: bug_pattern_score_field_singular_mark.
+                const sc = pctOfDoc(r);
+                return sc !== null && sc < 40;
               }) && (
                 <>
                   {" "}Some students need immediate remedial intervention — schedule extra sessions and notify parents.
@@ -613,8 +617,8 @@ function AssignmentDetail({ group, onBack }: { group: AssignmentGroup; onBack: (
             >
               {(() => {
                 const nums = sorted
-                  .map((r) => (r.score !== null && r.score !== undefined ? parseFloat(r.score) : NaN))
-                  .filter((n) => !isNaN(n));
+                  .map((r) => pctOfDoc(r))
+                  .filter((n): n is number => n !== null);
                 const lowest = nums.length ? Math.min(...nums) : null;
                 return [
                   { v: `${group.avgScore}%`, l: "Avg Score", color: "#fff" },

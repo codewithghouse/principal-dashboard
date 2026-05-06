@@ -70,10 +70,15 @@ const ParentCommunication = () => {
   useEffect(() => {
     if (!userData?.schoolId) return;
     setLoading(true);
+    // Event stream: schoolId-scoped at server, branchId in-memory
+    // (memory: bug_pattern_branch_filter_on_event_streams). Server-side
+    // `where("branchId")` silently drops fresh notes during the 1-2s
+    // enforceBranchId Cloud Function backfill window.
     const c: any[] = [where("schoolId", "==", userData.schoolId)];
-    if (userData.branchId) c.push(where("branchId", "==", userData.branchId));
+    const branchId = userData.branchId as string | undefined;
+    const inBranch = (raw: any) => !branchId || !raw?.branchId || raw.branchId === branchId;
     return onSnapshot(query(collection(db, "principal_to_parent_notes"), ...c), snap => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(inBranch) as any[];
       data.sort((a, b) => (a.timestamp?.toMillis?.() || 0) - (b.timestamp?.toMillis?.() || 0));
       setAllMessages(data);
       setLoading(false);
@@ -424,8 +429,12 @@ const ParentCommunication = () => {
                 <div style={{ fontSize: 11, color: T4 }}>Type below to start the conversation.</div>
               </div>
             ) : (
-              groupedMessages.map((group) => (
-                <div key={group.date}>
+              groupedMessages.map((group, gi) => (
+                // Index-suffixed key — pending/serverTimestamp messages can
+                // produce a transient duplicate "Today" group between an
+                // older "Today" cluster and a freshly-resolved one. Index
+                // makes the key stable regardless.
+                <div key={`${group.date}-${gi}`}>
                   <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
                     <div
                       style={{
@@ -894,9 +903,14 @@ const ParentCommunication = () => {
                     alignItems: "center",
                     gap: 13,
                     padding: "14px 18px",
+                    // Use longhand for ALL four sides — mixing `border:"none"`
+                    // (shorthand) with `borderBottom` (longhand) on the same
+                    // element triggers React's "conflicting property" warning.
+                    borderTop: "none",
+                    borderLeft: "none",
+                    borderRight: "none",
                     borderBottom: i === filteredStudents.length - 1 ? "none" : `0.5px solid ${SEP}`,
                     background: unread > 0 ? "rgba(0,85,255,.03)" : "#fff",
-                    border: "none",
                     borderRadius: 0,
                     cursor: "pointer",
                     width: "100%",
@@ -1272,7 +1286,12 @@ const ParentCommunication = () => {
                       className="w-full flex items-center gap-3 px-3 py-[10px] text-left transition-colors hover:bg-[#F5F6F6]"
                       style={{
                         background: active ? WA_HOVER : "#fff",
-                        border: "none",
+                        // Longhand only — mixing `border:"none"` shorthand with
+                        // `borderLeft` longhand triggers React's conflicting-
+                        // property warning.
+                        borderTop: "none",
+                        borderRight: "none",
+                        borderBottom: "none",
                         borderLeft: active ? `3px solid ${WA_GREEN}` : "3px solid transparent",
                       }}>
                       {/* Avatar — circular WhatsApp style */}
@@ -1420,8 +1439,8 @@ const ParentCommunication = () => {
                       <p className="text-[12.5px]" style={{ color: WA_TEXT_MUTED }}>Type below to start the conversation.</p>
                     </div>
                   ) : (
-                    groupedMessages.map(group => (
-                      <div key={group.date}>
+                    groupedMessages.map((group, gi) => (
+                      <div key={`${group.date}-${gi}`}>
                         <div className="flex justify-center my-3">
                           <span className="px-3 py-[5px] rounded-[8px] text-[12px] font-medium"
                             style={{

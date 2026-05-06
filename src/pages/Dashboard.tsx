@@ -408,12 +408,14 @@ const Dashboard = () => {
     }
 
     // Low-score student risk alerts (per-student avg < 50%)
+    // Dual-key student match — score docs from email-source ingestion may
+    // only carry `studentEmail`, not `studentId`. Memory: dual_query_pattern.
     const studentScores: Record<string, { name: string; cls: string; scores: number[] }> = {};
     allDocs.forEach(d => {
-      if (!d.studentId) return;
+      const sid = String(d.studentId || (d.studentEmail || "").toLowerCase() || "");
+      if (!sid) return;
       const pct = pctOfDoc(d);
       if (pct === null) return;
-      const sid = String(d.studentId);
       if (!studentScores[sid]) {
         // Resolve class label via the same idResolver used by the heatmap so
         // a score doc carrying only `classId` still surfaces its class in
@@ -451,9 +453,20 @@ const Dashboard = () => {
   useEffect(() => {
     if (!userData?.schoolId) return;
 
-    // Base constraints applied to every query
+    // Base constraints — branchId server-side is OK for ENTITY collections
+    // (students, teachers, classes) where the doc was created by an admin
+    // form that always sets branchId. For EVENT streams (attendance,
+    // incidents, scores) we keep schoolId-only and filter branchId
+    // in-memory because the enforceBranchId Cloud Function backfill has
+    // a 1-2s lag that silently drops fresh records (memory:
+    // bug_pattern_branch_filter_on_event_streams + branchid_inference_lag).
     const C = [where("schoolId", "==", userData.schoolId)];
     if (userData.branchId) C.push(where("branchId", "==", userData.branchId));
+    // Schema-only schoolId scope, no branchId — for event-stream listeners
+    // that need in-memory branch filtering.
+    const SC = [where("schoolId", "==", userData.schoolId)];
+    const inBranch = (raw: any) =>
+      !userData.branchId || !raw?.branchId || raw.branchId === userData.branchId;
 
     const unsubs: (() => void)[] = [];
 
@@ -505,9 +518,10 @@ const Dashboard = () => {
     // and (schoolId ASC, branchId ASC, date ASC). Deploy via firestore.indexes.json.
     const attCutoff = daysAgoStr(30);
     unsubs.push(onSnapshot(
-      query(collection(db, "attendance"), ...C, where("date", ">=", attCutoff)),
+      // Event stream: schoolId-scoped at server, branchId in-memory.
+      query(collection(db, "attendance"), ...SC, where("date", ">=", attCutoff)),
       snap => {
-        const records = snap.docs.map(d => d.data()); // already ≤30 days from server
+        const records = snap.docs.map(d => d.data()).filter(inBranch); // already ≤30 days from server
         const today = todayStr();
         const yesterday = daysAgoStr(1);
 
@@ -571,14 +585,17 @@ const Dashboard = () => {
         }
         attRecentRef.current = recentRate;
 
-        // Attendance-based risk: students < 70% in last 30 days (min 5 records)
+        // Attendance-based risk: students < 70% in last 30 days (min 5 records).
+        // Dual-key student match — attendance docs may carry only
+        // studentEmail. Memory: dual_query_pattern.
         const studentMap: Record<string, { name: string; cls: string; p: number; t: number }> = {};
         records.forEach(r => {
-          if (!r.studentId) return;
-          if (!studentMap[r.studentId])
-            studentMap[r.studentId] = { name: r.studentName || "Student", cls: r.className || "", p: 0, t: 0 };
-          studentMap[r.studentId].t++;
-          if (r.status === "present" || r.status === "late") studentMap[r.studentId].p++;
+          const sid = String(r.studentId || (r.studentEmail || "").toLowerCase() || "");
+          if (!sid) return;
+          if (!studentMap[sid])
+            studentMap[sid] = { name: r.studentName || "Student", cls: r.className || "", p: 0, t: 0 };
+          studentMap[sid].t++;
+          if (r.status === "present" || r.status === "late") studentMap[sid].p++;
         });
         attRisksRef.current = Object.entries(studentMap)
           .map(([id, s]) => ({ id, ...s, rate: Math.round((s.p / s.t) * 100) }))
@@ -601,10 +618,12 @@ const Dashboard = () => {
     ));
 
     // ── 4. Incidents → pending count + incident risk alerts ────────────────
+    // Event stream: schoolId-scoped at server, branchId in-memory
+    // (memory: bug_pattern_branch_filter_on_event_streams).
     unsubs.push(onSnapshot(
-      query(collection(db, "incidents"), ...C),
+      query(collection(db, "incidents"), ...SC),
       snap => {
-        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() as any })).filter(inBranch);
         // Status field is case-inconsistent across writers — some flows
         // store "Open" / "Pending" capitalized, others lowercase. Normalize
         // before comparing so we don't silently miss capitalized variants.

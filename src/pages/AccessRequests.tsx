@@ -9,13 +9,15 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { db } from "@/lib/firebase";
 import {
   collection, query, where, onSnapshot,
-  addDoc, updateDoc, doc, serverTimestamp, deleteDoc,
+  addDoc, updateDoc, doc, serverTimestamp, deleteDoc, runTransaction,
 } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { sendDeoApprovedEmail, sendDeoRejectedEmail } from "@/lib/resend";
 import { toast } from "sonner";
 
 // ── Allowed pages config — keep in sync with principal-dashboard sidebar ─────
+// MUST mirror App.tsx routes — when a new page is added there, add it here
+// too OR principals will never be able to grant DEOs access to it.
 const ALL_PAGES = [
   { path: "/",                     label: "Dashboard",              description: "Home & overview" },
   { path: "/students",             label: "Students",               description: "View & add students" },
@@ -24,6 +26,7 @@ const ALL_PAGES = [
   { path: "/classes",              label: "Classes & Sections",     description: "Class & section setup" },
   { path: "/teachers",             label: "Teachers",               description: "Teachers directory" },
   { path: "/academics",            label: "Academics",              description: "Academic overview" },
+  { path: "/syllabus",             label: "Syllabus",               description: "Manage syllabus uploads" },
   { path: "/attendance",           label: "Attendance",             description: "Mark & view attendance" },
   { path: "/discipline",           label: "Discipline & Incidents", description: "Behaviour records" },
   { path: "/parent-communication", label: "Parent Communication",   description: "Messages to parents" },
@@ -34,10 +37,24 @@ const ALL_PAGES = [
   { path: "/fee-structure",        label: "Fee Structure",          description: "Upload term-wise fee Excel" },
   { path: "/exam-structure",       label: "Exam Structure",         description: "Exam blueprint setup" },
   { path: "/timetable",            label: "Timetable Setup",        description: "School timetable" },
+  { path: "/alumni",               label: "Alumni",                 description: "Alumni newsletters & PDFs" },
   { path: "/reports",              label: "Reports",                description: "Reports & exports" },
 ];
 
-const DEFAULT_ALLOWED = ["/students", "/attendance", "/assignments", "/exams"];
+// DEFAULT pre-selection in the approve-modal — covers common data-entry duties:
+// dashboard, students, classes, attendance, assignments, exams, teacher notes,
+// fees. Principal can deselect or extend before approving. Was 4 pages; user
+// research showed approvals were under-granting access.
+const DEFAULT_ALLOWED = [
+  "/",
+  "/students",
+  "/classes",
+  "/attendance",
+  "/assignments",
+  "/exams",
+  "/teacher-notes",
+  "/fee-structure",
+];
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; icon: any }> = {
   pending:  { label: "Pending",  bg: "bg-amber-100",   text: "text-amber-700",   icon: Clock },
@@ -126,6 +143,9 @@ const AccessRequests = () => {
   };
 
   // ── Save edited allowedPages ────────────────────────────────────────────
+  // Atomic update of BOTH the staff doc (source of truth for runtime guard)
+  // AND the request audit trail. Two-write race previously could leave the
+  // staff record on new pages but the audit row on stale pages.
   const handleSaveEdit = async () => {
     if (!approvingReq || !editingDeoDoc) return;
     if (allowedPages.length === 0) {
@@ -134,48 +154,68 @@ const AccessRequests = () => {
     }
     setApproving(true);
     try {
-      await updateDoc(doc(db, "data_entry_staff", editingDeoDoc.id), {
-        allowedPages,
-        updatedBy: userData?.email || "",
-        updatedAt: serverTimestamp(),
-      });
-      await updateDoc(doc(db, "access_requests", approvingReq.id), {
-        allowedPages,
-        updatedAt: serverTimestamp(),
+      const staffRef   = doc(db, "data_entry_staff", editingDeoDoc.id);
+      const requestRef = doc(db, "access_requests", approvingReq.id);
+      await runTransaction(db, async (tx) => {
+        const staffSnap = await tx.get(staffRef);
+        if (!staffSnap.exists()) {
+          throw new Error("Staff record no longer exists — refresh and try again.");
+        }
+        tx.update(staffRef, {
+          allowedPages,
+          updatedBy: userData?.email || "",
+          updatedAt: serverTimestamp(),
+        });
+        tx.update(requestRef, {
+          allowedPages,
+          updatedAt: serverTimestamp(),
+        });
       });
       toast.success(`Access updated for ${approvingReq.name}`);
       setApprovingReq(null);
       setEditingDeoDoc(null);
       setModalMode("approve");
     } catch (e: any) {
-      toast.error("Update failed: " + e.message);
+      toast.error("Update failed: " + (e?.message || "unknown"));
     }
     setApproving(false);
   };
 
-  // ── Revoke — removes access but preserves all records created by this DEO
+  // ── Revoke — removes access but preserves all records created by this DEO.
+  // Atomic: staff-doc delete + request status flip happen together. Without
+  // the transaction, a partial failure could leave the DEO logged out
+  // (staff doc gone) while the request still showed "approved" — confusing
+  // audit trail and re-approval risk.
   const handleRevoke = async () => {
     if (!revokingReq) return;
     const deo = deoByRequestId.get(revokingReq.id);
     setRevoking(true);
     try {
-      if (deo) {
-        await deleteDoc(doc(db, "data_entry_staff", deo.id));
-      }
-      await updateDoc(doc(db, "access_requests", revokingReq.id), {
-        status:     "revoked",
-        revokedBy:  userData?.email || "",
-        revokedAt:  serverTimestamp(),
+      const requestRef = doc(db, "access_requests", revokingReq.id);
+      const staffRef = deo ? doc(db, "data_entry_staff", deo.id) : null;
+      await runTransaction(db, async (tx) => {
+        // Always update the audit row; delete staff doc only if present.
+        if (staffRef) tx.delete(staffRef);
+        tx.update(requestRef, {
+          status:     "revoked",
+          revokedBy:  userData?.email || "",
+          revokedAt:  serverTimestamp(),
+        });
       });
       toast.success(`${revokingReq.name}'s access revoked. Historical records kept intact.`);
       setRevokingReq(null);
     } catch (e: any) {
-      toast.error("Revoke failed: " + e.message);
+      toast.error("Revoke failed: " + (e?.message || "unknown"));
     }
     setRevoking(false);
   };
 
   // ── Approve ──────────────────────────────────────────────────────────────
+  // Atomic transaction: data_entry_staff create + access_requests status
+  // update happen together. If either fails, both roll back — no orphan
+  // staff doc with the request still showing "pending", and no flipped
+  // request status without the staff record (which would let the DEO log
+  // in but fail every read).
   const handleApprove = async () => {
     if (!approvingReq) return;
     if (allowedPages.length === 0) {
@@ -184,30 +224,42 @@ const AccessRequests = () => {
     }
     setApproving(true);
     try {
-      // 1. Create data_entry_staff record → DEO can now login
-      await addDoc(collection(db, "data_entry_staff"), {
-        name:         approvingReq.name,
-        email:        approvingReq.email,
-        phone:        approvingReq.phone || "",
-        reason:       approvingReq.reason || "",
-        role:         "data_entry",
-        schoolId:     userData!.schoolId,
-        branchId:     userData!.branchId || "",
-        schoolName:   userData!.schoolName || "",
-        status:       "approved",
-        allowedPages,
-        approvedBy:   userData!.email,
-        approvedAt:   serverTimestamp(),
-        requestId:    approvingReq.id,
-        createdAt:    serverTimestamp(),
-      });
+      // Pre-generate the new staff doc ref so the transaction can `set` it.
+      const newStaffRef = doc(collection(db, "data_entry_staff"));
+      const requestRef  = doc(db, "access_requests", approvingReq.id);
 
-      // 2. Update request status
-      await updateDoc(doc(db, "access_requests", approvingReq.id), {
-        status:     "approved",
-        reviewedBy: userData!.email,
-        reviewedAt: serverTimestamp(),
-        allowedPages,
+      await runTransaction(db, async (tx) => {
+        // Re-read the request inside the transaction to defend against a
+        // concurrent revoke/reject (Firestore retries the txn if either
+        // doc was changed between our reads and writes).
+        const reqSnap = await tx.get(requestRef);
+        if (!reqSnap.exists()) throw new Error("Request no longer exists.");
+        const cur = reqSnap.data() as any;
+        if (cur.status === "approved") {
+          throw new Error("Already approved by another admin.");
+        }
+        tx.set(newStaffRef, {
+          name:         approvingReq.name,
+          email:        approvingReq.email,
+          phone:        approvingReq.phone || "",
+          reason:       approvingReq.reason || "",
+          role:         "data_entry",
+          schoolId:     userData!.schoolId,
+          branchId:     userData!.branchId || "",
+          schoolName:   userData!.schoolName || "",
+          status:       "approved",
+          allowedPages,
+          approvedBy:   userData!.email,
+          approvedAt:   serverTimestamp(),
+          requestId:    approvingReq.id,
+          createdAt:    serverTimestamp(),
+        });
+        tx.update(requestRef, {
+          status:     "approved",
+          reviewedBy: userData!.email,
+          reviewedAt: serverTimestamp(),
+          allowedPages,
+        });
       });
 
       // 3. Email DEO via server-side template (best-effort — fire and forget).
@@ -270,12 +322,16 @@ const AccessRequests = () => {
   };
 
   // ── Filtered list ────────────────────────────────────────────────────────
-  const filtered = requests.filter(r => r.status === tab);
+  // Case-insensitive status compare — defends against legacy docs with
+  // capitalized/mixed-case status values that would otherwise be invisible
+  // in every tab.
+  const statusOf = (r: any) => String(r?.status || "").toLowerCase();
+  const filtered = requests.filter(r => statusOf(r) === tab);
   const counts   = {
-    pending:  requests.filter(r => r.status === "pending").length,
-    approved: requests.filter(r => r.status === "approved").length,
-    rejected: requests.filter(r => r.status === "rejected").length,
-    revoked:  requests.filter(r => r.status === "revoked").length,
+    pending:  requests.filter(r => statusOf(r) === "pending").length,
+    approved: requests.filter(r => statusOf(r) === "approved").length,
+    rejected: requests.filter(r => statusOf(r) === "rejected").length,
+    revoked:  requests.filter(r => statusOf(r) === "revoked").length,
   };
 
   const formatDate = (ts: any) => {

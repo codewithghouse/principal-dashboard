@@ -201,11 +201,16 @@ const Discipline = () => {
     if (!userData?.schoolId) return;
     setLoading(true);
 
+    // Event stream: schoolId-scoped at server, branchId in-memory
+    // (memory: bug_pattern_branch_filter_on_event_streams). Server-side
+    // `where("branchId")` silently drops fresh incidents during the 1-2s
+    // enforceBranchId Cloud Function backfill window.
     const constraints: any[] = [where("schoolId", "==", userData.schoolId)];
-    if (userData.branchId) constraints.push(where("branchId", "==", userData.branchId));
+    const branchId = userData.branchId as string | undefined;
+    const inBranch = (raw: any) => !branchId || !raw?.branchId || raw.branchId === branchId;
 
     const unsub = onSnapshot(query(collection(db, "incidents"), ...constraints), (snap) => {
-      const data: any[] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const data: any[] = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(inBranch);
       setIncidents(data);
 
       const today   = new Date().toLocaleDateString('en-CA');

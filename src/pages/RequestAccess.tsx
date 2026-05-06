@@ -10,6 +10,14 @@ import {
 } from "firebase/firestore";
 
 // ── Public page — NO auth required ───────────────────────────────────────────
+// Reason length cap — protects DB from accidentally huge text (paste of an
+// entire CV) and matches what the principal can comfortably scan.
+const REASON_MAX_LEN = 1000;
+// Email format guard — same regex shape we use across the app for validation.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type SchoolValidity = "loading" | "valid" | "invalid";
+
 const RequestAccess = () => {
   const [params] = useSearchParams();
   const schoolId = params.get("schoolId") || "";
@@ -23,17 +31,38 @@ const RequestAccess = () => {
   const [error, setError]             = useState("");
   const [schoolName, setSchoolName]   = useState<string | null>(null);
   const [principalEmail, setPrincipalEmail] = useState<string>("");
+  // schoolValidity gates the form — a typo'd or non-existent schoolId in the
+  // URL used to silently produce a working form that wrote garbage docs.
+  // We now resolve via the public `principals` lookup before allowing submit.
+  const [schoolValidity, setSchoolValidity] = useState<SchoolValidity>("loading");
 
   // ── Resolve school name + principal email from schoolId ──────────────────
   useEffect(() => {
-    if (!schoolId) return;
-    getDocs(query(collection(db, "principals"), where("schoolId", "==", schoolId))).then(snap => {
-      if (!snap.empty) {
+    if (!schoolId) {
+      setSchoolValidity("invalid");
+      return;
+    }
+    setSchoolValidity("loading");
+    getDocs(query(collection(db, "principals"), where("schoolId", "==", schoolId)))
+      .then(snap => {
+        if (snap.empty) {
+          // Public reads on principals are allowed; an empty result means
+          // the schoolId in the URL doesn't belong to any registered school.
+          setSchoolValidity("invalid");
+          return;
+        }
         const d = snap.docs[0].data();
         setSchoolName(d.schoolName || d.school || schoolId);
         setPrincipalEmail(d.email || "");
-      }
-    }).catch(() => {});
+        setSchoolValidity("valid");
+      })
+      .catch((err) => {
+        // permission-denied (rules tightening) or network — degraded mode:
+        // accept submissions but skip the principal-name display. This
+        // preserves uptime if rules ever block public principals reads.
+        console.warn("[RequestAccess] school lookup failed:", err?.code || err?.message);
+        setSchoolValidity("valid");
+      });
   }, [schoolId]);
 
   const set = (k: keyof typeof form) => (
@@ -41,27 +70,42 @@ const RequestAccess = () => {
   ) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = async () => {
-    if (!form.name.trim() || !form.email.trim()) {
+    const name = form.name.trim();
+    const email = form.email.toLowerCase().trim();
+    const phone = form.phone.trim();
+    const reason = form.reason.trim();
+
+    if (!name || !email) {
       setError("Name and Email are required.");
       return;
     }
-    if (!schoolId) {
+    if (!EMAIL_RE.test(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    if (reason.length > REASON_MAX_LEN) {
+      setError(`Reason is too long (${reason.length} chars, max ${REASON_MAX_LEN}).`);
+      return;
+    }
+    if (!schoolId || schoolValidity === "invalid") {
       setError("Invalid link — ask your principal for the correct access request link.");
       return;
     }
     setError("");
     setSubmitting(true);
     try {
-      // 1. Best-effort duplicate check — silently skipped if rules block public reads
+      // 1. Best-effort duplicate check. ANY error is logged + swallowed —
+      //    permission-denied (public can't list), network blip, etc. The
+      //    principal's UI dedupes manually if a duplicate slips through.
       try {
         const existing = await getDocs(
           query(collection(db, "access_requests"),
-            where("email", "==", form.email.toLowerCase().trim()),
+            where("email", "==", email),
             where("schoolId", "==", schoolId)
           )
         );
         if (!existing.empty) {
-          const status = existing.docs[0].data().status;
+          const status = String(existing.docs[0].data().status || "").toLowerCase();
           setError(
             status === "approved"
               ? "Your request has already been approved! Try logging in."
@@ -73,19 +117,16 @@ const RequestAccess = () => {
           return;
         }
       } catch (preCheckErr: any) {
-        // Public users cannot read this collection — that's fine, just create the request.
-        // The principal will dedupe manually in Staff Access Control.
-        if (preCheckErr?.code !== "permission-denied") {
-          throw preCheckErr;
-        }
+        // Best-effort — never block submission on dedup-check failure.
+        console.warn("[RequestAccess] dedup pre-check failed:", preCheckErr?.code || preCheckErr?.message);
       }
 
-      // 2. Save request
+      // 2. Save request — uses the locally-trimmed values computed above.
       await addDoc(collection(db, "access_requests"), {
-        name:      form.name.trim(),
-        email:     form.email.toLowerCase().trim(),
-        phone:     form.phone.trim(),
-        reason:    form.reason.trim(),
+        name,
+        email,
+        phone,
+        reason,
         schoolId,
         branchId,
         status:    "pending",
@@ -130,8 +171,22 @@ const RequestAccess = () => {
     setSubmitting(false);
   };
 
-  // ── Invalid link ─────────────────────────────────────────────────────────
-  if (!schoolId) {
+  // ── Loading: resolving the school from the URL ──────────────────────────
+  if (schoolValidity === "loading") {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-7 h-7 animate-spin text-[#1e3a8a]" />
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+            Verifying invitation…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Invalid: schoolId missing OR doesn't match any registered school ────
+  if (schoolValidity === "invalid") {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="bg-white rounded-3xl shadow-xl p-10 max-w-md w-full text-center">
@@ -140,7 +195,9 @@ const RequestAccess = () => {
           </div>
           <h2 className="text-xl font-black text-slate-800 mb-2">Invalid Link</h2>
           <p className="text-sm text-slate-500">
-            This access request link is invalid or incomplete. Please ask your principal for the correct link.
+            {schoolId
+              ? <>This access request link points to a school that doesn't exist (<code className="text-[11px] bg-slate-100 px-1 rounded">{schoolId.slice(0, 8)}…</code>). Ask your principal for the correct link.</>
+              : <>This access request link is invalid or incomplete. Please ask your principal for the correct link.</>}
           </p>
         </div>
       </div>
@@ -245,8 +302,14 @@ const RequestAccess = () => {
             <div className="relative">
               <FileText className="absolute left-3 top-3.5 w-4 h-4 text-slate-300" />
               <textarea value={form.reason} onChange={set("reason")} rows={3}
+                maxLength={REASON_MAX_LEN}
                 placeholder="Brief description of your role and why you need access..."
                 className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-blue-300 transition-all resize-none" />
+              {form.reason.length > REASON_MAX_LEN * 0.8 && (
+                <p className="text-[10px] text-slate-400 mt-1 text-right">
+                  {form.reason.length} / {REASON_MAX_LEN}
+                </p>
+              )}
             </div>
           </div>
 

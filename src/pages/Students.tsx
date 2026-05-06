@@ -308,7 +308,8 @@ const Students = () => {
       if (!slot.base.email) slot.base.email = d.studentEmail || d.email || "";
       if (!slot.base.schoolId) slot.base.schoolId = d.schoolId || "";
       if (!slot.base.branchId) slot.base.branchId = d.branchId || "";
-      if (!slot.base.status)   slot.base.status   = "Active";
+      // No fabricated "Active" — leave status null when missing so the
+      // UI can render "—" honestly. Memory: bug_pattern_fabricated_fallback.
       const cn = labelOfClass(d.className, d.classId);
       if (cn) slot.classNames.add(cn);
       const tn = teacherMapRef.current.get(d.teacherId) || d.teacherName;

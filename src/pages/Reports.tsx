@@ -1,41 +1,47 @@
 import { useState, useEffect } from "react";
 import {
-  FileText, Download, GraduationCap, Calendar, Shield, IndianRupee,
+  FileText, Download, GraduationCap, Calendar, Shield,
   Settings, UserCheck, Layout, CalendarCheck, AlertTriangle, Trophy,
   Users2, MessageSquare, LineChart, Trash2, ArrowRight, Plus, Loader2, Clock,
   BarChart3,
 } from "lucide-react";
 import GenerateReport from "@/components/GenerateReport";
+import { buildReport, openReportWindow } from "@/lib/reportTemplate";
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { db } from "@/lib/firebase";
 import {
   collection, query, where, onSnapshot,
-  deleteDoc, doc
+  doc, writeBatch, getDoc,
 } from "firebase/firestore";
 import { toast } from "sonner";
 
-type CategoryId = "academic" | "attendance" | "discipline" | "financial" | "custom";
+type CategoryId = "academic" | "attendance" | "discipline" | "communication" | "custom";
 
 const reportCategories: {
-  id: CategoryId; label: string; count: string; icon: any; tone: "blue" | "green" | "red" | "orange" | "violet";
+  id: CategoryId; label: string; icon: any; tone: "blue" | "green" | "red" | "orange" | "violet";
 }[] = [
-  { id: "academic",    label: "Academic",    count: "12 templates",    icon: GraduationCap, tone: "blue" },
-  { id: "attendance",  label: "Attendance",  count: "8 templates",     icon: CalendarCheck, tone: "green" },
-  { id: "discipline",  label: "Discipline",  count: "5 templates",     icon: Shield,        tone: "red" },
-  { id: "financial",   label: "Financial",   count: "6 templates",     icon: IndianRupee,   tone: "orange" },
-  { id: "custom",      label: "Custom",      count: "Build your own",  icon: Settings,      tone: "violet" },
+  { id: "academic",      label: "Academic",      icon: GraduationCap, tone: "blue"   },
+  { id: "attendance",    label: "Attendance",    icon: CalendarCheck, tone: "green"  },
+  { id: "discipline",    label: "Discipline",    icon: Shield,        tone: "red"    },
+  { id: "communication", label: "Communication", icon: MessageSquare, tone: "orange" },
+  { id: "custom",        label: "Custom",        icon: Settings,      tone: "violet" },
 ];
 
-const templates = [
-  { title: "Student Progress",     desc: "Individual performance",  icon: UserCheck,     tone: "violet" },
-  { title: "Class Performance",    desc: "Section-wise analysis",   icon: Layout,        tone: "blue" },
-  { title: "Monthly Attendance",   desc: "Attendance summary",      icon: CalendarCheck, tone: "green" },
-  { title: "Risk Students",        desc: "At-risk student list",    icon: AlertTriangle, tone: "red" },
-  { title: "Exam Results",         desc: "Comprehensive report",    icon: Trophy,        tone: "gold" },
-  { title: "Teacher Performance",  desc: "Staff evaluation",        icon: Users2,        tone: "blue" },
-  { title: "Parent Communication", desc: "Communication log",       icon: MessageSquare, tone: "green" },
-  { title: "School Overview",      desc: "Complete analytics",      icon: LineChart,     tone: "orange" },
+// Each pre-built template belongs to ONE category. Per-category count is
+// derived from this mapping (no fabricated numbers — memory:
+// bug_pattern_fabricated_fallback). Click on a category card filters
+// the templates grid to just that category's templates.
+const templates: Array<{
+  title: string; desc: string; icon: any; tone: string; categoryId: Exclude<CategoryId, "custom">;
+}> = [
+  { title: "Student Progress",     desc: "Individual performance", icon: UserCheck,     tone: "violet", categoryId: "academic"      },
+  { title: "Class Performance",    desc: "Section-wise analysis",  icon: Layout,        tone: "blue",   categoryId: "academic"      },
+  { title: "Exam Results",         desc: "Comprehensive report",   icon: Trophy,        tone: "gold",   categoryId: "academic"      },
+  { title: "Teacher Performance",  desc: "Staff evaluation",       icon: Users2,        tone: "blue",   categoryId: "academic"      },
+  { title: "Monthly Attendance",   desc: "Attendance summary",     icon: CalendarCheck, tone: "green",  categoryId: "attendance"    },
+  { title: "Risk Students",        desc: "At-risk student list",   icon: AlertTriangle, tone: "red",    categoryId: "discipline"    },
+  { title: "School Overview",      desc: "Complete analytics",     icon: LineChart,     tone: "orange", categoryId: "communication" },
 ];
 
 const Reports = () => {
@@ -46,86 +52,136 @@ const Reports = () => {
   const [recentReports,     setRecentReports]     = useState<any[]>([]);
   const [isLoading,         setIsLoading]         = useState(true);
   const [deletingId,        setDeletingId]        = useState<string | null>(null);
+  // Two-step delete confirm — first click arms, second click within 4s
+  // actually deletes. Avoids accidental loss without needing a modal.
+  const [confirmDeleteId,   setConfirmDeleteId]   = useState<string | null>(null);
 
   /* ── listen for principal's generated reports ── */
+  // schoolId-only at server; branchId in-memory (memory:
+  // bug_pattern_branch_filter_on_event_streams + branchid_inference_lag).
+  // Reports are events — server-side branchId filter silently dropped
+  // every doc whose branchId field was missing or hadn't yet been
+  // backfilled by the enforceBranchId trigger.
   useEffect(() => {
     if (!userData?.schoolId) return;
-    const reportConstraints: any[] = [where("schoolId", "==", userData.schoolId)];
-    if (userData.branchId) reportConstraints.push(where("branchId", "==", userData.branchId));
-    const q = query(collection(db, "principal_reports"), ...reportConstraints);
+    const branchId = userData.branchId as string | undefined;
+    const inBranch = (raw: any) => !branchId || !raw?.branchId || raw.branchId === branchId;
+
+    const q = query(
+      collection(db, "principal_reports"),
+      where("schoolId", "==", userData.schoolId),
+    );
     const unsub = onSnapshot(q, snap => {
       const docs = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
+        .filter(inBranch)
         .sort((a: any, b: any) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
       setRecentReports(docs.slice(0, 10));
       setIsLoading(false);
     }, err => {
-      console.error(err);
+      console.error("[Reports] listener failed:", err);
       setIsLoading(false);
     });
     return () => unsub();
   }, [userData?.schoolId, userData?.branchId]);
 
-  /* ── delete a report ── */
+  /* ── delete a report — two-step confirm + atomic two-doc delete ── */
+  // First click: arm confirm (button morphs to "Confirm?"). Auto-clears
+  // after 4s if the user does nothing.
+  // Second click within the window: writeBatch deletes from BOTH
+  // principal_reports AND reports (mirror) so the report disappears
+  // everywhere — without the mirror delete, parents/teachers would
+  // keep seeing the report forever.
   const handleDelete = async (id: string) => {
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id);
+      // Auto-disarm after 4s.
+      window.setTimeout(() => {
+        setConfirmDeleteId(curr => (curr === id ? null : curr));
+      }, 4000);
+      return;
+    }
+    setConfirmDeleteId(null);
     setDeletingId(id);
     try {
-      await deleteDoc(doc(db, "principal_reports", id));
+      const batch = writeBatch(db);
+      batch.delete(doc(db, "principal_reports", id));
+      // Mirror in `reports` uses the SAME id (post-fix). For OLD reports
+      // that pre-date the same-id write, the mirror has a different id —
+      // skip silently rather than throwing (best-effort).
+      const mirrorRef = doc(db, "reports", id);
+      const mirrorSnap = await getDoc(mirrorRef);
+      if (mirrorSnap.exists()) batch.delete(mirrorRef);
+      await batch.commit();
       toast.success("Report deleted.");
-    } catch {
+    } catch (e) {
+      console.error("[Reports] delete failed:", e);
       toast.error("Failed to delete. Try again.");
     }
     setDeletingId(null);
   };
 
   /* ── download: open print view (professional template) ── */
+  // Brand fields passed to every report:
+  //   logoUrl     → principal's uploaded logo (Settings → Branding)
+  //   schoolName  → school's display name
+  //   themeColor  → app primary OR principal-set brand color
+  // safeImageUrl + safeColor on the template side reject malformed values.
   const handleDownload = (report: any) => {
-    const { buildReport, openReportWindow } = require("@/lib/reportTemplate");
     const d = report.data || {};
+    // Prefer template-specific heroStats + sections saved at generate-time
+    // (new flow). Fall back to legacy hardcoded shape for old reports
+    // generated before buildPayload was introduced.
+    const heroStats = Array.isArray(d.heroStats) && d.heroStats.length > 0
+      ? d.heroStats
+      : [
+          { label: "Total Students", value: d.totalStudents ?? "—" },
+          { label: "Avg Attendance", value: `${d.avgAttendance ?? 0}%`, color: (d.avgAttendance ?? 0) >= 85 ? "#4ade80" : "#fbbf24" },
+          { label: "Avg Marks",      value: `${d.avgMarks ?? 0}%`,      color: (d.avgMarks ?? 0) >= 75 ? "#4ade80" : "#fbbf24" },
+          { label: "At-Risk",        value: d.atRisk ?? "—",            color: (d.atRisk ?? 0) > 0 ? "#f87171" : "#4ade80" },
+        ];
+    const sections = Array.isArray(d.sections) && d.sections.length > 0
+      ? d.sections
+      : [
+          {
+            title: "Performance Overview",
+            type: "bars" as const,
+            bars: [
+              { label: "Average Attendance", value: d.avgAttendance ?? 0 },
+              { label: "Average Marks",      value: d.avgMarks ?? 0 },
+              { label: "Pass Rate",          value: d.passRate ?? 0 },
+            ],
+          },
+          {
+            title: "Key Metrics",
+            type: "stats" as const,
+            stats: [
+              { label: "Total Students",       value: d.totalStudents ?? "—" },
+              { label: "At-Risk Students",     value: d.atRisk ?? "0", color: "#dc2626" },
+              { label: "Discipline Incidents", value: d.incidents ?? "0" },
+              { label: "Report Type",          value: report.type || "General" },
+              { label: "Status",               value: report.status || "Draft" },
+            ],
+          },
+        ];
+
     const html = buildReport({
       title: report.title || "Report",
       subtitle: `Generated by ${report.generatedBy || "Principal"} · ${report.format || "PDF"} Format`,
       badge: report.className || report.grade || "",
-      schoolName: userData?.schoolName || "Edullent",
+      schoolName:
+        report.branchName
+        || (userData as any)?.branchName
+        || (userData as any)?.branch
+        || (userData as any)?.branchTitle
+        || report.schoolName
+        || userData?.schoolName
+        || "Edullent",
       generatedBy: userData?.name || "Principal",
-      heroStats: [
-        { label: "Total Students", value: d.totalStudents ?? "—" },
-        { label: "Avg Attendance", value: `${d.avgAttendance ?? 0}%`, color: (d.avgAttendance ?? 0) >= 85 ? "#4ade80" : "#fbbf24" },
-        { label: "Avg Marks", value: `${d.avgMarks ?? 0}%`, color: (d.avgMarks ?? 0) >= 75 ? "#4ade80" : "#fbbf24" },
-        { label: "At-Risk", value: d.atRisk ?? "—", color: (d.atRisk ?? 0) > 0 ? "#f87171" : "#4ade80" },
-      ],
-      sections: [
-        {
-          title: "Performance Overview",
-          type: "bars",
-          bars: [
-            { label: "Average Attendance", value: d.avgAttendance ?? 0 },
-            { label: "Average Marks", value: d.avgMarks ?? 0 },
-            { label: "Pass Rate", value: d.passRate ?? 0 },
-          ],
-        },
-        {
-          title: "Key Metrics",
-          type: "stats",
-          stats: [
-            { label: "Total Students", value: d.totalStudents ?? "—" },
-            { label: "At-Risk Students", value: d.atRisk ?? "0", color: "#dc2626" },
-            { label: "Discipline Incidents", value: d.incidents ?? "0" },
-            { label: "Report Type", value: report.type || "General" },
-            { label: "Status", value: report.status || "Draft" },
-          ],
-        },
-        ...(d.fullList?.length > 0 ? [{
-          title: "Student Breakdown",
-          type: "table" as const,
-          headers: ["Name", "Score", "Attendance", "Standing"],
-          rows: (d.fullList || []).slice(0, 30).map((s: any) => ({
-            cells: [s.name || s.studentName || "—", `${s.score || s.avgScore || 0}%`, `${s.attendance || s.attendanceRate || 0}%`, s.standing || "—"],
-            highlight: (s.score || s.avgScore || 0) < 40,
-          })),
-        }] : []),
-        ...(d.aiRemarks ? [{ title: "AI Remarks", type: "text" as const, text: d.aiRemarks }] : []),
-      ],
+      logoUrl: (userData as any)?.logoUrl || "",
+      themeColor: (userData as any)?.themeColor || "#0055FF",
+      heroStats,
+      sections,
     });
     openReportWindow(html);
   };
@@ -273,9 +329,26 @@ const Reports = () => {
     }
   };
 
-  const totalTemplates = 36;
-  const categoriesCount = 5;
+  // Real counts derived from data — NEVER fabricate (memory:
+  // bug_pattern_fabricated_fallback). totalTemplates = pre-built only;
+  // "Custom" is a builder, not a counted template.
+  const totalTemplates = templates.length;
+  const categoriesCount = reportCategories.length;
   const preBuiltCount = templates.length;
+  const countByCategory: Record<CategoryId, number> = {
+    academic: 0, attendance: 0, discipline: 0, communication: 0, custom: 0,
+  };
+  templates.forEach(t => { countByCategory[t.categoryId]++; });
+  const categoryCountLabel = (id: CategoryId) =>
+    id === "custom"
+      ? "Build your own"
+      : `${countByCategory[id]} template${countByCategory[id] === 1 ? "" : "s"}`;
+  // Filtered templates for the active category. Custom is special-cased
+  // in the render — shows a "build any report" CTA, not a templates list.
+  const visibleTemplates =
+    activeCategory === "custom"
+      ? []
+      : templates.filter(t => t.categoryId === activeCategory);
 
   // ═══════════════════════════════════════════════════════════════
   //  MOBILE
@@ -361,9 +434,9 @@ const Reports = () => {
                 </div>
                 <div className="relative z-10">
                   <div className="text-[14px] font-bold leading-[1.15] mb-[3px]" style={{ color: v.nameColor, letterSpacing: "-0.2px" }}>
-                    {cat.label}{isCustom ? " · Build your own" : ""}
+                    {cat.label}
                   </div>
-                  <div className="text-[11px] font-semibold" style={{ color: v.subColor }}>{cat.count}</div>
+                  <div className="text-[11px] font-semibold" style={{ color: v.subColor }}>{categoryCountLabel(cat.id)}</div>
                 </div>
                 <Icon className="absolute bottom-[10px] right-[10px] w-12 h-12 pointer-events-none"
                   style={{ color: v.accent, opacity: 0.18 }} strokeWidth={2} />
@@ -374,40 +447,66 @@ const Reports = () => {
 
         {/* Pre-built label */}
         <div className="flex items-center gap-2 px-5 pt-4 text-[9px] font-bold uppercase tracking-[0.10em]" style={{ color: T4 }}>
-          <span>Pre-built Templates</span>
+          <span>{activeCategory === "custom" ? "Custom Builder" : `${reportCategories.find(c => c.id === activeCategory)?.label} Templates`}</span>
           <span className="px-[9px] py-[3px] rounded-full ml-1" style={{ background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.16)", color: B1 }}>
-            {preBuiltCount} quick picks
+            {activeCategory === "custom" ? "Build your own" : `${visibleTemplates.length} template${visibleTemplates.length === 1 ? "" : "s"}`}
           </span>
           <span className="flex-1 h-[0.5px]" style={{ background: "rgba(0,85,255,0.12)" }} />
         </div>
 
-        {/* Templates grid 2-col */}
-        <div className="grid grid-cols-2 gap-[10px] px-5 pt-3">
-          {templates.map((tpl, i) => {
-            const v = vibeFor(tpl.tone);
-            const Icon = tpl.icon;
-            return (
-              <button key={i}
-                onClick={() => setSelectedTemplate(tpl.title)}
-                className="rounded-[18px] p-[14px] active:scale-[0.97] transition-transform text-left relative overflow-hidden min-h-[100px]"
-                style={{
-                  background: v.cardBg,
-                  border: "0.5px solid rgba(0,85,255,0.10)",
-                  boxShadow: SH,
-                  transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
-                }}>
-                <div className="w-[36px] h-[36px] rounded-[11px] flex items-center justify-center mb-[8px] relative z-10"
-                  style={{ background: v.iconBg, boxShadow: v.iconShadow }}>
-                  <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
-                </div>
-                <div className="text-[12px] font-bold leading-[1.2] mb-[3px] relative z-10" style={{ color: v.nameColor, letterSpacing: "-0.1px" }}>{tpl.title}</div>
-                <div className="text-[10px] font-semibold leading-[1.4] relative z-10" style={{ color: v.subColor }}>{tpl.desc}</div>
-                <Icon className="absolute bottom-[8px] right-[8px] w-9 h-9 pointer-events-none"
-                  style={{ color: v.accent, opacity: 0.18 }} strokeWidth={2} />
-              </button>
-            );
-          })}
-        </div>
+        {/* Templates grid 2-col — filtered by activeCategory */}
+        {activeCategory === "custom" ? (
+          <div className="px-5 pt-3">
+            <button
+              onClick={() => setSelectedTemplate("Custom")}
+              className="w-full rounded-[18px] p-5 active:scale-[0.98] transition-transform text-left relative overflow-hidden"
+              style={{
+                background: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+                border: "0.5px solid rgba(123,63,244,0.18)",
+                boxShadow: SH_LG,
+                transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
+              }}>
+              <div className="w-[44px] h-[44px] rounded-[12px] flex items-center justify-center mb-3 relative z-10"
+                style={{ background: `linear-gradient(135deg, ${VIOLET}, #A07CF8)`, boxShadow: "0 4px 14px rgba(123,63,244,0.26)" }}>
+                <Settings className="w-[22px] h-[22px] text-white" strokeWidth={2.3} />
+              </div>
+              <div className="text-[14px] font-bold leading-[1.15] mb-1 relative z-10" style={{ color: "#280C5C", letterSpacing: "-0.2px" }}>Build your own report</div>
+              <div className="text-[11px] font-semibold relative z-10" style={{ color: "#280C5C", opacity: 0.7 }}>Pick any report type with custom date range, grade & section</div>
+            </button>
+          </div>
+        ) : visibleTemplates.length === 0 ? (
+          <div className="mx-5 mt-3 bg-white rounded-[18px] py-8 text-center" style={{ border: "0.5px dashed rgba(0,85,255,0.22)", boxShadow: SH }}>
+            <div className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: T3 }}>No templates yet in this category</div>
+            <div className="text-[10px] mt-1" style={{ color: T4 }}>Use Custom builder to generate one</div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-[10px] px-5 pt-3">
+            {visibleTemplates.map((tpl, i) => {
+              const v = vibeFor(tpl.tone);
+              const Icon = tpl.icon;
+              return (
+                <button key={i}
+                  onClick={() => setSelectedTemplate(tpl.title)}
+                  className="rounded-[18px] p-[14px] active:scale-[0.97] transition-transform text-left relative overflow-hidden min-h-[100px]"
+                  style={{
+                    background: v.cardBg,
+                    border: "0.5px solid rgba(0,85,255,0.10)",
+                    boxShadow: SH,
+                    transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
+                  }}>
+                  <div className="w-[36px] h-[36px] rounded-[11px] flex items-center justify-center mb-[8px] relative z-10"
+                    style={{ background: v.iconBg, boxShadow: v.iconShadow }}>
+                    <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.3} />
+                  </div>
+                  <div className="text-[12px] font-bold leading-[1.2] mb-[3px] relative z-10" style={{ color: v.nameColor, letterSpacing: "-0.1px" }}>{tpl.title}</div>
+                  <div className="text-[10px] font-semibold leading-[1.4] relative z-10" style={{ color: v.subColor }}>{tpl.desc}</div>
+                  <Icon className="absolute bottom-[8px] right-[8px] w-9 h-9 pointer-events-none"
+                    style={{ color: v.accent, opacity: 0.18 }} strokeWidth={2} />
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Recents label */}
         <div className="flex items-center gap-2 px-5 pt-4 text-[9px] font-bold uppercase tracking-[0.10em]" style={{ color: T4 }}>
@@ -454,9 +553,18 @@ const Reports = () => {
                   <Download className="w-[13px] h-[13px]" strokeWidth={2.3} />
                 </button>
                 <button onClick={() => handleDelete(report.id)} disabled={deletingId === report.id}
-                  className="w-8 h-8 rounded-[10px] flex items-center justify-center disabled:opacity-50"
-                  style={{ background: RED_S, color: RED }}>
-                  {deletingId === report.id ? <Loader2 className="w-[13px] h-[13px] animate-spin" /> : <Trash2 className="w-[13px] h-[13px]" strokeWidth={2.3} />}
+                  className={`${confirmDeleteId === report.id ? "px-2 w-auto" : "w-8"} h-8 rounded-[10px] flex items-center justify-center gap-1 disabled:opacity-50 transition-all`}
+                  style={{
+                    background: confirmDeleteId === report.id ? RED : RED_S,
+                    color: confirmDeleteId === report.id ? "#fff" : RED,
+                  }}>
+                  {deletingId === report.id ? (
+                    <Loader2 className="w-[13px] h-[13px] animate-spin" />
+                  ) : confirmDeleteId === report.id ? (
+                    <span className="text-[10px] font-bold uppercase tracking-[0.06em]">Confirm?</span>
+                  ) : (
+                    <Trash2 className="w-[13px] h-[13px]" strokeWidth={2.3} />
+                  )}
                 </button>
               </div>
             ))}
@@ -608,7 +716,7 @@ const Reports = () => {
               </div>
               <span className="block text-[10px] font-bold uppercase tracking-[0.10em] mb-1.5" style={{ color: "#99AACC" }}>{cat.id === "custom" ? "Custom" : "Category"}</span>
               <p className="text-[20px] font-bold tracking-tight leading-tight mb-1" style={{ color: p.nameColor, letterSpacing: "-0.5px" }}>{cat.label}</p>
-              <p className="text-[11px] font-semibold truncate" style={{ color: "#5070B0" }}>{cat.count}</p>
+              <p className="text-[11px] font-semibold truncate" style={{ color: "#5070B0" }}>{categoryCountLabel(cat.id)}</p>
               <cat.icon
                 className="absolute bottom-3 right-3 w-14 h-14 pointer-events-none"
                 style={{ color: p.decorColor, opacity: 0.18 }}
@@ -619,7 +727,7 @@ const Reports = () => {
         })}
       </div>
 
-      {/* Pre-built templates */}
+      {/* Pre-built templates — filtered by activeCategory */}
       <div className="mt-5 bg-white rounded-[20px] p-6"
         style={{ boxShadow: SH_LG, border: `0.5px solid ${SEP}` }}>
         <div className="flex items-center gap-[10px] mb-4">
@@ -627,32 +735,66 @@ const Reports = () => {
             style={{ background: `linear-gradient(135deg, ${B1}, ${B2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.26)" }}>
             <Layout className="w-4 h-4 text-white" strokeWidth={2.4} />
           </div>
-          <h2 className="text-[16px] font-bold" style={{ color: T1, letterSpacing: "-0.3px" }}>Pre-built Report Templates</h2>
+          <h2 className="text-[16px] font-bold" style={{ color: T1, letterSpacing: "-0.3px" }}>
+            {activeCategory === "custom"
+              ? "Custom Builder"
+              : `${reportCategories.find(c => c.id === activeCategory)?.label} Templates`}
+          </h2>
           <span className="text-[11px] font-bold px-3 py-1 rounded-full"
             style={{ background: "rgba(0,85,255,0.10)", color: B1, border: "0.5px solid rgba(0,85,255,0.18)" }}>
-            {preBuiltCount} quick picks
+            {activeCategory === "custom"
+              ? "Build your own"
+              : `${visibleTemplates.length} template${visibleTemplates.length === 1 ? "" : "s"}`}
           </span>
         </div>
-        <div className="grid grid-cols-4 gap-3">
-          {templates.map((tpl, i) => {
-            const theme = templateToneGrad(tpl.tone);
-            return (
-              <button key={i}
-                onClick={() => setSelectedTemplate(tpl.title)}
-                className="rounded-[14px] px-4 py-4 flex items-center gap-3 text-left transition-all hover:-translate-y-0.5 hover:bg-white"
-                style={{ background: BG, border: `0.5px solid ${SEP}` }}>
-                <div className="w-10 h-10 rounded-[11px] flex items-center justify-center shrink-0"
-                  style={{ background: theme.bg, border: `0.5px solid ${theme.border}` }}>
-                  <tpl.icon className="w-[18px] h-[18px]" style={{ color: theme.color }} strokeWidth={2.3} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-bold mb-0.5" style={{ color: T1, letterSpacing: "-0.2px" }}>{tpl.title}</div>
-                  <div className="text-[11px] font-medium truncate" style={{ color: T4 }}>{tpl.desc}</div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+
+        {activeCategory === "custom" ? (
+          <button
+            onClick={() => setSelectedTemplate("Custom")}
+            className="w-full rounded-[14px] p-5 flex items-center gap-4 text-left transition-all hover:-translate-y-0.5"
+            style={{
+              background: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
+              border: "0.5px solid rgba(123,63,244,0.20)",
+              boxShadow: SH,
+            }}>
+            <div className="w-12 h-12 rounded-[12px] flex items-center justify-center shrink-0"
+              style={{ background: `linear-gradient(135deg, ${VIOLET}, #A07CF8)`, boxShadow: "0 4px 14px rgba(123,63,244,0.26)" }}>
+              <Settings className="w-[22px] h-[22px] text-white" strokeWidth={2.3} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[15px] font-bold mb-1" style={{ color: "#280C5C", letterSpacing: "-0.2px" }}>Build your own report</div>
+              <div className="text-[12px] font-medium" style={{ color: "#280C5C", opacity: 0.75 }}>
+                Pick any report type with custom date range, grade & section filters.
+              </div>
+            </div>
+          </button>
+        ) : visibleTemplates.length === 0 ? (
+          <div className="py-10 text-center rounded-[14px]" style={{ border: `0.5px dashed ${SEP}`, background: BG }}>
+            <p className="text-[12px] font-bold mb-1" style={{ color: T2 }}>No templates yet in this category</p>
+            <p className="text-[11px]" style={{ color: T4 }}>Use Custom builder to generate one</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-4 gap-3">
+            {visibleTemplates.map((tpl, i) => {
+              const theme = templateToneGrad(tpl.tone);
+              return (
+                <button key={i}
+                  onClick={() => setSelectedTemplate(tpl.title)}
+                  className="rounded-[14px] px-4 py-4 flex items-center gap-3 text-left transition-all hover:-translate-y-0.5 hover:bg-white"
+                  style={{ background: BG, border: `0.5px solid ${SEP}` }}>
+                  <div className="w-10 h-10 rounded-[11px] flex items-center justify-center shrink-0"
+                    style={{ background: theme.bg, border: `0.5px solid ${theme.border}` }}>
+                    <tpl.icon className="w-[18px] h-[18px]" style={{ color: theme.color }} strokeWidth={2.3} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[14px] font-bold mb-0.5" style={{ color: T1, letterSpacing: "-0.2px" }}>{tpl.title}</div>
+                    <div className="text-[11px] font-medium truncate" style={{ color: T4 }}>{tpl.desc}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Recently generated */}
@@ -746,9 +888,19 @@ const Reports = () => {
                             Download
                           </button>
                           <button onClick={() => handleDelete(report.id)} disabled={deletingId === report.id}
-                            className="w-9 h-9 rounded-[11px] flex items-center justify-center bg-white disabled:opacity-50 transition-transform hover:scale-[1.04]"
-                            style={{ border: `0.5px solid rgba(255,51,85,0.20)`, color: RED }}>
-                            {deletingId === report.id ? <Loader2 className="w-[13px] h-[13px] animate-spin" /> : <Trash2 className="w-[13px] h-[13px]" strokeWidth={2.3} />}
+                            className={`${confirmDeleteId === report.id ? "px-3 w-auto" : "w-9"} h-9 rounded-[11px] flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all hover:scale-[1.04]`}
+                            style={{
+                              background: confirmDeleteId === report.id ? RED : "#fff",
+                              border: `0.5px solid ${confirmDeleteId === report.id ? RED : "rgba(255,51,85,0.20)"}`,
+                              color: confirmDeleteId === report.id ? "#fff" : RED,
+                            }}>
+                            {deletingId === report.id ? (
+                              <Loader2 className="w-[13px] h-[13px] animate-spin" />
+                            ) : confirmDeleteId === report.id ? (
+                              <span className="text-[11px] font-bold uppercase tracking-[0.06em]">Confirm Delete?</span>
+                            ) : (
+                              <Trash2 className="w-[13px] h-[13px]" strokeWidth={2.3} />
+                            )}
                           </button>
                         </div>
                       </td>

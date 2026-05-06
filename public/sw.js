@@ -1,5 +1,5 @@
 /**
- * Edullent Principal — Service Worker v1
+ * Edullent Principal — Service Worker v2
  *
  * Caching strategy:
  *   Static assets (JS/CSS/HTML/fonts/images) -> Cache-First   (precached on install)
@@ -13,7 +13,7 @@
  *   - Push notifications ready
  */
 
-const CACHE_VERSION  = 'v1';
+const CACHE_VERSION  = 'v2';
 const STATIC_CACHE   = `edullent-principal-static-${CACHE_VERSION}`;
 const API_CACHE      = `edullent-principal-api-${CACHE_VERSION}`;
 const STORAGE_CACHE  = `edullent-principal-storage-${CACHE_VERSION}`;

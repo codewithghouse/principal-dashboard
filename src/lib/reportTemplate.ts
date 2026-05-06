@@ -36,6 +36,16 @@ const safeBarWidth = (v: unknown): number => {
   return Math.max(0, Math.min(100, n));
 };
 
+// Image URL whitelist — prevents javascript: / data: / about: payloads
+// from being injected into the report's <img src>. Only http(s) URLs pass.
+const safeImageUrl = (v: unknown): string => {
+  if (typeof v !== "string") return "";
+  const s = v.trim();
+  if (!s) return "";
+  if (!/^https?:\/\//i.test(s)) return "";
+  return s;
+};
+
 // ── Color tokens (trusted constants) ─────────────────────────────────────────
 const C = {
   bg: "#f8fafc", white: "#ffffff", ink: "#0f172a", ink2: "#475569", ink3: "#94a3b8",
@@ -78,6 +88,13 @@ export interface ReportConfig {
   footer?: string;
   schoolName?: string;
   generatedBy?: string;
+  /** Public download URL for the school's logo (Firebase Storage). Renders
+   *  in the hero top-left when present. Must be an https URL — `safeImageUrl`
+   *  rejects javascript: / data: payloads to keep the popup safe. */
+  logoUrl?: string;
+  /** Brand primary color (hex, e.g. "#0055FF"). Defaults to app blue. Used
+   *  for hero gradient end + accent borders. Hex-only via `safeColor`. */
+  themeColor?: string;
 }
 
 // ── Build CSS ────────────────────────────────────────────────────────────────
@@ -159,6 +176,16 @@ export function buildReport(config: ReportConfig): string {
   const { title, subtitle, badge, heroStats, sections, schoolName, generatedBy } = config;
   const now = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
+  // Brand theme — defaults to app primary (#0055FF). School can override via
+  // ReportConfig.themeColor. Hero darkens to a deep navy (#001040, T1 in app
+  // tokens) and ramps to the brand color, matching the principal-dashboard
+  // hero pattern. Memory hooked from sf_pro_global_rule + the app's overall
+  // visual identity.
+  const themeColor = safeColor(config.themeColor, "#0055FF");
+  const heroNavy   = "#001040";
+  const logoUrl    = safeImageUrl(config.logoUrl);
+  const heroBg     = `linear-gradient(135deg, ${heroNavy} 0%, ${themeColor} 100%)`;
+
   const heroStatsHtml = heroStats?.length ? `
     <div class="hero-stats">
       ${heroStats.map(s => `
@@ -170,6 +197,16 @@ export function buildReport(config: ReportConfig): string {
     </div>` : "";
 
   const badgeHtml = badge ? `<span class="badge">${escapeHtml(badge)}</span>` : "";
+
+  // Hero header row — logo (if uploaded) + school name. Sits ABOVE the
+  // report title so the school's branding is the first thing readers see
+  // (and stays legible on print since the hero gradient is above it).
+  const heroHeaderHtml = (logoUrl || schoolName) ? `
+    <div class="hero-header">
+      ${logoUrl ? `<img src="${logoUrl}" class="hero-logo" alt="${escapeHtml(schoolName || "School")} logo" />` : ""}
+      ${schoolName ? `<div class="hero-school-name">${escapeHtml(schoolName)}</div>` : ""}
+    </div>
+  ` : "";
 
   const sectionsHtml = sections.map(sec => {
     let bodyHtml = "";
@@ -227,20 +264,44 @@ export function buildReport(config: ReportConfig): string {
     </div>`;
   }).join("");
 
+  // Theme overrides applied AFTER the main CSS so brand color wins. Keeps
+  // CSS template constant + lets each report instance carry its own theme.
+  const themeOverrides = `
+    .hero { background: ${heroBg} !important; }
+    .card-header .dot { background: ${themeColor}; }
+    .print-btn { background: ${themeColor}; }
+    .print-btn:hover { background: ${themeColor}; filter: brightness(0.92); }
+    .hero-header {
+      display: flex; align-items: center; gap: 14px; margin-bottom: 14px;
+      padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.18);
+    }
+    .hero-logo {
+      width: 56px; height: 56px; border-radius: 12px; object-fit: contain;
+      background: rgba(255,255,255,0.95); padding: 6px; flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+    }
+    .hero-school-name {
+      font-size: 18px; font-weight: 800; color: #fff;
+      letter-spacing: -0.3px; line-height: 1.2;
+    }
+  `;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${escapeHtml(title)} — Edullent Report</title>
+  <title>${escapeHtml(title)}${schoolName ? ` — ${escapeHtml(schoolName)}` : " — Edullent Report"}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <style>${CSS}</style>
+  <style>${themeOverrides}</style>
 </head>
 <body>
   <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
 
   <div class="hero">
+    ${heroHeaderHtml}
     ${badgeHtml}
     <h1>${escapeHtml(title)}</h1>
     ${subtitle ? `<div class="sub">${escapeHtml(subtitle)}</div>` : ""}

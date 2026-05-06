@@ -150,7 +150,9 @@ const Attendance = () => {
 
         // ── Monthly avg ──
         const monthlyRecs    = records.filter(r => r.date && r.date >= cutoffStr);
-        const monthlyPresent = monthlyRecs.filter(r => r.status === 'present').length;
+        // "late" counts as present in the dashboard tier scheme — must match
+        // the rest of the codebase (memory: pattern_3tier_attribution).
+        const monthlyPresent = monthlyRecs.filter(r => r.status === 'present' || r.status === 'late').length;
         const monthlyAvgVal  = monthlyRecs.length === 0 ? null : Math.round((monthlyPresent / monthlyRecs.length) * 100);
         const monthlyAvgStr  = monthlyAvgVal === null ? "—" : `${monthlyAvgVal}%`;
 
@@ -161,7 +163,7 @@ const Attendance = () => {
           if (!g) return;
           if (!gradeGroups[g]) gradeGroups[g] = { present: 0, total: 0 };
           gradeGroups[g].total++;
-          if (r.status === 'present') gradeGroups[g].present++;
+          if (r.status === 'present' || r.status === 'late') gradeGroups[g].present++;
         });
 
         const heatmapAll = Object.entries(gradeGroups)
@@ -190,8 +192,8 @@ const Attendance = () => {
           const g = classKeyFor(r);
           if (!g || !r.date) return;
           if (!gradeDeltaGroups[g]) gradeDeltaGroups[g] = { recent: [], prev: [] };
-          if (r.date >= sevenAgoStr) gradeDeltaGroups[g].recent.push(r.status === 'present' ? 1 : 0);
-          else if (r.date >= fourteenAgoStr) gradeDeltaGroups[g].prev.push(r.status === 'present' ? 1 : 0);
+          if (r.date >= sevenAgoStr) gradeDeltaGroups[g].recent.push((r.status === 'present' || r.status === 'late') ? 1 : 0);
+          else if (r.date >= fourteenAgoStr) gradeDeltaGroups[g].prev.push((r.status === 'present' || r.status === 'late') ? 1 : 0);
         });
         const drops = Object.entries(gradeDeltaGroups)
           .map(([grade, { recent, prev }]) => {
@@ -214,7 +216,7 @@ const Attendance = () => {
           const dStr  = d.toLocaleDateString('en-CA');
           const dRecs = records.filter(r => r.date === dStr);
           if (dRecs.length > 0) {
-            const p = dRecs.filter(r => r.status === 'present').length;
+            const p = dRecs.filter(r => r.status === 'present' || r.status === 'late').length;
             trend.push({ day: d.getDate(), value: parseFloat(((p / dRecs.length) * 100).toFixed(1)) });
           } else {
             trend.push({ day: d.getDate(), value: null });

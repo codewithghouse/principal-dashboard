@@ -126,7 +126,9 @@ const Teachers = () => {
               // (Step 3 of P0 will update the UI consumers.)
               experience:  data.experience ?? null,
               rating:      data.rating     ?? null,
-              status:      data.status     || "Active",
+              // Honest status — null when teacher record has no status set.
+               // Memory: bug_pattern_fabricated_fallback (no fake "Active").
+              status:      data.status     ?? null,
               subject:     data.subject    ?? null,
               classCount:  null as number | null,   // filled async below
               classNames:  "Fetching…",
