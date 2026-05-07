@@ -258,6 +258,7 @@ const TeacherNotes = () => {
 
       return (
         <div
+          className="-mx-3 -mt-3"
           style={{
             fontFamily: "'DM Sans', -apple-system, sans-serif",
             background: "#EEF4FF",
@@ -267,6 +268,10 @@ const TeacherNotes = () => {
             // tuck the input bar behind the navbar. `100dvh` is the
             // dynamic viewport so it adapts to the mobile address bar
             // collapsing/expanding.
+            // The `-mx-3 -mt-3` negates DashboardLayout's main padding so
+            // the chat owns the full viewport width and starts flush at
+            // the header — without this, pt-3 (12px) pushes the input
+            // bar behind the navbar.
             height: "calc(100dvh - 56px - 80px - env(safe-area-inset-bottom))",
             display: "flex",
             flexDirection: "column",
