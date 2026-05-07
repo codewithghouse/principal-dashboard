@@ -30,17 +30,30 @@ const SH_BTN = "0 6px 22px rgba(0,85,255,0.38), 0 2px 5px rgba(0,85,255,0.18)";
 
 function Toggle({ checked, onChange, tone = "green" }: { checked: boolean; onChange: (v: boolean) => void; tone?: "green" | "violet" | "blue" }) {
   const onColor = tone === "violet" ? VIOLET : tone === "blue" ? B1 : GREEN;
+  // Rendered as a <div role="switch"> (not <button>) so it sidesteps the
+  // ~9 different `button { ... !important }` global rules in index.css
+  // (padding 8/16, hover lift, active scale, card-shadow, transition
+  // overrides, etc.) that all silently inflated/animated the iOS pill
+  // and detached the thumb from the track. div has no global overrides;
+  // role+tabIndex+keyboard handler keeps a11y identical to a button.
   return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
+    <div
       role="switch"
       aria-checked={checked}
-      className="relative inline-flex items-center rounded-full transition-colors duration-200 focus:outline-none shrink-0"
+      tabIndex={0}
+      onClick={() => onChange(!checked)}
+      onKeyDown={(e) => {
+        if (e.key === " " || e.key === "Enter") {
+          e.preventDefault();
+          onChange(!checked);
+        }
+      }}
+      className="relative inline-flex items-center rounded-full transition-colors duration-200 focus:outline-none shrink-0 cursor-pointer select-none"
       style={{
         width: 44,
         height: 26,
         padding: 3,
+        boxSizing: "border-box",
         background: checked ? onColor : "#D0DEFF",
         boxShadow: "inset 0 0 0 0.5px rgba(0,0,0,0.04)",
       }}
@@ -55,7 +68,7 @@ function Toggle({ checked, onChange, tone = "green" }: { checked: boolean; onCha
           transition: "transform 220ms cubic-bezier(0.34,1.56,0.64,1)",
         }}
       />
-    </button>
+    </div>
   );
 }
 
