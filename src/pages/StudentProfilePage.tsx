@@ -215,6 +215,11 @@ const StudentProfilePage = () => {
   const [incidents, setIncidents] = useState<any[]>([]);
   const [parentNotes, setParentNotes] = useState<any[]>([]);
   const [interventions, setInterventions] = useState<any[]>([]);
+  // Teacher-side behaviour signals — synced from teacher dashboard's
+  // StudentBehaviour page. Read here so principals see the same data
+  // teachers and parents see (single Firestore source of truth).
+  const [studentRatings, setStudentRatings] = useState<any[]>([]);
+  const [improvementAreas, setImprovementAreas] = useState<any[]>([]);
   const [calMonth, setCalMonth] = useState(new Date());
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
@@ -270,16 +275,20 @@ const StudentProfilePage = () => {
           pnI, pnE,
           ivI, ivE,
           enrI, enrE,
+          srI, srE,
+          imI, imE,
         ] = await Promise.all([
-          byId("attendance"),       byEmail("attendance"),
-          byId("test_scores"),      byEmail("test_scores"),
-          byId("results"),          byEmail("results"),
-          byId("gradebook_scores"), byEmail("gradebook_scores"),
-          byId("submissions"),      byEmail("submissions"),
-          byId("incidents"),        byEmail("incidents"),
-          byId("parent_notes"),     byEmail("parent_notes"),
-          byId("interventions"),    byEmail("interventions"),
-          byId("enrollments"),      byEmail("enrollments"),
+          byId("attendance"),         byEmail("attendance"),
+          byId("test_scores"),        byEmail("test_scores"),
+          byId("results"),            byEmail("results"),
+          byId("gradebook_scores"),   byEmail("gradebook_scores"),
+          byId("submissions"),        byEmail("submissions"),
+          byId("incidents"),          byEmail("incidents"),
+          byId("parent_notes"),       byEmail("parent_notes"),
+          byId("interventions"),      byEmail("interventions"),
+          byId("enrollments"),        byEmail("enrollments"),
+          byId("student_ratings"),    byEmail("student_ratings"),
+          byId("improvement_areas"),  byEmail("improvement_areas"),
         ]);
         setAttendance(merge(aI, aE));
         // Three-way merge — the merge() helper dedups by doc-id so re-fetched
@@ -289,6 +298,8 @@ const StudentProfilePage = () => {
         setIncidents(merge(incI, incE));
         setParentNotes(merge(pnI, pnE));
         setInterventions(merge(ivI, ivE));
+        setStudentRatings(merge(srI, srE));
+        setImprovementAreas(merge(imI, imE));
 
         // Multi-class students: collect ALL classIds (not just the first one)
         // so we surface assignments from every class they're enrolled in.
@@ -1151,6 +1162,122 @@ const StudentProfilePage = () => {
           </table>
         </Card>
       </div>
+
+      {/* ═══ TEACHER RATINGS + IMPROVEMENT AREAS (cross-dashboard sync) ═══════
+           Teacher writes via StudentBehaviour page — read here so principal
+           sees the same data parents see. Single Firestore source of truth. */}
+      {(studentRatings.length > 0 || improvementAreas.length > 0) && (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 20, marginBottom: isMobile ? 14 : 20 }}>
+          {/* Teacher Ratings */}
+          <Card title={`Teacher Ratings · ${studentRatings.length}`} action={<DetailLink />} theme="gold" icon={Star} watermark={Star}>
+            {studentRatings.length === 0 ? (
+              <p style={{ fontSize: 12, color: T.ink3, textAlign: "center", padding: "16px 0" }}>No teacher ratings yet</p>
+            ) : (
+              <>
+                {(() => {
+                  const valid = studentRatings.filter(r => typeof r.rating === "number");
+                  const avg = valid.length > 0 ? valid.reduce((a, r) => a + r.rating, 0) / valid.length : null;
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${T.s2}`, marginBottom: 6 }}>
+                      <div style={{ fontSize: 28, fontWeight: 700, color: T.amb, letterSpacing: "-0.6px" }}>
+                        {avg !== null ? avg.toFixed(1) : "—"}
+                        <span style={{ fontSize: 14, color: T.ink3, fontWeight: 500 }}> / 5</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 2 }}>
+                        {[1,2,3,4,5].map(n => (
+                          <Star key={n} size={14}
+                            color={avg !== null && n <= Math.round(avg) ? T.amb : T.ink3}
+                            fill={avg !== null && n <= Math.round(avg) ? T.amb : "transparent"} />
+                        ))}
+                      </div>
+                      <span style={{ fontSize: 11, color: T.ink3, marginLeft: "auto" }}>avg of {valid.length}</span>
+                    </div>
+                  );
+                })()}
+                {[...studentRatings]
+                  .sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0))
+                  .slice(0, 5)
+                  .map(r => (
+                  <div key={r.id} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: `1px solid ${T.s2}` }}>
+                    <div style={{ display: "flex", gap: 1, flexShrink: 0, marginTop: 3 }}>
+                      {[1,2,3,4,5].map(n => (
+                        <Star key={n} size={11}
+                          color={typeof r.rating === "number" && n <= r.rating ? T.amb : T.ink3}
+                          fill={typeof r.rating === "number" && n <= r.rating ? T.amb : "transparent"} />
+                      ))}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {r.note && <p style={{ fontSize: 12, color: T.ink2, lineHeight: 1.5, margin: 0 }}>{r.note}</p>}
+                      <div style={{ fontSize: 10, color: T.ink3, marginTop: 3 }}>
+                        {r.teacherName || "Teacher"} · {timeAgo(r.createdAt)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </Card>
+
+          {/* Improvement Areas */}
+          <Card title={`Improvement Areas · ${improvementAreas.length}`} action={<DetailLink />} theme="violet" icon={TrendingUp} watermark={TrendingUp}>
+            {improvementAreas.length === 0 ? (
+              <p style={{ fontSize: 12, color: T.ink3, textAlign: "center", padding: "16px 0" }}>No improvement areas tracked</p>
+            ) : (
+              <>
+                {(() => {
+                  const isResolved = (s?: string) => String(s || "").toLowerCase() === "resolved";
+                  const active = improvementAreas.filter(i => !isResolved(i.status));
+                  const resolved = improvementAreas.filter(i => isResolved(i.status));
+                  return (
+                    <div style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: `1px solid ${T.s2}`, marginBottom: 6 }}>
+                      <div style={{ flex: 1, padding: "6px 10px", background: T.s1, borderRadius: 8 }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: T.amb }}>{active.length}</div>
+                        <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>ACTIVE</div>
+                      </div>
+                      <div style={{ flex: 1, padding: "6px 10px", background: T.s1, borderRadius: 8 }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: T.grn }}>{resolved.length}</div>
+                        <div style={{ fontSize: 9, color: T.ink3, fontWeight: 600 }}>RESOLVED</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                {[...improvementAreas]
+                  .sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0))
+                  .slice(0, 5)
+                  .map(imp => {
+                    const resolved = String(imp.status || "").toLowerCase() === "resolved";
+                    const pri = String(imp.priority || "low").toLowerCase();
+                    const priColor = pri === "high" ? T.red : pri === "medium" ? T.amb : T.blue;
+                    const priBg    = pri === "high" ? T.rlBg : pri === "medium" ? "rgba(255,136,0,0.10)" : T.blBg;
+                    return (
+                      <div key={imp.id} style={{ display: "flex", gap: 10, padding: "10px 0", borderBottom: `1px solid ${T.s2}`, opacity: resolved ? 0.6 : 1 }}>
+                        <div style={{ width: 16, height: 16, borderRadius: 4, background: resolved ? T.grn : "transparent", border: `1.5px solid ${resolved ? T.grn : T.bdr}`, flexShrink: 0, marginTop: 2, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {resolved && <CheckCircle2 size={11} color="#fff" />}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: T.ink, textDecoration: resolved ? "line-through" : "none" }}>
+                              {imp.title || "Untitled"}
+                            </span>
+                            <span style={{ padding: "1px 7px", borderRadius: 5, background: priBg, color: priColor, fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                              {pri}
+                            </span>
+                          </div>
+                          {imp.description && (
+                            <p style={{ fontSize: 11, color: T.ink2, lineHeight: 1.4, margin: 0 }}>{imp.description}</p>
+                          )}
+                          <div style={{ fontSize: 10, color: T.ink3, marginTop: 3 }}>
+                            {imp.teacherName || "Teacher"} · {timeAgo(imp.createdAt)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                })}
+              </>
+            )}
+          </Card>
+        </div>
+      )}
 
       {/* ═══ BOTTOM STATUS BAR ════════════════════════════════════════════════
            Mobile: flex-wrap so the 6 chips stack/wrap instead of overflowing
