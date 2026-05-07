@@ -553,7 +553,7 @@ const DashboardMobile = ({
         {Hero}
         {TrendChart}
         {Heatmap}
-        <div className="h-[120px]" />
+        <div className="h-[72px]" />
       </div>
     );
   }
@@ -581,7 +581,7 @@ const DashboardMobile = ({
             <ChevronRight className="w-[16px] h-[16px]" style={{ color: B1 }} strokeWidth={2.5} />
           </button>
         </div>
-        <div className="h-[120px]" />
+        <div className="h-[72px]" />
       </div>
     );
   }
@@ -602,12 +602,10 @@ const DashboardMobile = ({
       {Heatmap}
       {TeachersCard}
       {UrgentComms}
-      {/* Bottom safe-zone: floating MobileTabBar consumes ~80px+safe-area
-         from viewport bottom (12px gap + 68px height) plus its heavy
-         shadow/blur halo (~30px). 120px here guarantees the last card
-         clears the bar with comfortable breathing room even when the
-         user scrolls fully to the bottom. */}
-      <div className="h-[120px]" />
+      {/* Bottom safe-zone: floating MobileTabBar (~80px+safe-area total).
+         72px keeps the last card clear of the bar's solid body while
+         tightening the dead space the user sees at the bottom. */}
+      <div className="h-[72px]" />
       {/* Reserve scoped tokens */}
       <span className="hidden">{T2}{BG2}</span>
     </div>
