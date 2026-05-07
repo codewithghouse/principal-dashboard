@@ -517,6 +517,14 @@ button[class*="w-8"],
 button[class*="w-9"] {
   padding: 8px !important;
 }
+/* iOS-style toggle switches — custom width/height + 3px inner padding to
+   position the thumb correctly. The global `button { padding: 8px 16px }`
+   would inflate them to 76×42px and detach the white thumb from the
+   colored track. ARIA-role attribute selector beats the bare `button`
+   rule on specificity, so this exception wins. */
+button[role="switch"] {
+  padding: 3px !important;
+}
 
 /* ── 10. Table rhythm ──────────────────────────────────────── */
 th, td {
