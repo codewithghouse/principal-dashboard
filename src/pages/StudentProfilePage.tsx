@@ -7,6 +7,7 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { tilt3D, tilt3DStyle } from "@/lib/use3DTilt";
+import { dedupAttendanceByDay } from "@/lib/attendanceDedup";
 
 // ── Tokens — aligned to principal-dashboard palette ─────────────────────────
 const T = {
@@ -290,7 +291,11 @@ const StudentProfilePage = () => {
           byId("student_ratings"),    byEmail("student_ratings"),
           byId("improvement_areas"),  byEmail("improvement_areas"),
         ]);
-        setAttendance(merge(aI, aE));
+        // Dedup across (student, day) — multi-class students may have
+        // separate attendance docs (one per class) for the same day if
+        // different teachers each marked them. Aggregation across classes
+        // would otherwise double-count that day. Latest createdAt wins.
+        setAttendance(dedupAttendanceByDay(merge(aI, aE)));
         // Three-way merge — the merge() helper dedups by doc-id so re-fetched
         // docs from email-fallback queries don't double up.
         setTestScores([...merge(sI, sE), ...merge(rI, rE), ...merge(gI, gE)]);

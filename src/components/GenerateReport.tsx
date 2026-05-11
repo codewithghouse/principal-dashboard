@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import { pctOfDoc, isPresent } from "@/lib/scoreUtils";
+import { dedupAttendanceByDay } from "@/lib/attendanceDedup";
 
 interface Props {
   templateName: string;
@@ -219,14 +220,23 @@ function aggregateData(raw: RawData, filters: ReportFilters): AggregatedData {
     if (!scoreByStudent.has(k)) scoreByStudent.set(k, []);
     scoreByStudent.get(k)!.push(pct);
   });
-  const attByStudent = new Map<string, { present: number; total: number }>();
+  // Group by student, dedup each student's days, then tally. Multi-class
+  // students with separate docs per class for the same day would otherwise
+  // inflate `total` (and skew `present/total` if any class marked them
+  // differently). Latest createdAt wins per (student, day).
+  const attGrouped = new Map<string, any[]>();
   attFiltered.forEach((a: any) => {
     const k = String(a.studentId || (a.studentEmail || "").toLowerCase() || "");
     if (!k) return;
-    if (!attByStudent.has(k)) attByStudent.set(k, { present: 0, total: 0 });
-    const r = attByStudent.get(k)!;
-    r.total++;
-    if (isPresent(a)) r.present++;
+    if (!attGrouped.has(k)) attGrouped.set(k, []);
+    attGrouped.get(k)!.push(a);
+  });
+  const attByStudent = new Map<string, { present: number; total: number }>();
+  attGrouped.forEach((rows, k) => {
+    const deduped = dedupAttendanceByDay(rows);
+    let present = 0;
+    deduped.forEach((a: any) => { if (isPresent(a)) present++; });
+    attByStudent.set(k, { present, total: deduped.length });
   });
 
   const perStudent: PerStudent[] = [];

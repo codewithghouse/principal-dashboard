@@ -14,6 +14,7 @@ import { collection, query, onSnapshot, where, writeBatch, doc, serverTimestamp 
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
+import { dedupAttendanceByDay } from "@/lib/attendanceDedup";
 
 // ─── Centralised tier scheme ─────────────────────────────────────────────────
 // Mobile + desktop previously used different attendance-pct thresholds (90/75/60
@@ -224,12 +225,20 @@ const Attendance = () => {
         }
 
         // ── Per-student records (dual-key) ──
+        // Group first, then dedup each student's days. Multi-class
+        // students may have separate attendance docs per class for the
+        // same day; without dedup their monthlyPct would be skewed
+        // (sMonthly.length doubles, sPresent doesn't keep pace if any
+        // class marked them absent). Latest createdAt wins.
         const studentMap: Record<string, any[]> = {};
         records.forEach(r => {
           const sid = keyFor(r);
           if (!sid) return;
           if (!studentMap[sid]) studentMap[sid] = [];
           studentMap[sid].push(r);
+        });
+        Object.keys(studentMap).forEach(sid => {
+          studentMap[sid] = dedupAttendanceByDay(studentMap[sid]);
         });
 
         const absents = todayRecs
