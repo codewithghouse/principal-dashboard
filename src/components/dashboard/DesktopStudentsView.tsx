@@ -985,7 +985,13 @@ const DesktopStudentsView = ({
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: T1, display: "flex", alignItems: "center", gap: 7, letterSpacing: "-0.1px" }}>
                       <MapPin size={13} color="rgba(0,85,255,0.6)" strokeWidth={2.3} />
-                      {s.branchId || defaultBranchId || "—"}
+                      {/* Prefer the live, human-readable branch name. The
+                          rename cascade updates students.branchName (and
+                          schoolName) — these flow into `s` via the parent
+                          page's onSnapshot. branchId (e.g., "umsh") is just
+                          the stable identifier and only renders as a final
+                          fallback so the cell is never empty. */}
+                      {s.branchName || s.schoolName || (s as { branch?: string }).branch || s.branchId || defaultBranchId || "—"}
                     </div>
                   </div>
                   <div

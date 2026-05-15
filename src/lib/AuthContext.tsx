@@ -312,6 +312,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // NOTE: Do NOT navigate here. App.tsx re-renders automatically via state.
   };
 
+  // ── Live school-name subscription ────────────────────────────────────
+  // The header / branding strip reads `userData.schoolName` (or branchName).
+  // Subscribing to schools/{schoolId} as the canonical source of truth means
+  // ANY rename — from this session, another tab, or the cascade trigger —
+  // flows instantly into the UI without depending on which denormalized
+  // field happens to be fresh. Runs whenever the resolved schoolId changes.
+  useEffect(() => {
+    const schoolId = (userData as { schoolId?: string } | null)?.schoolId;
+    if (!schoolId) return;
+    const unsub = onSnapshot(
+      doc(db, "schools", schoolId),
+      (snap) => {
+        if (!snap.exists()) return;
+        const liveName = String((snap.data() as { name?: string })?.name || "").trim();
+        if (!liveName) return;
+        // Functional setState — pulls the latest userData ref at flush time
+        // so we don't stamp over a stale closure. We mirror onto BOTH
+        // schoolName AND branchName because the header falls back through
+        // both fields and we want either lookup to see the same fresh value.
+        setUserData((prev: any) => {
+          if (!prev) return prev;
+          if (prev.schoolName === liveName && prev.branchName === liveName) return prev;
+          return { ...prev, schoolName: liveName, branchName: liveName };
+        });
+      },
+      (err) => console.warn("[AuthContext] live school-name listener failed:", err),
+    );
+    return () => unsub();
+  }, [(userData as { schoolId?: string } | null)?.schoolId]);
+
   // Re-pull the principal/data_entry doc and merge into in-memory userData.
   // Called by Settings after a save so the header + name strip refresh
   // without needing a full page reload or re-login.

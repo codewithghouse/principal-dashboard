@@ -170,7 +170,7 @@ const isValidUrl = (s: string) => {
 // Records, Run Full Audit) to principals. Migration ops belong in
 // owner-dashboard / DevOps tooling, not principal Settings.
 const TABS: { id: string; label: string; icon: any }[] = [
-  { id: "profile",       label: "School Profile",    icon: School },
+  { id: "profile",       label: "Branch Profile",    icon: School },
   { id: "academic",      label: "Academic",          icon: BookOpen },
   { id: "notifications", label: "Notifications",     icon: Bell },
   { id: "users",         label: "Users",             icon: Users },
@@ -398,10 +398,10 @@ function SchoolProfileTab({ isMobile, schoolId, userData, user }: any) {
       return toast.error("School email is not a valid email address.");
     }
     if (form.website.trim() && !isValidUrl(form.website)) {
-      return toast.error("School website is not a valid URL.");
+      return toast.error("Branch website is not a valid URL.");
     }
     if (form.phone.trim() && !isValidPhone(form.phone)) {
-      return toast.error("School phone must be 7-15 digits.");
+      return toast.error("Branch phone must be 7-15 digits.");
     }
     if (form.principalEmail.trim() && !isValidEmail(form.principalEmail)) {
       return toast.error("Principal email is not a valid email address.");
@@ -567,7 +567,7 @@ function SchoolProfileTab({ isMobile, schoolId, userData, user }: any) {
               <School className={`${isMobile ? "w-[18px] h-[18px]" : "w-7 h-7"} text-white`} strokeWidth={2.1} />
             </div>
             <div className="min-w-0">
-              <div className="text-[8px] font-bold uppercase tracking-[0.12em] mb-[3px]" style={{ color: "rgba(255,255,255,0.50)" }}>School Profile</div>
+              <div className="text-[8px] font-bold uppercase tracking-[0.12em] mb-[3px]" style={{ color: "rgba(255,255,255,0.50)" }}>Branch Profile</div>
               <div className={`${isMobile ? "text-[22px]" : "text-[40px]"} font-bold leading-none truncate`} style={{ letterSpacing: "-0.6px" }}>{form.schoolName || "Untitled"}</div>
             </div>
           </div>
@@ -592,9 +592,9 @@ function SchoolProfileTab({ isMobile, schoolId, userData, user }: any) {
       </div>
 
       <div className={`${isMobile ? "mt-3" : "mt-5"} grid grid-cols-1 ${isMobile ? "" : "lg:grid-cols-2"} gap-4`}>
-        <SectionCard icon={School} iconTone="blue" title="School Information" subtitle="Primary school details & contact">
+        <SectionCard icon={School} iconTone="blue" title="Branch Information" subtitle="Primary branch details & contact">
           <div className="flex flex-col gap-3">
-            <Field label="School Name" value={form.schoolName} onChange={set("schoolName") as any} icon={School} placeholder="Edullent" />
+            <Field label="Branch Name" value={form.schoolName} onChange={set("schoolName") as any} icon={School} placeholder="e.g., Nampally Branch" />
             <Field label="Address" value={form.address} onChange={set("address") as any} icon={MapPin} placeholder="123 School Road" />
             <div className="grid grid-cols-2 gap-[10px]">
               <Field label="Phone" value={form.phone} onChange={set("phone") as any} icon={Phone} type="tel" placeholder="+91 90000" />

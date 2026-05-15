@@ -299,7 +299,10 @@ const StudentsMobile = ({
                   <div className="text-[9px] font-bold uppercase tracking-[0.09em]" style={{ color: T4 }}>Campus Branch</div>
                   <div className="text-[13px] font-bold flex items-center gap-1.5" style={{ color: T1, letterSpacing: "-0.1px" }}>
                     <MapPin className="w-3 h-3" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
-                    {s.branchId || defaultBranchId || "—"}
+                    {/* Prefer the live, human-readable branch name from the
+                        cascade-updated denormalized fields. branchId is the
+                        stable slug ("umsh") and only renders as a fallback. */}
+                    {s.branchName || s.schoolName || (s as { branch?: string }).branch || s.branchId || defaultBranchId || "—"}
                   </div>
                 </div>
                 <div className="px-4 py-[13px] flex flex-col gap-[3px]" style={{ borderBottom: `0.5px solid ${SEP}` }}>
