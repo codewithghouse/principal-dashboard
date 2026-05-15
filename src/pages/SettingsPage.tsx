@@ -179,7 +179,7 @@ const TABS: { id: string; label: string; icon: any }[] = [
 const TAB_STORAGE_KEY = "principal_settings_active_tab";
 
 const SettingsPage = () => {
-  const { user, userData } = useAuth();
+  const { user, userData, refreshUserData } = useAuth();
   const isMobile = useIsMobile();
   // Tab state persists across reloads — earlier the page always reset to
   // "profile" which was annoying when editing notifications/users.
@@ -411,9 +411,13 @@ function SchoolProfileTab({ isMobile, schoolId, userData, user }: any) {
     }
     setSaving(true);
     try {
-      // Atomic two-doc write: school-wide info on schools/{id}; principal
-      // contact + prefs on principals/{userData.id}. writeBatch ensures
-      // both succeed or both fail (no half-saved state).
+      // Atomic three-write batch: school doc, principal doc, AND the
+      // principal's denormalized schoolName + branchName fields. The
+      // denormalized stamp on the principal doc is what AuthContext reads at
+      // login → without updating it here, the header would stay stale until
+      // the next login (or until cascadeSchoolRename trigger fires + the
+      // principal re-logs). Writing it directly closes the gap in the
+      // current session.
       const batch = writeBatch(db);
       batch.update(doc(db, "schools", schoolId), {
         name: form.schoolName, address: form.address, phone: form.phone,
@@ -426,6 +430,11 @@ function SchoolProfileTab({ isMobile, schoolId, userData, user }: any) {
           name: form.principalName,
           email: form.principalEmail,
           phone: form.principalPhone,
+          // Mirror the school's new name onto the principal doc so the
+          // AuthContext's next read picks it up. Also update branchName for
+          // multi-branch principal scenarios.
+          schoolName: form.schoolName,
+          branchName: form.schoolName,
           prefs: {
             emailNotifications: form.emailNotifications,
             smsAlerts:          form.smsAlerts,
@@ -435,6 +444,11 @@ function SchoolProfileTab({ isMobile, schoolId, userData, user }: any) {
         });
       }
       await batch.commit();
+      // Refresh in-memory userData so the header + sidebar reflect the new
+      // school name without a page reload. Other users (teachers, parents,
+      // other principals) get the new name via the cascadeSchoolRename
+      // cloud trigger that fires off the schools/{id} doc update.
+      await refreshUserData();
       setSavedSnapshot(JSON.stringify(form));
       toast.success("Settings saved.");
     } catch (e: any) {

@@ -9,7 +9,7 @@ import {
   browserLocalPersistence
 } from 'firebase/auth';
 import { auth, db } from './firebase';
-import { collection, getDocs, updateDoc, doc, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, getDoc, updateDoc, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { syncClaimsAndRefreshToken } from './syncClaims';
 import type { SchoolOption } from '../components/SchoolPicker';
 import { SELECTED_SCHOOL_KEY } from '../components/SchoolPicker';
@@ -27,6 +27,11 @@ interface AuthContextType {
   schoolOptions: SchoolOption[] | null;
   pickSchool: (schoolId: string) => Promise<void>;
   pickerBusy: boolean;
+  /** Re-read the principal's doc + merge into userData. Call after writes
+   *  that update fields like schoolName / branchName so the header, picker,
+   *  and any other consumer that reads `userData.schoolName` reflects the
+   *  change without forcing a full re-login. */
+  refreshUserData: () => Promise<void>;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -307,6 +312,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // NOTE: Do NOT navigate here. App.tsx re-renders automatically via state.
   };
 
+  // Re-pull the principal/data_entry doc and merge into in-memory userData.
+  // Called by Settings after a save so the header + name strip refresh
+  // without needing a full page reload or re-login.
+  const refreshUserData = async () => {
+    try {
+      const current = userData;
+      if (!current?.id || !current?.role) return;
+      const collName = current.role === "data_entry" ? "data_entry" : "principals";
+      const fresh = await getDoc(doc(db, collName, current.id));
+      if (fresh.exists()) {
+        setUserData({ ...current, ...fresh.data(), id: current.id, role: current.role });
+      }
+    } catch (err) {
+      console.warn("[AuthContext] refreshUserData failed:", err);
+    }
+  };
+
   const logout = async () => {
     await signOut(auth);
     setUser(null);
@@ -327,6 +349,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user, userData, loading, error,
       loginWithGoogle, logout,
       schoolOptions, pickSchool, pickerBusy,
+      refreshUserData,
     }}>
       {children}
     </AuthContext.Provider>
