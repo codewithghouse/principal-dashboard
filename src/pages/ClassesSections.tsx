@@ -480,12 +480,17 @@ const ClassesSections = () => {
     setAssigning(true);
     try {
       // Pre-fetch everything we need to write so we can batch atomically.
-      const [oldTaSnap, enrollSnap] = await Promise.all([
+      // Status filter moved CLIENT-SIDE — legacy teaching_assignments docs
+      // created before the status field was introduced lack the field
+      // entirely. A server-side `where status == "active"` silently excluded
+      // those docs from the reassignment flow → old assignments never got
+      // deactivated → ghost assignments persisted → new teacher inherited
+      // the class with stale records. Memory: bug_pattern_teacher_class_pickers_single_source variant.
+      const [allTaSnap, enrollSnap] = await Promise.all([
         getDocs(query(
           collection(db, "teaching_assignments"),
           where("schoolId", "==", schoolId),
           where("classId", "==", assigningClass.id),
-          where("status", "==", "active"),
         )),
         getDocs(query(
           collection(db, "enrollments"),
@@ -493,6 +498,14 @@ const ClassesSections = () => {
           where("classId", "==", assigningClass.id),
         )),
       ]);
+      // Client-side filter — treat docs without a `status` field as active
+      // (legacy default before the field was added).
+      const oldTaSnap = {
+        docs: allTaSnap.docs.filter(d => {
+          const s = (d.data() as { status?: unknown }).status;
+          return !s || (typeof s === "string" && s.toLowerCase() === "active");
+        }),
+      };
 
       // Build the full ordered op list as plain data, then commit in 450-op
       // chunks. Capturing the latest batch ref is safer than closures over
