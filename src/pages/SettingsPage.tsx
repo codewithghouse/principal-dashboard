@@ -511,14 +511,28 @@ function SchoolProfileTab({ isMobile, schoolId, userData, user }: any) {
         }
       }
       // Refresh in-memory userData so the header + sidebar reflect the new
-      // school name without a page reload. Other users (teachers, parents,
-      // other principals) get the new name via the cascadeSchoolRename
-      // cloud trigger that fires off the schools/{id} doc update.
-      await refreshUserData();
+      // school name without a page reload. Best-effort: if the AuthContext
+      // hasn't been updated yet (stale bundle, hot-reload mismatch), skip
+      // silently — the cascade trigger + a manual refresh will reflect the
+      // change on next page load. Critically, the SAVE itself has already
+      // succeeded by this point — don't let a refresh failure toast a
+      // "Save failed" lie at the user.
+      try {
+        if (typeof refreshUserData === "function") {
+          await refreshUserData();
+        }
+      } catch (refreshErr) {
+        // Non-fatal — the writes landed, just the in-memory refresh failed.
+        console.warn("[Settings] refreshUserData skipped:", refreshErr);
+      }
       setSavedSnapshot(JSON.stringify(form));
       toast.success("Settings saved.");
     } catch (e: any) {
-      toast.error("Save failed: " + e.message);
+      // Log the full error before the toast — toast truncates and we want
+      // diagnostics in console for debugging.
+      console.error("[Settings] save failed", e);
+      const msg = e?.message || e?.code || String(e || "");
+      toast.error(`Save failed: ${msg}`);
     }
     setSaving(false);
   };
