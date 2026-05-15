@@ -411,13 +411,19 @@ function SchoolProfileTab({ isMobile, schoolId, userData, user }: any) {
     }
     setSaving(true);
     try {
-      // Atomic three-write batch: school doc, principal doc, AND the
-      // principal's denormalized schoolName + branchName fields. The
-      // denormalized stamp on the principal doc is what AuthContext reads at
-      // login → without updating it here, the header would stay stale until
-      // the next login (or until cascadeSchoolRename trigger fires + the
-      // principal re-logs). Writing it directly closes the gap in the
-      // current session.
+      // Atomic write batch covering EVERY surface that displays the school
+      // / branch name across the four dashboards:
+      //
+      //   1. schools/{schoolId}                         — principal's own header
+      //   2. principals/{userData.id}                   — principal contact + denormalized schoolName
+      //   3. schools/{ownerUid}/branches/{branchId}     — Owner dashboard's branch list
+      //
+      // The 3rd write is the one that closes the gap user kept hitting
+      // ("branch name still 'umsh' on owner dashboard"). The cascade trigger
+      // ALSO tries to do this, but a single-tenant data shape (where the
+      // principal.branchId is a human slug, not the owner's branch doc-id)
+      // makes the trigger's match logic brittle. Direct write here = zero
+      // ambiguity + zero latency.
       const batch = writeBatch(db);
       batch.update(doc(db, "schools", schoolId), {
         name: form.schoolName, address: form.address, phone: form.phone,
@@ -443,7 +449,67 @@ function SchoolProfileTab({ isMobile, schoolId, userData, user }: any) {
           updatedAt: serverTimestamp(),
         });
       }
-      await batch.commit();
+
+      // Owner subcollection direct write — the principal's data carries
+      // ownerUid (via schoolId in single-tenant) + branchId. The single-
+      // tenant convention onboards principals with `schoolId: ownerUid` so
+      // we can resolve the owner's branches path directly. Worth a try; if
+      // the docs don't exist (multi-tenant or different shape) the cascade
+      // trigger handles fallback.
+      const ownerUidCandidates = new Set<string>();
+      // Most common: principal.schoolId IS the owner's uid.
+      if (schoolId) ownerUidCandidates.add(schoolId);
+      // Backup: explicit ownerUid field if set.
+      const explicitOwnerUid = (userData as { ownerUid?: string })?.ownerUid;
+      if (explicitOwnerUid) ownerUidCandidates.add(explicitOwnerUid);
+
+      const branchId = (userData as { branchId?: string })?.branchId;
+      for (const ownerUid of ownerUidCandidates) {
+        if (!branchId) continue;
+        // Use update via try-catch — if the doc doesn't exist OR the rule
+        // rejects (cross-tenant), we silently skip; cascade will pick it up.
+        batch.update(
+          doc(db, "schools", ownerUid, "branches", branchId),
+          { name: form.schoolName, updatedAt: serverTimestamp() },
+        );
+      }
+
+      try {
+        await batch.commit();
+      } catch (batchErr: any) {
+        // If the owner-subcollection update failed (e.g., branch doc doesn't
+        // exist or permission denied for cross-tenant write), retry WITHOUT
+        // it so the primary updates still land.
+        if (String(batchErr?.code || "").includes("not-found") ||
+            String(batchErr?.code || "").includes("permission-denied")) {
+          console.warn("[Settings] owner branch direct-write skipped, falling back to schools+principals only:", batchErr?.code);
+          const fallback = writeBatch(db);
+          fallback.update(doc(db, "schools", schoolId), {
+            name: form.schoolName, address: form.address, phone: form.phone,
+            email: form.email, website: form.website,
+            academicYear: { startDate: form.academicStart, endDate: form.academicEnd, currentSession: form.currentSession },
+            updatedAt: serverTimestamp(),
+          });
+          if (userData?.id) {
+            fallback.update(doc(db, "principals", userData.id), {
+              name: form.principalName,
+              email: form.principalEmail,
+              phone: form.principalPhone,
+              schoolName: form.schoolName,
+              branchName: form.schoolName,
+              prefs: {
+                emailNotifications: form.emailNotifications,
+                smsAlerts:          form.smsAlerts,
+                autoBackup:         form.autoBackup,
+              },
+              updatedAt: serverTimestamp(),
+            });
+          }
+          await fallback.commit();
+        } else {
+          throw batchErr;
+        }
+      }
       // Refresh in-memory userData so the header + sidebar reflect the new
       // school name without a page reload. Other users (teachers, parents,
       // other principals) get the new name via the cascadeSchoolRename
