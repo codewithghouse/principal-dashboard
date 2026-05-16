@@ -27,6 +27,7 @@ const ALL_PAGES = [
   { path: "/teachers",             label: "Teachers",               description: "Teachers directory" },
   { path: "/academics",            label: "Academics",              description: "Academic overview" },
   { path: "/syllabus",             label: "Syllabus",               description: "Manage syllabus uploads" },
+  { path: "/important-questions",  label: "Important Questions",    description: "Curated question sets" },
   { path: "/attendance",           label: "Attendance",             description: "Mark & view attendance" },
   { path: "/discipline",           label: "Discipline & Incidents", description: "Behaviour records" },
   { path: "/parent-communication", label: "Parent Communication",   description: "Messages to parents" },

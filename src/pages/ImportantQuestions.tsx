@@ -28,7 +28,7 @@ const ALLOWED_FILE_TYPES = [
 const ALLOWED_EXT_HINT = ".pdf, .doc, .docx, .ppt, .pptx, .jpg, .png";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface SyllabusDoc {
+interface ImportantQuestionDoc {
   id: string;
   schoolId?: string;
   branchId?: string;
@@ -116,11 +116,11 @@ const StatCard = ({
 );
 
 // ─── Component ────────────────────────────────────────────────────────────────
-const Syllabus = () => {
+const ImportantQuestions = () => {
   const { userData } = useAuth();
   const isMobile = useIsMobile();
 
-  const [syllabi,       setSyllabi]       = useState<SyllabusDoc[]>([]);
+  const [syllabi,       setSyllabi]       = useState<ImportantQuestionDoc[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState<string | null>(null);
 
@@ -169,13 +169,13 @@ const Syllabus = () => {
     const constraints: any[] = [where("schoolId", "==", schoolId)];
     if (branchId) constraints.push(where("branchId", "==", branchId));
 
-    const q = query(collection(db, "syllabi"), ...constraints);
+    const q = query(collection(db, "important_questions"), ...constraints);
     const unsub = onSnapshot(
       q,
       (snap) => {
         if (cancelled) return;
-        const docs: SyllabusDoc[] = snap.docs
-          .map((d) => ({ id: d.id, ...(d.data() as any) } as SyllabusDoc))
+        const docs: ImportantQuestionDoc[] = snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) } as ImportantQuestionDoc))
           .sort((a, b) => {
             const am = (a.uploadedAt as any)?.toMillis?.() ?? 0;
             const bm = (b.uploadedAt as any)?.toMillis?.() ?? 0;
@@ -186,8 +186,8 @@ const Syllabus = () => {
       },
       (err) => {
         if (cancelled) return;
-        console.error("Syllabi listener error:", err);
-        setError(err.message || "Failed to load syllabi.");
+        console.error("ImportantQuestions listener error:", err);
+        setError(err.message || "Failed to load documents.");
         setLoading(false);
       }
     );
@@ -223,7 +223,7 @@ const Syllabus = () => {
           .sort((a, b) => a.name.localeCompare(b.name));
         setClasses(list);
       },
-      (err) => console.warn("[Syllabus] classes listener failed:", err),
+      (err) => console.warn("[ImportantQuestions] classes listener failed:", err),
     );
     return () => unsub();
   }, [userData?.schoolId, userData?.branchId]);
@@ -281,8 +281,8 @@ const Syllabus = () => {
     window.open(fileUrl, "_blank", "noopener");
   };
 
-  const handleDelete = async (s: SyllabusDoc) => {
-    const label = s.title || s.fileName || `Syllabus - ${s.subject || ""}`;
+  const handleDelete = async (s: ImportantQuestionDoc) => {
+    const label = s.title || s.fileName || `Important Questions - ${s.subject || ""}`;
     if (!confirm(`Delete "${label}"? This will permanently remove the file.`)) return;
 
     setDeletingId(s.id);
@@ -303,10 +303,10 @@ const Syllabus = () => {
           }
         }
       }
-      await deleteDoc(doc(db, "syllabi", s.id));
-      toast.success("Syllabus deleted.");
+      await deleteDoc(doc(db, "important_questions", s.id));
+      toast.success("Important Questions deleted.");
     } catch (err: any) {
-      console.error("Delete syllabus error:", err);
+      console.error("Delete important_questions error:", err);
       toast.error(`Failed to delete: ${err?.message || "Unknown error"}`);
     } finally {
       setDeletingId(null);
@@ -350,12 +350,10 @@ const Syllabus = () => {
     const ext = (file.name.split(".").pop() || "bin").toLowerCase();
     // Storage path: first selected class becomes the path anchor — file is
     // uploaded ONCE and N Firestore docs share the same fileUrl/filePath.
-    // This keeps storage rules happy (existing layout) without duplicating
-    // the binary across class folders.
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
     const branchSeg = branchId || "_default";
     const anchorClassId = targetClasses[0].id;
-    const filePath = `syllabi/${schoolId}/${branchSeg}/${anchorClassId}/principal/${Date.now()}_${safeName}`;
+    const filePath = `important_questions/${schoolId}/${branchSeg}/${anchorClassId}/principal/${Date.now()}_${safeName}`;
     const storageRef = ref(storage, filePath);
 
     setUploading(true);
@@ -382,7 +380,7 @@ const Syllabus = () => {
       // duplicated on every doc so a future reader can detect the shared set.
       const allClassIds = targetClasses.map(c => c.id);
       await Promise.all(targetClasses.map(cls =>
-        addDoc(collection(db, "syllabi"), {
+        addDoc(collection(db, "important_questions"), {
           classId: cls.id,
           className: cls.name,
           classIds: allClassIds,
@@ -406,13 +404,13 @@ const Syllabus = () => {
 
       toast.success(
         targetClasses.length === 1
-          ? `Syllabus uploaded for ${targetClasses[0].name}!`
-          : `Syllabus uploaded to ${targetClasses.length} classes!`
+          ? `Important Questions uploaded for ${targetClasses[0].name}!`
+          : `Important Questions uploaded to ${targetClasses.length} classes!`
       );
       setUploadOpen(false);
       resetUploadForm();
     } catch (err: any) {
-      console.error("[Syllabus] upload failed:", err);
+      console.error("[ImportantQuestions] upload failed:", err);
       // Roll back the storage object if Firestore write failed (best effort)
       try { await deleteObject(storageRef); } catch { /* swallow */ }
       toast.error(`Upload failed: ${err?.message || "Unknown error"}`);
@@ -479,10 +477,10 @@ const Syllabus = () => {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#001040", letterSpacing: "-0.3px" }}>
-              Upload Syllabus
+              Upload Important Questions
             </div>
             <div style={{ fontSize: 12, color: "#5070B0", marginTop: 2 }}>
-              Pick a class — teachers and students get instant access.
+              Pick one or more classes — teachers and students get instant access.
             </div>
           </div>
           <button
@@ -516,7 +514,6 @@ const Syllabus = () => {
                 (select one or more)
               </span>
             </label>
-            {/* Trigger pill — opens checkable list */}
             <button
               type="button"
               onClick={() => !uploading && setClassPickerOpen(o => !o)}
@@ -600,7 +597,6 @@ const Syllabus = () => {
                   boxShadow: "0 8px 24px rgba(0,85,255,0.12)",
                 }}
               >
-                {/* Bulk Select All / Clear */}
                 <div style={{ display: "flex", gap: 6, padding: "8px 10px", borderBottom: "0.5px solid rgba(0,85,255,0.08)" }}>
                   <button
                     type="button"
@@ -668,7 +664,7 @@ const Syllabus = () => {
               type="text"
               value={uploadForm.title}
               onChange={(e) => setUploadForm(f => ({ ...f, title: e.target.value }))}
-              placeholder="e.g. Class 10 Mathematics — Term 1 Syllabus"
+              placeholder="e.g. Class 10 Mathematics — Important Questions Term 1"
               disabled={uploading}
               maxLength={120}
               style={{
@@ -905,7 +901,7 @@ const Syllabus = () => {
             {uploading
               ? <Loader2 size={15} className="animate-spin" />
               : <Upload size={15} strokeWidth={2.5} />}
-            {uploading ? "Uploading…" : "Upload Syllabus"}
+            {uploading ? "Uploading…" : "Upload Important Questions"}
           </button>
         </div>
       </div>
@@ -918,7 +914,7 @@ const Syllabus = () => {
       <div className="flex flex-col items-center justify-center py-28 bg-white rounded-2xl border border-dashed border-slate-200">
         <Library className="w-12 h-12 text-slate-200 mb-4" />
         <p className="text-base font-bold text-slate-400">Please sign in</p>
-        <p className="text-sm text-slate-300 mt-1">You need to be logged in to view syllabi.</p>
+        <p className="text-sm text-slate-300 mt-1">You need to be logged in to view important questions.</p>
       </div>
     );
   }
@@ -998,14 +994,14 @@ const Syllabus = () => {
 
     const recentThreshold = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
-    const handleDownload = (s: SyllabusDoc) => {
+    const handleDownload = (s: ImportantQuestionDoc) => {
       if (!s.fileUrl) {
         toast.error("File URL is missing.");
         return;
       }
       const a = document.createElement("a");
       a.href = s.fileUrl;
-      a.download = s.fileName || "syllabus.pdf";
+      a.download = s.fileName || "important-questions.pdf";
       a.target = "_blank";
       a.rel = "noopener";
       document.body.appendChild(a);
@@ -1026,10 +1022,10 @@ const Syllabus = () => {
         <div style={{ padding: "14px 20px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
           <div>
             <div style={{ fontSize: 24, fontWeight: 700, color: T1, letterSpacing: "-0.6px", marginBottom: 3 }}>
-              Syllabus
+              Important Questions
             </div>
             <div style={{ fontSize: 11, color: T3, fontWeight: 400, lineHeight: 1.5 }}>
-              View and manage syllabi uploaded<br />by teachers for your branch
+              Curated question sets for<br />classes in your branch
             </div>
           </div>
           <button
@@ -1061,7 +1057,7 @@ const Syllabus = () => {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 20px 0" }}>
           {[
             {
-              label: "Total\nSyllabi",
+              label: "Total\nDocuments",
               value: totalCount,
               sub: totalCount === 0 ? "None uploaded yet" : "Across all classes",
               valColor: B1,
@@ -1078,7 +1074,7 @@ const Syllabus = () => {
             {
               label: "Classes\nCovered",
               value: classesCount,
-              sub: classesCount === 0 ? "No classes yet" : "With at least one syllabus",
+              sub: classesCount === 0 ? "No classes yet" : "With at least one set",
               valColor: "#007830",
               subColor: "#007830",
               cardBg: "linear-gradient(135deg, #D6ECDD 0%, #F7FBF8 100%)",
@@ -1134,7 +1130,7 @@ const Syllabus = () => {
                 if (updatedThisWeek === 0) {
                   toast.info("No uploads in the past 7 days.");
                 } else {
-                  toast.info(`${updatedThisWeek} syllabus update${updatedThisWeek === 1 ? "" : "s"} in the past 7 days.`);
+                  toast.info(`${updatedThisWeek} document update${updatedThisWeek === 1 ? "" : "s"} in the past 7 days.`);
                 }
               },
             },
@@ -1281,7 +1277,7 @@ const Syllabus = () => {
             gap: 8,
           }}
         >
-          <span>Uploaded Syllabi</span>
+          <span>Important Question Sets</span>
           <span
             style={{
               padding: "3px 9px",
@@ -1358,11 +1354,11 @@ const Syllabus = () => {
               )}
             </div>
             <div style={{ fontSize: 17, fontWeight: 700, color: T1, letterSpacing: "-0.3px", textAlign: "center" }}>
-              {syllabi.length === 0 ? "No syllabi uploaded yet" : "No syllabi match your filters"}
+              {syllabi.length === 0 ? "No important questions uploaded yet" : "No documents match your filters"}
             </div>
             <div style={{ fontSize: 12, color: T3, textAlign: "center", maxWidth: 220, lineHeight: 1.6, fontWeight: 400 }}>
               {syllabi.length === 0
-                ? "Tap Upload to share a syllabus with a class — students and the assigned teacher will see it instantly."
+                ? "Tap Upload to share important questions with one or more classes — students and the assigned teacher will see it instantly."
                 : "Try clearing filters or changing your search."}
             </div>
             {syllabi.length === 0 && (
@@ -1385,7 +1381,7 @@ const Syllabus = () => {
                 }}
               >
                 <Upload className="w-3.5 h-3.5" strokeWidth={2.5} />
-                Upload First Syllabus
+                Upload First Document
               </button>
             )}
             {syllabi.length > 0 && (
@@ -1410,7 +1406,7 @@ const Syllabus = () => {
           </div>
         ) : (
           filtered.map((s, idx) => {
-            const title = s.title || `Syllabus - ${s.subject || "General"}`;
+            const title = s.title || `Important Questions - ${s.subject || "General"}`;
             const classLabel = s.className || s.classId || "Class";
             const isRecent = getUploadedAtMs(s.uploadedAt) >= recentThreshold;
             const teacherName = s.uploadedByName || "Unknown";
@@ -1681,7 +1677,7 @@ const Syllabus = () => {
                       cursor: "pointer",
                       opacity: deletingId === s.id ? 0.5 : 1,
                     }}
-                    aria-label="Delete syllabus"
+                    aria-label="Delete important questions"
                   >
                     {deletingId === s.id
                       ? <Loader2 size={14} color={RED} style={{ animation: "spin 1s linear infinite" }} />
@@ -1734,11 +1730,11 @@ const Syllabus = () => {
                 <Sparkles size={14} color="rgba(255,255,255,.90)" strokeWidth={2.3} />
               </div>
               <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,.55)" }}>
-                AI Syllabus Intelligence
+                AI Important Questions Intelligence
               </span>
             </div>
             <div style={{ fontSize: 13, color: "rgba(255,255,255,.85)", lineHeight: 1.72, fontWeight: 400, position: "relative", zIndex: 1 }}>
-              <strong style={{ color: "#fff", fontWeight: 700 }}>{totalCount} syllab{totalCount === 1 ? "us" : "i"}</strong> uploaded for{" "}
+              <strong style={{ color: "#fff", fontWeight: 700 }}>{totalCount} document{totalCount === 1 ? "" : "s"}</strong> uploaded for{" "}
               <strong style={{ color: "#fff", fontWeight: 700 }}>{classesCount} class{classesCount === 1 ? "" : "es"}</strong>.{" "}
               Subject coverage at{" "}
               <strong style={{ color: "#fff", fontWeight: 700 }}>
@@ -1768,7 +1764,7 @@ const Syllabus = () => {
               }}
             >
               {[
-                { v: totalCount, l: "Syllabi" },
+                { v: totalCount, l: "Documents" },
                 { v: classesCount, l: "Classes" },
                 { v: lastUploadShort, l: "Last Upload" },
               ].map((s, i) => (
@@ -1818,8 +1814,8 @@ const Syllabus = () => {
           <Library className="w-[22px] h-[22px] text-white" strokeWidth={2.4} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[24px] font-bold leading-none" style={{ color: dT1, letterSpacing: "-0.6px" }}>Syllabus</div>
-          <div className="text-[12px] mt-1" style={{ color: dT3 }}>Upload class-tagged syllabi for teachers and students to access</div>
+          <div className="text-[24px] font-bold leading-none" style={{ color: dT1, letterSpacing: "-0.6px" }}>Important Questions</div>
+          <div className="text-[12px] mt-1" style={{ color: dT3 }}>Upload class-tagged important question sets — assign to one or more classes</div>
         </div>
         <button
           onClick={() => setUploadOpen(true)}
@@ -1833,7 +1829,7 @@ const Syllabus = () => {
           }}
         >
           <Upload className="w-[15px] h-[15px]" strokeWidth={2.5} />
-          Upload Syllabus
+          Upload Important Questions
         </button>
       </div>
 
@@ -1852,7 +1848,7 @@ const Syllabus = () => {
               <FileText className="w-7 h-7 text-white" strokeWidth={2.2} />
             </div>
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.16em] mb-[6px]" style={{ color: "rgba(255,255,255,0.55)" }}>Syllabus Library</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] mb-[6px]" style={{ color: "rgba(255,255,255,0.55)" }}>Important Questions Library</div>
               <div className="flex items-baseline gap-2">
                 <span className="text-[48px] font-bold leading-none tracking-tight">{loading ? "—" : totalCount}</span>
                 <span className="text-[14px] font-semibold" style={{ color: "rgba(255,255,255,0.50)" }}>total documents</span>
@@ -1889,7 +1885,7 @@ const Syllabus = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
         {[
           {
-            title: "Total Syllabi", val: totalCount, valColor: dB1,
+            title: "Total Documents", val: totalCount, valColor: dB1,
             sub: totalCount === 0 ? "None uploaded yet" : "Across all classes",
             Icon: Library,
             cardGrad: "linear-gradient(135deg, #DEE6F8 0%, #F8FAFE 100%)",
@@ -1899,7 +1895,7 @@ const Syllabus = () => {
           },
           {
             title: "Classes Covered", val: classesCount, valColor: dVIOLET,
-            sub: classesCount === 0 ? "No classes yet" : "With ≥ 1 syllabus",
+            sub: classesCount === 0 ? "No classes yet" : "With ≥ 1 set",
             Icon: Building2,
             cardGrad: "linear-gradient(135deg, #DDD0EF 0%, #F8F4FD 100%)",
             tileGrad: `linear-gradient(135deg, ${dVIOLET}, #A07CF8)`,
@@ -2007,7 +2003,7 @@ const Syllabus = () => {
           style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: "0 4px 14px rgba(0,85,255,0.26)" }}>
           <FileText className="w-4 h-4 text-white" strokeWidth={2.4} />
         </div>
-        <div className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Uploaded Syllabi</div>
+        <div className="text-[15px] font-bold" style={{ color: dT1, letterSpacing: "-0.2px" }}>Important Question Sets</div>
         <span className="text-[11px] font-bold px-3 py-1 rounded-full"
           style={{ background: "rgba(0,85,255,0.10)", color: dB1, border: "0.5px solid rgba(0,85,255,0.18)" }}>
           {filtered.length}
@@ -2018,7 +2014,7 @@ const Syllabus = () => {
       {loading ? (
         <div className="bg-white rounded-[20px] py-16 flex flex-col items-center gap-3" style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
           <Loader2 className="w-8 h-8 animate-spin" style={{ color: dB1 }} />
-          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: dT4 }}>Loading syllabi…</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: dT4 }}>Loading documents…</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-[20px] py-20 flex flex-col items-center gap-3 text-center" style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
@@ -2032,9 +2028,9 @@ const Syllabus = () => {
           </div>
           {syllabi.length === 0 ? (
             <>
-              <p className="text-[14px] font-bold" style={{ color: dT1 }}>No syllabi uploaded yet</p>
+              <p className="text-[14px] font-bold" style={{ color: dT1 }}>No important questions uploaded yet</p>
               <p className="text-[11px] max-w-[300px]" style={{ color: dT4 }}>
-                Click <strong>Upload Syllabus</strong> to share a class-tagged document — teachers and students will see it instantly.
+                Click <strong>Upload Important Questions</strong> to share a class-tagged document — teachers and students will see it instantly.
               </p>
               <button
                 onClick={() => setUploadOpen(true)}
@@ -2048,12 +2044,12 @@ const Syllabus = () => {
                 }}
               >
                 <Upload className="w-[14px] h-[14px]" strokeWidth={2.5} />
-                Upload First Syllabus
+                Upload First Document
               </button>
             </>
           ) : (
             <>
-              <p className="text-[14px] font-bold" style={{ color: dT1 }}>No syllabi match your filters</p>
+              <p className="text-[14px] font-bold" style={{ color: dT1 }}>No documents match your filters</p>
               <p className="text-[11px] max-w-[280px]" style={{ color: dT4 }}>Try clearing filters or changing your search.</p>
             </>
           )}
@@ -2061,7 +2057,7 @@ const Syllabus = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((s) => {
-            const title = s.title || `Syllabus · ${s.subject || "General"}`;
+            const title = s.title || `Important Questions · ${s.subject || "General"}`;
             const classLabel = s.className || s.classId || "Class";
             return (
               <div key={s.id} className="bg-white rounded-[20px] overflow-hidden flex flex-col relative"
@@ -2135,7 +2131,7 @@ const Syllabus = () => {
                       background: "rgba(255,51,85,0.10)",
                       border: `1px solid rgba(255,51,85,0.30)`,
                     }}
-                    title="Delete syllabus">
+                    title="Delete document">
                     {deletingId === s.id
                       ? <Loader2 size={15} color={dRED} className="animate-spin" strokeWidth={2.4} />
                       : <Trash2 size={15} color={dRED} strokeWidth={2.4} />}
@@ -2161,10 +2157,10 @@ const Syllabus = () => {
               style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
               <Sparkles className="w-4 h-4 text-white" strokeWidth={2.4} />
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI Syllabus Intelligence</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI Important Questions Intelligence</span>
           </div>
           <p className="text-[14px] leading-[1.75] font-normal relative z-10 max-w-[900px]" style={{ color: "rgba(255,255,255,0.88)" }}>
-            Your library has <strong style={{ color: "#fff", fontWeight: 700 }}>{totalCount} syllabi</strong> across <strong style={{ color: "#fff", fontWeight: 700 }}>{classesCount} class{classesCount === 1 ? "" : "es"}</strong> and <strong style={{ color: "#fff", fontWeight: 700 }}>{subjectsCount} subject{subjectsCount === 1 ? "" : "s"}</strong>.
+            Your library has <strong style={{ color: "#fff", fontWeight: 700 }}>{totalCount} document</strong> across <strong style={{ color: "#fff", fontWeight: 700 }}>{classesCount} class{classesCount === 1 ? "" : "es"}</strong> and <strong style={{ color: "#fff", fontWeight: 700 }}>{subjectsCount} subject{subjectsCount === 1 ? "" : "s"}</strong>.
             Latest upload by <strong style={{ color: "#fff", fontWeight: 700 }}>{lastUploadRel.by}</strong> was <strong style={{ color: "#fff", fontWeight: 700 }}>{lastUploadRel.rel}</strong>.
             {updatedThisWeek > 0 && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{updatedThisWeek}</strong> new document{updatedThisWeek === 1 ? "" : "s"} added this week.</>}
           </p>
@@ -2180,4 +2176,4 @@ const Syllabus = () => {
   );
 };
 
-export default Syllabus;
+export default ImportantQuestions;

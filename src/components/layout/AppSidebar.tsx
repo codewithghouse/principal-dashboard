@@ -39,6 +39,7 @@ const PRINCIPAL_MENU = [
   { title: "Teachers",               icon: GraduationCap,   path: "/teachers" },
   { title: "Academics",              icon: BookOpen,        path: "/academics" },
   { title: "Syllabus",               icon: Library,         path: "/syllabus" },
+  { title: "Important Questions",    icon: BookOpen,        path: "/important-questions" },
   { title: "Attendance",             icon: CalendarCheck,   path: "/attendance" },
   { title: "Discipline & Incidents", icon: ShieldAlert,     path: "/discipline" },
   { title: "Parent Communication",   icon: MessageSquare,   path: "/parent-communication" },

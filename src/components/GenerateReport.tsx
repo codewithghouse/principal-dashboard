@@ -806,7 +806,13 @@ const GenerateReport = ({ templateName, onBack }: Props) => {
       const monthLabel = now.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const title     = `${reportType} — ${monthLabel}`;
 
-      const payload = {
+      // NOTE: must NOT name this `payload` — the outer `payload` (line ~799)
+      // is referenced for heroStats/sections/snippet below; declaring a
+      // local `const payload` here would put the OUTER payload in the
+      // temporal-dead-zone for the whole block and throw at runtime
+      // ("Cannot access 'payload' before initialization") which got caught
+      // by the catch-all toast and surfaced as a generic "Failed to generate".
+      const reportDoc = {
         schoolId:          userData.schoolId,
         // branchId MUST be on the doc — listeners on principal/teacher
         // dashboards filter by it (in-memory). Without this field the
@@ -826,16 +832,6 @@ const GenerateReport = ({ templateName, onBack }: Props) => {
         publishedToParent: true,
         publishedToTeacher: true,
         studentId:         "all",
-        // Branding embedded on the doc itself so teacher/parent dashboards
-        // render the SAME WYSIWYG HTML report (branch name, logo, theme)
-        // without an extra fetch on the principal record. logoUrl is
-        // captured at publish-time — if the principal updates their logo
-        // later, NEW reports get the new logo, OLD reports keep the old
-        // (intentional snapshot semantics for audit trail).
-        // branchName is the user-facing identity (each branch is a
-        // school in the Edullent model); schoolName kept as fallback for
-        // owner-published / single-branch tenants.
-        // Principal docs use varying field names — match leaderboardData.ts.
         branchName:
           (userData as any).branchName
           || (userData as any).branch
@@ -845,11 +841,6 @@ const GenerateReport = ({ templateName, onBack }: Props) => {
         logoUrl:           (userData as any).logoUrl || "",
         themeColor:        (userData as any).themeColor || "#0055FF",
         data: {
-          // Per-template hero stats + sections — produced by buildPayload
-          // so each report type renders DIFFERENT data downstream. Plus
-          // base aggregates retained for backward compatibility with old
-          // download handlers (will be ignored once handleDownload reads
-          // heroStats/sections directly).
           heroStats:       payload.heroStats,
           sections:        payload.sections,
           snippet:         payload.snippet,
@@ -862,19 +853,12 @@ const GenerateReport = ({ templateName, onBack }: Props) => {
         createdAt: serverTimestamp(),
       };
 
-      // Atomic two-doc write: principal_reports + mirror in reports must
-      // both succeed or both fail. Sequential addDoc could leave an
-      // orphan in principal_reports if the second write fails for any
-      // reason (rules / network / quota), making the report visible to
-      // the principal but invisible to teachers/parents.
-      // Use the SAME doc ID across both collections so delete can target
-      // both atomically (otherwise principal-side delete leaves a ghost
-      // in `reports` visible to parents/teachers forever).
+      // Atomic two-doc write: principal_reports + mirror in reports.
       const batch = writeBatch(db);
       const pRef = doc(collection(db, "principal_reports"));
       const rRef = doc(db, "reports", pRef.id);
-      batch.set(pRef, payload);
-      batch.set(rRef, payload);
+      batch.set(pRef, reportDoc);
+      batch.set(rRef, reportDoc);
       await batch.commit();
 
       toast.success("Report generated and published to teachers & parents!");
