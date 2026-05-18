@@ -32,9 +32,10 @@ export async function syncClaimsAndRefreshToken(
 } | null> {
   try {
     const fns = getFunctions(undefined, FUNCTIONS_REGION);
+    // Migrated 2026-05-18 to syncUserClaimsV2 — legacy function stuck on deleted India SA.
     const call = httpsCallable<ClaimPreferences, { role: string; schoolId: string; branchId?: string }>(
       fns,
-      "syncUserClaims",
+      "syncUserClaimsV2",
     );
     const res = await call(prefs || {});
     await user.getIdToken(true);
