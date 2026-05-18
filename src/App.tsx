@@ -42,6 +42,7 @@ import StudentIntelligence from "./pages/StudentIntelligence";
 import FeeStructure from "./pages/FeeStructure";
 import Syllabus from "./pages/Syllabus";
 import ImportantQuestions from "./pages/ImportantQuestions";
+import Help from "./pages/Help";
 
 // Legacy fallback for very old DEO records missing `allowedPages` field.
 // Normal DEOs use `userData.allowedPages` which the principal sets in Staff Access.
@@ -134,6 +135,7 @@ const AppRoutes = () => {
           <Route path="/exams"                element={<ExamsResults />} />
           <Route path="/assignments"          element={<AssignmentMarks />} />
           <Route path="/reports"              element={<Reports />} />
+          <Route path="/help"                 element={<Help />} />
           <Route path="/settings"             element={<SettingsPage />} />
           <Route path="/teacher-performance"  element={<TeacherPerformance />} />
           <Route path="/teacher-leaderboard"  element={<TeacherLeaderboard />} />

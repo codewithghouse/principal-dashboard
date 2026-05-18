@@ -15,6 +15,7 @@ import {
   ClipboardList,
   BarChart3,
   Settings,
+  LifeBuoy,
   LogOut,
   TrendingUp,
   Clock,
@@ -55,6 +56,7 @@ const PRINCIPAL_MENU = [
   { title: "Timetable Setup",        icon: Clock,           path: "/timetable" },
   { title: "Staff Access",           icon: ShieldCheck,     path: "/access-requests" },
   { title: "Reports",                icon: BarChart3,       path: "/reports" },
+  { title: "Help & Support",         icon: LifeBuoy,        path: "/help" },
   { title: "Settings",               icon: Settings,        path: "/settings" },
 ];
 
