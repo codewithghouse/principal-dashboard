@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { ArrowLeft, Star, Printer, MessageSquare, Users, BookOpen, Calendar, BarChart3, Activity, CheckCircle2, Clock, TrendingUp, AlertCircle, FileText, Loader2, ChevronLeft, ChevronRight, Edit2, Send, X, Award, ClipboardList, NotebookPen } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, Radar } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, addDoc, getDocs, serverTimestamp, updateDoc, doc } from "firebase/firestore";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 import { pctOfDoc, isPresent, ymdLocal } from "@/lib/scoreUtils";
+import { SubjectMasteryRadar } from "./SubjectMasteryRadar";
 
 // ── Tokens — aligned to principal-dashboard palette ─────────────────────
 const T = {
@@ -696,7 +697,7 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
             </div>
           </Card>
           <Card title="Subject Mastery" action={<DLink/>}>
-            {radarData.length>=3&&<div style={{height:180,marginBottom:12}}><ResponsiveContainer width="100%" height="100%"><RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}><PolarGrid stroke={T.s2}/><PolarAngleAxis dataKey="subject" tick={{fill:T.ink3,fontSize:10}}/><Radar dataKey="score" stroke={T.blue} fill={T.blue} fillOpacity={0.15} strokeWidth={2}/></RadarChart></ResponsiveContainer></div>}
+            {radarData.length>=3&&<div style={{marginBottom:12}}><SubjectMasteryRadar data={radarData} color={T.blue} height={200}/></div>}
             {subjectData.map(s=><div key={s.name} title={s.name} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><span style={{fontSize:11,color:T.ink3,width:80,flexShrink:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</span><div style={{flex:1,height:6,background:T.s1,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${s.avg}%`,background:s.avg>=75?T.blue:s.avg>=50?T.grn:T.red,borderRadius:3}}/></div><span style={{fontSize:12,fontWeight:600,color:T.ink,width:28,textAlign:"right"}}>{s.avg}</span></div>)}
           </Card>
         </div>

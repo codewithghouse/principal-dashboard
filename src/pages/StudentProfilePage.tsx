@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Printer, MessageSquare, AlertCircle, Loader2, ChevronLeft, ChevronRight, CheckCircle2, Clock, FileText, Shield, Brain, Users, BookOpen, Calendar, TrendingUp, BarChart3, Activity, Eye, GraduationCap, CalendarCheck, Star, ShieldAlert } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, Radar } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { tilt3D, tilt3DStyle } from "@/lib/use3DTilt";
 import { dedupAttendanceByDay } from "@/lib/attendanceDedup";
+import { SubjectMasteryRadar } from "@/components/SubjectMasteryRadar";
 
 // ── Tokens — aligned to principal-dashboard palette ─────────────────────────
 const T = {
@@ -570,14 +571,8 @@ const StudentProfilePage = () => {
           {/* Subject Mastery */}
           <Card title="Subject Mastery" action={<DetailLink />} theme="violet" icon={BookOpen} watermark={BookOpen}>
             {radarData.length >= 3 && (
-              <div style={{ height: 180, marginBottom: 12 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                    <PolarGrid stroke={T.s2} />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: T.ink3, fontSize: 10 }} />
-                    <Radar dataKey="score" stroke={T.blue} fill={T.blue} fillOpacity={0.15} strokeWidth={2} />
-                  </RadarChart>
-                </ResponsiveContainer>
+              <div style={{ marginBottom: 12 }}>
+                <SubjectMasteryRadar data={radarData} color={T.blue} height={200} />
               </div>
             )}
             {subEntries.map(([sub, sc]) => (
