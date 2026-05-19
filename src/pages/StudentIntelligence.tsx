@@ -340,9 +340,10 @@ export default function StudentIntelligence() {
     attendance.forEach(a => {
       const sid = resolveSid(a);
       if (!sid) return;
+      const status = String(a.status ?? "").toLowerCase();
+      if (status === "holiday") return; // exclude whole-class declared off-days
       const prev = attMap.get(sid) || { total: 0, present: 0 };
       prev.total++;
-      const status = String(a.status ?? "").toLowerCase();
       if (status === "present" || status === "late") prev.present++;
       attMap.set(sid, prev);
     });

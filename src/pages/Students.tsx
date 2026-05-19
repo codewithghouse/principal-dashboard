@@ -223,9 +223,12 @@ const Students = () => {
       (email && r.studentEmail?.toLowerCase() === email)
     );
     if (recs.length === 0) return { display: "—", pct: null, recCount: 0 };
-    const present = recs.filter(r => r.status === "present" || r.status === "late").length;
-    const pct = Math.round((present / recs.length) * 100);
-    return { display: `${pct}%`, pct, recCount: recs.length };
+    // Exclude holiday days (whole-class declared off-days) from %.
+    const countable = recs.filter(r => r.status !== "holiday");
+    if (countable.length === 0) return { display: "—", pct: null, recCount: 0 };
+    const present = countable.filter(r => r.status === "present" || r.status === "late").length;
+    const pct = Math.round((present / countable.length) * 100);
+    return { display: `${pct}%`, pct, recCount: countable.length };
   };
 
   const merge = () => {

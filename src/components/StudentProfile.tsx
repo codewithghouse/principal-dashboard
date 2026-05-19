@@ -167,10 +167,12 @@ const StudentProfile = ({ student, onBack }: Props) => {
 
   // ── Computed values ──────────────────────────────────────────────────────────
 
-  const presentCount  = attRecords.filter(r => r.status === "present").length;
-  const lateCount     = attRecords.filter(r => r.status === "late").length;
-  const absentCount   = attRecords.filter(r => r.status === "absent").length;
-  const totalAtt      = attRecords.length;
+  // Holiday days (whole-class declared off-days) excluded across all dashboards.
+  const attCountable  = attRecords.filter(r => r.status !== "holiday");
+  const presentCount  = attCountable.filter(r => r.status === "present").length;
+  const lateCount     = attCountable.filter(r => r.status === "late").length;
+  const absentCount   = attCountable.filter(r => r.status === "absent").length;
+  const totalAtt      = attCountable.length;
   const attPct        = totalAtt > 0 ? Math.round(((presentCount + lateCount) / totalAtt) * 100) : 0;
 
   const avgScore = results.length > 0

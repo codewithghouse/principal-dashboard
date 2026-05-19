@@ -335,7 +335,8 @@ function scoreOneStudent(
   };
 
   const sScores = lookup(scoresByKey);
-  const sAtt    = lookup(attByKey);
+  // Holiday days (whole-class declared off-days) excluded from % across all dashboards.
+  const sAtt    = lookup(attByKey).filter((a: any) => (a.status || "").toLowerCase() !== "holiday");
 
   const pcts = sScores.map(pctOf).filter((n): n is number => n !== null);
   const avgScore = pcts.length > 0 ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;

@@ -335,9 +335,11 @@ const StudentProfilePage = () => {
 
   // ── Metrics ────────────────────────────────────────────────────────────────
   const m = useMemo(() => {
-    const tot = attendance.length;
-    const pres = attendance.filter(r => r.status === "present").length;
-    const late = attendance.filter(r => r.status === "late").length;
+    // Holiday days are excluded from % across all dashboards.
+    const attCountable = attendance.filter(r => r.status !== "holiday");
+    const tot = attCountable.length;
+    const pres = attCountable.filter(r => r.status === "present").length;
+    const late = attCountable.filter(r => r.status === "late").length;
     const abs = tot - pres - late;
     const attRate = tot > 0 ? ((pres + late) / tot) * 100 : 0;
 
@@ -374,7 +376,7 @@ const StudentProfilePage = () => {
     const now = new Date();
     const monthly = Array.from({ length: 6 }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-      const mAtt = attendance.filter(r => { const dt = toDate(r.date); return dt && dt.getMonth() === d.getMonth() && dt.getFullYear() === d.getFullYear(); });
+      const mAtt = attendance.filter(r => { const dt = toDate(r.date); return dt && dt.getMonth() === d.getMonth() && dt.getFullYear() === d.getFullYear() && r.status !== "holiday"; });
       const mSc = testScores.filter(t => { const dt = toDate(t.timestamp || t.createdAt); return dt && dt.getMonth() === d.getMonth() && dt.getFullYear() === d.getFullYear(); });
       const mP = mAtt.filter(r => r.status === "present" || r.status === "late").length;
       const attP: number | null = mAtt.length > 0 ? (mP / mAtt.length) * 100 : null;
@@ -1006,7 +1008,12 @@ const StudentProfilePage = () => {
             {calDays.map((d, i) => {
               if (!d) return <div key={i} />;
               const isToday = d.date.toDateString() === today.toDateString();
-              const bg = d.status === "present" ? T.grn : d.status === "late" ? T.amb : d.status === "absent" ? T.red : "transparent";
+              const bg =
+                d.status === "present" ? T.grn :
+                d.status === "late" ? T.amb :
+                d.status === "absent" ? T.red :
+                d.status === "holiday" ? "#7B3FF4" :
+                "transparent";
               const isWknd = d.date.getDay() === 0 || d.date.getDay() === 6;
               return (
                 <div key={i} style={{
@@ -1024,7 +1031,7 @@ const StudentProfilePage = () => {
           </div>
           {/* Legend */}
           <div style={{ display: "flex", gap: 14, marginTop: 12, justifyContent: "center" }}>
-            {[{ c: T.grn, l: "Present" }, { c: T.amb, l: "Late" }, { c: T.red, l: "Absent" }, { c: T.s2, l: "Weekend" }, { c: "transparent", l: "No Data" }].map(x => (
+            {[{ c: T.grn, l: "Present" }, { c: T.amb, l: "Late" }, { c: T.red, l: "Absent" }, { c: "#7B3FF4", l: "Holiday" }, { c: T.s2, l: "Weekend" }, { c: "transparent", l: "No Data" }].map(x => (
               <div key={x.l} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <div style={{ width: 8, height: 8, borderRadius: 2, background: x.c, border: x.c === "transparent" ? `1px solid ${T.s2}` : "none" }} />
                 <span style={{ fontSize: 10, color: T.ink3 }}>{x.l}</span>

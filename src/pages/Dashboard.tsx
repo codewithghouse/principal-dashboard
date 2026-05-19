@@ -525,8 +525,9 @@ const Dashboard = () => {
         const today = todayStr();
         const yesterday = daysAgoStr(1);
 
-        // Today's rate
-        const todayRecs = records.filter(r => toDateStr(r.date) === today);
+        // Today's rate — exclude holiday docs (whole-class declared off-days
+        // don't count for or against the school-wide rate).
+        const todayRecs = records.filter(r => toDateStr(r.date) === today && r.status !== "holiday");
         const presentToday = todayRecs.filter(r => r.status === "present" || r.status === "late").length;
         const todayRate = todayRecs.length > 0
           ? Math.round((presentToday / todayRecs.length) * 100)
@@ -534,8 +535,8 @@ const Dashboard = () => {
         attTodayRef.current = todayRate;
         setAttendanceToday(todayRate);
 
-        // Delta vs yesterday
-        const yestRecs = records.filter(r => toDateStr(r.date) === yesterday);
+        // Delta vs yesterday — same holiday exclusion.
+        const yestRecs = records.filter(r => toDateStr(r.date) === yesterday && r.status !== "holiday");
         const presentYest = yestRecs.filter(r => r.status === "present" || r.status === "late").length;
         const yestRate = yestRecs.length > 0
           ? Math.round((presentYest / yestRecs.length) * 100)
@@ -544,9 +545,11 @@ const Dashboard = () => {
           todayRate !== null && yestRate !== null ? todayRate - yestRate : null,
         );
 
-        // 30-day trend — one point per day
+        // 30-day trend — one point per day. Skip holiday records entirely so
+        // an all-holiday day produces no point (gap), not a 0% point.
         const byDate: Record<string, { p: number; t: number }> = {};
         records.forEach(r => {
+          if (r.status === "holiday") return;
           const d = toDateStr(r.date);
           if (!d) return;
           if (!byDate[d]) byDate[d] = { p: 0, t: 0 };
@@ -587,9 +590,10 @@ const Dashboard = () => {
 
         // Attendance-based risk: students < 70% in last 30 days (min 5 records).
         // Dual-key student match — attendance docs may carry only
-        // studentEmail. Memory: dual_query_pattern.
+        // studentEmail. Memory: dual_query_pattern. Holiday excluded.
         const studentMap: Record<string, { name: string; cls: string; p: number; t: number }> = {};
         records.forEach(r => {
+          if (r.status === "holiday") return;
           const sid = String(r.studentId || (r.studentEmail || "").toLowerCase() || "");
           if (!sid) return;
           if (!studentMap[sid])
