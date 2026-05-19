@@ -99,7 +99,7 @@ export default function HolidaysPage() {
         date,
         reason,
         branchId: userData?.branchId || "",
-        declaredBy: userData?.uid || "",
+        declaredBy: userData?.id || "",
         declaredByName: userData?.name || "",
         createdAt: serverTimestamp(),
       });
