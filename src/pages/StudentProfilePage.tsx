@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { tilt3D, tilt3DStyle } from "@/lib/use3DTilt";
 import { dedupAttendanceByDay } from "@/lib/attendanceDedup";
+import { subscribeSchoolHolidays, buildHolidayMap, type SchoolHoliday } from "@/lib/schoolHolidays";
 import { SubjectMasteryRadar } from "@/components/SubjectMasteryRadar";
 
 // ── Tokens — aligned to principal-dashboard palette ─────────────────────────
@@ -211,6 +212,7 @@ const StudentProfilePage = () => {
   const [loading, setLoading] = useState(true);
   const [student, setStudent] = useState<any>(null);
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [schoolHolidays, setSchoolHolidays] = useState<SchoolHoliday[]>([]);
   const [testScores, setTestScores] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
@@ -333,10 +335,24 @@ const StudentProfilePage = () => {
     run();
   }, [studentId, userData?.schoolId, userData?.branchId]);
 
+  // School-wide holidays — principal-declared, excluded from %.
+  useEffect(() => {
+    if (!userData?.schoolId) return;
+    const unsub = subscribeSchoolHolidays(
+      userData.schoolId,
+      (rows) => setSchoolHolidays(rows),
+      (err) => console.error("[StudentProfile/principal] school_holidays:", err),
+    );
+    return () => unsub();
+  }, [userData?.schoolId]);
+
+  const holidayMap = useMemo(() => buildHolidayMap(schoolHolidays), [schoolHolidays]);
+
   // ── Metrics ────────────────────────────────────────────────────────────────
   const m = useMemo(() => {
-    // Holiday days are excluded from % across all dashboards.
-    const attCountable = attendance.filter(r => r.status !== "holiday");
+    // Exclude (a) per-student "holiday" status (class teacher declared) AND
+    // (b) school-wide holidays (principal declared) from % across all dashboards.
+    const attCountable = attendance.filter(r => r.status !== "holiday" && !holidayMap.has(String(r.date || "")));
     const tot = attCountable.length;
     const pres = attCountable.filter(r => r.status === "present").length;
     const late = attCountable.filter(r => r.status === "late").length;
@@ -376,7 +392,7 @@ const StudentProfilePage = () => {
     const now = new Date();
     const monthly = Array.from({ length: 6 }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-      const mAtt = attendance.filter(r => { const dt = toDate(r.date); return dt && dt.getMonth() === d.getMonth() && dt.getFullYear() === d.getFullYear() && r.status !== "holiday"; });
+      const mAtt = attendance.filter(r => { const dt = toDate(r.date); return dt && dt.getMonth() === d.getMonth() && dt.getFullYear() === d.getFullYear() && r.status !== "holiday" && !holidayMap.has(String(r.date || "")); });
       const mSc = testScores.filter(t => { const dt = toDate(t.timestamp || t.createdAt); return dt && dt.getMonth() === d.getMonth() && dt.getFullYear() === d.getFullYear(); });
       const mP = mAtt.filter(r => r.status === "present" || r.status === "late").length;
       const attP: number | null = mAtt.length > 0 ? (mP / mAtt.length) * 100 : null;
@@ -395,7 +411,7 @@ const StudentProfilePage = () => {
     const days = new Set(attendance.map(a => toDate(a.date)?.toDateString())).size;
 
     return { tot, pres, late, abs, attRate, avg, subScores, trend, monthly, subCount, asgCount, completion, days, usableScoreCount: vals.length };
-  }, [attendance, testScores, submissions, assignments]);
+  }, [attendance, testScores, submissions, assignments, holidayMap]);
 
   // Sort parent notes by createdAt DESC once — all three display sites
   // (Parent Communication, Teacher Observations, Communications) need newest
@@ -433,7 +449,9 @@ const StudentProfilePage = () => {
       const ad = toDate(a.date);
       return ad && ymd(ad) === dateStr;
     });
-    return { dayNum, date: d, status: rec?.status || null };
+    // School-wide holiday wins over per-student status (consistent across dashboards).
+    const status = holidayMap.has(dateStr) ? "holiday" : (rec?.status || null);
+    return { dayNum, date: d, status };
   });
   const calPresent = attendance.filter(a => { const d = toDate(a.date); return d && d.getMonth() === calMon && d.getFullYear() === calYear && a.status === "present"; }).length;
   const calLate = attendance.filter(a => { const d = toDate(a.date); return d && d.getMonth() === calMon && d.getFullYear() === calYear && a.status === "late"; }).length;

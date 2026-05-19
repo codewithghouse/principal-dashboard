@@ -35,6 +35,7 @@ import TeacherLeaderboard from "./pages/TeacherLeaderboard";
 import PrincipalLeaderboards from "./pages/PrincipalLeaderboards";
 import ExamStructure from "./pages/ExamStructure";
 import AlumniPage from "./pages/AlumniPage";
+import HolidaysPage from "./pages/HolidaysPage";
 import TimetableSetup from "./pages/TimetableSetup";
 import AccessRequests from "./pages/AccessRequests";
 import StudentProfilePage from "./pages/StudentProfilePage";
@@ -142,6 +143,7 @@ const AppRoutes = () => {
           <Route path="/principal-leaderboards" element={<PrincipalLeaderboards />} />
           <Route path="/exam-structure"       element={<ExamStructure />} />
           <Route path="/alumni"               element={<AlumniPage />} />
+          <Route path="/holidays"             element={<HolidaysPage />} />
           <Route path="/timetable"            element={<TimetableSetup />} />
           <Route path="/access-requests"      element={<AccessRequests />} />
           <Route path="/fee-structure"        element={<FeeStructure />} />
