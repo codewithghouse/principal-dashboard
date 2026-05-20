@@ -125,7 +125,16 @@ const ClassesSections = () => {
   const [assignModal, setAssignModal]       = useState(false);
   const [assigningClass, setAssigningClass] = useState<ClassRow | null>(null);
   const [assignTeacherId, setAssignTeacherId] = useState("");
+  // S2 role-aware teacher assignment (memory: session_2026-05-19_holiday_architecture).
+  // "class" → singular primary teacher per class; replaces existing designation.
+  // "subject" → additive subject teacher; does not touch classes.classTeacherId.
+  const [assignRole, setAssignRole]         = useState<"class" | "subject">("class");
+  const [assignSubject, setAssignSubject]   = useState("");
   const [assigning, setAssigning]           = useState(false);
+
+  // S2 migration helper (one-shot backfill — idempotent).
+  const [migrating, setMigrating]           = useState(false);
+  const [migrationResult, setMigrationResult] = useState<{ classes: number; assignments: number } | null>(null);
 
   // ── Add Students modal state ───────────────────────────────────────────────
   const [studentModal,     setStudentModal]     = useState(false);
@@ -408,6 +417,15 @@ const ClassesSections = () => {
     }
 
     const selectedTeacher = teachers.find(t => t.id === newClassTeacherId);
+    // S2 class-teacher designation (memory: session_2026-05-19_holiday_architecture):
+    // - classes.classTeacherEmail is the AUTH-LEVEL match field used by the
+    //   Firestore attendance create rule (auth.uid != teachers doc id, so we
+    //   key the gate on email which Firebase Auth provides as a claim).
+    // - classes.classTeacherId stays as the Firestore teachers doc id for
+    //   UI display + back-compat with existing readers.
+    // - role:"class" on the teaching_assignment lets cross-dashboard readers
+    //   distinguish primary class teacher from subject teachers.
+    const teacherEmailLower = (selectedTeacher?.email || "").toLowerCase();
 
     setSaving(true);
     try {
@@ -422,6 +440,12 @@ const ClassesSections = () => {
         subject:     newClass.subject.trim(),
         teacherId:   selectedTeacher?.id   || "",
         teacherName: selectedTeacher?.name || "",
+        // S2 designation fields — written alongside legacy teacherId so
+        // existing readers keep working. Empty strings (not null) match
+        // the legacy convention above; the attendance rule treats missing
+        // classTeacherEmail as "no designation → fall through to staff gate".
+        classTeacherId:    selectedTeacher?.id   || "",
+        classTeacherEmail: teacherEmailLower,
         schoolId,
         branchId,
         status: "Active",
@@ -431,11 +455,14 @@ const ClassesSections = () => {
       if (selectedTeacher) {
         const taRef = doc(collection(db, "teaching_assignments"));
         batch.set(taRef, {
-          teacherId:   selectedTeacher.id,
-          teacherName: selectedTeacher.name || "",
-          classId:     classRef.id,
-          className:   name,
-          subjectName: newClass.subject.trim(),
+          teacherId:    selectedTeacher.id,
+          teacherEmail: teacherEmailLower,
+          teacherName:  selectedTeacher.name || "",
+          classId:      classRef.id,
+          className:    name,
+          subjectName:  newClass.subject.trim(), // legacy field — readers still use this
+          subject:      newClass.subject.trim(), // S2 canonical field
+          role:         "class",                  // S2 — initial assignment IS the class teacher
           schoolId,
           branchId,
           status: "active",
@@ -476,6 +503,19 @@ const ClassesSections = () => {
       return toast.error("School context missing — please re-login.");
     }
     const branchId = assigningClass.branchId || userData?.branchId || null;
+    // S2 role gate. "class" replaces designation; "subject" is additive.
+    const role: "class" | "subject" = assignRole;
+    const teacherEmailLower = (teacher.email || "").toLowerCase();
+    // For subject role, require a subject string so the assignment is
+    // attributable — otherwise principal can't tell two subject teachers
+    // for the same class apart on lists.
+    const trimmedSubject = assignSubject.trim();
+    if (role === "subject" && !trimmedSubject) {
+      return toast.error("Please enter the subject this teacher will teach.");
+    }
+    const subjectForWrite = role === "subject"
+      ? trimmedSubject
+      : (assigningClass.subject || trimmedSubject || "");
 
     setAssigning(true);
     try {
@@ -486,25 +526,41 @@ const ClassesSections = () => {
       // those docs from the reassignment flow → old assignments never got
       // deactivated → ghost assignments persisted → new teacher inherited
       // the class with stale records. Memory: bug_pattern_teacher_class_pickers_single_source variant.
+      //
+      // For role==="subject" we DON'T need to pre-fetch enrollments — subject
+      // teachers don't replace the primary teacher, so the enrollments rows'
+      // teacherId/teacherName denorm stays pointed at the class teacher.
       const [allTaSnap, enrollSnap] = await Promise.all([
         getDocs(query(
           collection(db, "teaching_assignments"),
           where("schoolId", "==", schoolId),
           where("classId", "==", assigningClass.id),
         )),
-        getDocs(query(
-          collection(db, "enrollments"),
-          where("schoolId", "==", schoolId),
-          where("classId", "==", assigningClass.id),
-        )),
+        role === "class"
+          ? getDocs(query(
+              collection(db, "enrollments"),
+              where("schoolId", "==", schoolId),
+              where("classId", "==", assigningClass.id),
+            ))
+          : Promise.resolve({ docs: [] as any[] }),
       ]);
       // Client-side filter — treat docs without a `status` field as active
-      // (legacy default before the field was added).
+      // (legacy default before the field was added). For role==="class" we
+      // ALSO restrict deactivation to existing role:"class" (or legacy/missing
+      // role — same as treating missing role as "class"); subject-teacher
+      // assignments must survive a class-teacher reassignment.
+      const isActive = (d: any) => {
+        const s = (d.data() as { status?: unknown }).status;
+        return !s || (typeof s === "string" && s.toLowerCase() === "active");
+      };
+      const isClassRoleOrLegacy = (d: any) => {
+        const r = (d.data() as { role?: unknown }).role;
+        return !r || (typeof r === "string" && r.toLowerCase() === "class");
+      };
       const oldTaSnap = {
-        docs: allTaSnap.docs.filter(d => {
-          const s = (d.data() as { status?: unknown }).status;
-          return !s || (typeof s === "string" && s.toLowerCase() === "active");
-        }),
+        docs: role === "class"
+          ? allTaSnap.docs.filter(d => isActive(d) && isClassRoleOrLegacy(d))
+          : [],
       };
 
       // Build the full ordered op list as plain data, then commit in 450-op
@@ -515,15 +571,26 @@ const ClassesSections = () => {
         | { kind: "update"; ref: any; data: any };
       const ops: Op[] = [];
 
-      // 1. Class doc update
-      ops.push({
-        kind: "update",
-        ref: doc(db, "classes", assigningClass.id),
-        data: { teacherId: teacher.id, teacherName: teacher.name || "" },
-      });
+      // 1. Class doc update — ONLY when designating class teacher. For
+      //    role==="subject" the primary class teacher fields stay untouched.
+      if (role === "class") {
+        ops.push({
+          kind: "update",
+          ref: doc(db, "classes", assigningClass.id),
+          data: {
+            teacherId:         teacher.id,
+            teacherName:       teacher.name || "",
+            // S2 designation fields — keyed on teacher's Firestore doc id
+            // (for UI lookup) AND email (for Firestore rule auth match).
+            classTeacherId:    teacher.id,
+            classTeacherEmail: teacherEmailLower,
+          },
+        });
+      }
 
-      // 2. Deactivate any prior active teaching_assignments for this class
-      //    so duplicate active rows don't accumulate over time.
+      // 2. Deactivate the prior CLASS-role active teaching_assignment(s) so
+      //    duplicate active class teachers don't accumulate. Subject teachers
+      //    are NOT deactivated.
       oldTaSnap.docs.forEach(d => {
         ops.push({
           kind: "update",
@@ -532,24 +599,28 @@ const ClassesSections = () => {
         });
       });
 
-      // 3. New active teaching_assignment
+      // 3. New active teaching_assignment with explicit role + subject.
       ops.push({
         kind: "set",
         ref: doc(collection(db, "teaching_assignments")),
         data: {
-          teacherId:   teacher.id,
-          teacherName: teacher.name || "",
-          classId:     assigningClass.id,
-          className:   assigningClass.name,
-          subjectName: assigningClass.subject || "",
+          teacherId:    teacher.id,
+          teacherEmail: teacherEmailLower,
+          teacherName:  teacher.name || "",
+          classId:      assigningClass.id,
+          className:    assigningClass.name,
+          subjectName:  subjectForWrite,        // legacy field for existing readers
+          subject:      subjectForWrite,        // S2 canonical field
+          role,                                  // S2 — "class" | "subject"
           schoolId,
           branchId,
-          status:      "active",
-          createdAt:   serverTimestamp(),
+          status:       "active",
+          createdAt:    serverTimestamp(),
         },
       });
 
-      // 4. Update all enrollments with new teacher fields
+      // 4. Update enrollments with new teacher fields — ONLY when class teacher
+      //    is being changed. Subject teacher additions never touch enrollments.
       enrollSnap.docs.forEach(d => {
         ops.push({
           kind: "update",
@@ -569,15 +640,101 @@ const ClassesSections = () => {
         await batch.commit();
       }
 
-      toast.success(`${teacher.name} assigned to ${assigningClass.name}!`);
+      const roleLabel = role === "class" ? "class teacher" : `subject teacher (${subjectForWrite})`;
+      toast.success(`${teacher.name} assigned as ${roleLabel} for ${assigningClass.name}.`);
       setAssignModal(false);
       setAssigningClass(null);
       setAssignTeacherId("");
+      setAssignRole("class");
+      setAssignSubject("");
     } catch (err) {
       console.error("[ClassesSections] assign teacher failed:", err);
       toast.error("Failed to assign teacher. Try again.");
     } finally {
       setAssigning(false);
+    }
+  };
+
+  // ── S2 Migration helper — one-shot backfill of class-teacher designation ──
+  // Idempotent: skips docs that already have the new fields. Safe to re-run.
+  // For each class with a legacy `teacherId` but missing `classTeacherId`:
+  //   - sets classTeacherId = teacherId
+  //   - sets classTeacherEmail = teachers/{teacherId}.email (lowercased)
+  // For each active teaching_assignment without a `role` field:
+  //   - sets role = "class" (best-effort default; principal can re-designate)
+  // Memory: cross_dashboard_linking_rule applied — verified all 11 readers
+  // tolerate the new fields (additive only, no rename).
+  const runClassTeacherMigration = async () => {
+    const schoolId = userData?.schoolId;
+    if (!schoolId) return toast.error("School context missing — please re-login.");
+    if (!confirm(
+      "Backfill class-teacher designation for this school?\n\n" +
+      "• Existing primary teacher on each class → marked as class teacher\n" +
+      "• Existing active teaching_assignments → marked as role: class\n\n" +
+      "Safe to re-run. New subject-teacher designations come from the Assign Teacher modal."
+    )) return;
+    setMigrating(true);
+    setMigrationResult(null);
+    try {
+      const teachersById = new Map(teachers.map(t => [t.id as string, t]));
+      const [classesSnap, taSnap] = await Promise.all([
+        getDocs(query(collection(db, "classes"), where("schoolId", "==", schoolId))),
+        getDocs(query(collection(db, "teaching_assignments"), where("schoolId", "==", schoolId))),
+      ]);
+
+      type Op = { ref: any; data: any };
+      const ops: Op[] = [];
+
+      classesSnap.docs.forEach(d => {
+        const data = d.data() as Record<string, any>;
+        const hasNewField = typeof data.classTeacherId === "string" && data.classTeacherId.length > 0;
+        const teacherId   = typeof data.teacherId === "string" ? data.teacherId : "";
+        if (hasNewField || !teacherId) return;
+        const t = teachersById.get(teacherId);
+        const email = (t?.email || "").toLowerCase();
+        ops.push({
+          ref: d.ref,
+          data: { classTeacherId: teacherId, classTeacherEmail: email },
+        });
+      });
+      const classesMigrated = ops.length;
+
+      taSnap.docs.forEach(d => {
+        const data = d.data() as Record<string, any>;
+        const hasRole = typeof data.role === "string" && data.role.length > 0;
+        // Skip inactive — only backfill assignments that are presently active
+        // (or legacy without status). Inactive ones are historical noise.
+        const s = data.status;
+        const active = !s || (typeof s === "string" && s.toLowerCase() === "active");
+        if (hasRole || !active) return;
+        // Also stamp teacherEmail if missing — same need as for the rule gate.
+        const teacherId = typeof data.teacherId === "string" ? data.teacherId : "";
+        const t = teacherId ? teachersById.get(teacherId) : null;
+        const patch: Record<string, any> = { role: "class" };
+        if (!data.teacherEmail && t?.email) patch.teacherEmail = (t.email || "").toLowerCase();
+        ops.push({ ref: d.ref, data: patch });
+      });
+      const assignmentsMigrated = ops.length - classesMigrated;
+
+      const CHUNK = 450;
+      for (let i = 0; i < ops.length; i += CHUNK) {
+        const slice = ops.slice(i, i + CHUNK);
+        const batch = writeBatch(db);
+        slice.forEach(op => batch.update(op.ref, op.data));
+        await batch.commit();
+      }
+
+      setMigrationResult({ classes: classesMigrated, assignments: assignmentsMigrated });
+      if (ops.length === 0) {
+        toast.success("Nothing to migrate — all classes + assignments already carry S2 fields.");
+      } else {
+        toast.success(`Migrated ${classesMigrated} classes + ${assignmentsMigrated} assignments.`);
+      }
+    } catch (err) {
+      console.error("[ClassesSections] class-teacher migration failed:", err);
+      toast.error("Migration failed. Check console.");
+    } finally {
+      setMigrating(false);
     }
   };
 
@@ -779,12 +936,28 @@ const ClassesSections = () => {
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Classes & Sections</h1>
           <p className="text-sm text-slate-400 font-medium mt-1">Overview of all classes and sections</p>
         </div>
-        <button
-          onClick={() => setAddModal(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold hover:bg-[#1e4fc0] transition-colors shadow-md"
-        >
-          <Plus className="w-4 h-4" /> Add Class
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={runClassTeacherMigration}
+            disabled={migrating}
+            title="Backfill class-teacher designation for existing classes (idempotent — safe to re-run)"
+            className="flex items-center gap-2 px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-xl text-sm font-bold hover:bg-slate-50 disabled:opacity-60 transition-colors shadow-sm"
+          >
+            {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+            {migrating ? "Migrating..." : "Backfill Class Teachers"}
+            {migrationResult && (
+              <span className="text-[10px] font-black text-emerald-600 ml-1">
+                · {migrationResult.classes + migrationResult.assignments} updated
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setAddModal(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold hover:bg-[#1e4fc0] transition-colors shadow-md"
+          >
+            <Plus className="w-4 h-4" /> Add Class
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -1235,7 +1408,7 @@ const ClassesSections = () => {
         </div>
       )}
 
-      {/* ── Assign Teacher Modal ── */}
+      {/* ── Assign Teacher Modal (S2: role-aware) ── */}
       {assignModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
@@ -1243,18 +1416,64 @@ const ClassesSections = () => {
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <UserPlus className="w-4 h-4 text-[#1e3a8a]" />
-                  {assigningClass?.teacherName ? "Change Class Teacher" : "Assign Class Teacher"}
+                  Assign Teacher to Class
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5 font-medium">{assigningClass?.name}</p>
               </div>
               <button
-                onClick={() => { setAssignModal(false); setAssigningClass(null); setAssignTeacherId(""); }}
+                onClick={() => { setAssignModal(false); setAssigningClass(null); setAssignTeacherId(""); setAssignRole("class"); setAssignSubject(""); }}
                 className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
               >
                 <X className="w-4 h-4 text-slate-600" />
               </button>
             </div>
             <div className="p-6 space-y-4">
+              {/* Role selector */}
+              <div>
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Role *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAssignRole("class")}
+                    className={`px-3 py-3 rounded-xl border text-left transition-colors ${
+                      assignRole === "class"
+                        ? "border-[#1e3a8a] bg-blue-50/60 ring-2 ring-[#1e3a8a]/20"
+                        : "border-slate-200 bg-white hover:bg-slate-50"
+                    }`}
+                  >
+                    <p className={`text-sm font-black ${assignRole === "class" ? "text-[#1e3a8a]" : "text-slate-800"}`}>Class Teacher</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5 font-medium leading-snug">Marks daily attendance · one per class</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssignRole("subject")}
+                    className={`px-3 py-3 rounded-xl border text-left transition-colors ${
+                      assignRole === "subject"
+                        ? "border-violet-500 bg-violet-50/60 ring-2 ring-violet-500/20"
+                        : "border-slate-200 bg-white hover:bg-slate-50"
+                    }`}
+                  >
+                    <p className={`text-sm font-black ${assignRole === "subject" ? "text-violet-700" : "text-slate-800"}`}>Subject Teacher</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5 font-medium leading-snug">Teaches a subject · multiple per class</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Subject input — REQUIRED for subject role */}
+              {assignRole === "subject" && (
+                <div>
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Subject *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Mathematics, Hindi"
+                    value={assignSubject}
+                    onChange={e => setAssignSubject(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                  />
+                </div>
+              )}
+
+              {/* Teacher select */}
               <div>
                 <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Select Teacher *</label>
                 {teachers.length === 0 ? (
@@ -1276,25 +1495,35 @@ const ClassesSections = () => {
                   </select>
                 )}
               </div>
-              {assigningClass?.teacherName && (
-                <p className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
-                  Current teacher: <span className="font-bold text-slate-600">{assigningClass.teacherName}</span>
+
+              {/* Current designation hint */}
+              {assigningClass?.teacherName && assignRole === "class" && (
+                <p className="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2">
+                  Current class teacher: <span className="font-bold text-slate-700">{assigningClass.teacherName}</span> — will be replaced.
                 </p>
               )}
+              {assignRole === "subject" && (
+                <p className="text-xs text-violet-600 bg-violet-50 rounded-lg px-3 py-2 leading-relaxed">
+                  Subject teachers can record incidents, notes, and grades — but only the class teacher marks daily attendance.
+                </p>
+              )}
+
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={() => { setAssignModal(false); setAssigningClass(null); setAssignTeacherId(""); }}
+                  onClick={() => { setAssignModal(false); setAssigningClass(null); setAssignTeacherId(""); setAssignRole("class"); setAssignSubject(""); }}
                   className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAssignTeacher}
-                  disabled={assigning || !assignTeacherId}
-                  className="flex-1 py-3 rounded-xl bg-[#1e3a8a] text-white text-sm font-bold hover:bg-[#1e4fc0] disabled:opacity-60 flex items-center justify-center gap-2"
+                  disabled={assigning || !assignTeacherId || (assignRole === "subject" && !assignSubject.trim())}
+                  className={`flex-1 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-60 flex items-center justify-center gap-2 ${
+                    assignRole === "class" ? "bg-[#1e3a8a] hover:bg-[#1e4fc0]" : "bg-violet-600 hover:bg-violet-700"
+                  }`}
                 >
                   {assigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
-                  {assigning ? "Assigning..." : "Assign Teacher"}
+                  {assigning ? "Assigning..." : assignRole === "class" ? "Assign Class Teacher" : "Add Subject Teacher"}
                 </button>
               </div>
             </div>

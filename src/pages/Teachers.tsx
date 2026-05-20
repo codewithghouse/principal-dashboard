@@ -379,12 +379,19 @@ const Teachers = () => {
 
       // Build the teaching_assignment payload once — used by both the
       // "restore archived" and "fresh invite" branches.
+      // S2 designation fields (memory: session_2026-05-19_holiday_architecture):
+      // invite-with-class implies the teacher IS the class teacher for that
+      // class — role:"class" matches pre-migration intent. Principal can later
+      // re-designate via ClassesSections role-aware modal.
       const buildAssignment = (teacherId: string) => ({
         teacherId,
+        teacherEmail: emailObj,             // S2 — used by attendance rule gate
         teacherName: inviteForm.name,
         classId: inviteForm.assignClassId,
         className: classDocName,
-        subjectName: inviteForm.subject || "",
+        subjectName: inviteForm.subject || "",   // legacy
+        subject:     inviteForm.subject || "",   // S2 canonical
+        role:        "class" as const,            // S2 — invite assigns class teacher
         schoolId,
         branchId,
         status: "active",
