@@ -126,6 +126,7 @@ const ClassesSections = () => {
   // S2 migration helper (one-shot backfill — idempotent).
   const [migrating, setMigrating]           = useState(false);
   const [migrationResult, setMigrationResult] = useState<{ classes: number; assignments: number; demoted: number } | null>(null);
+  const [migrationConfirmOpen, setMigrationConfirmOpen] = useState(false);
 
   // ── Edit class state ─────────────────────────────────────────────────────
   // Rename triggers parent-dashboard/functions cascadeClassRename which
@@ -797,13 +798,6 @@ const ClassesSections = () => {
   const runClassTeacherMigration = async () => {
     const schoolId = userData?.schoolId;
     if (!schoolId) return toast.error("School context missing — please re-login.");
-    if (!confirm(
-      "Backfill class-teacher designation for this school?\n\n" +
-      "• Sets new S2 fields on each class\n" +
-      "• Detects teachers who are class teacher of MULTIPLE classes (against the rule) and keeps them only on the FIRST class they were assigned to — the rest become 'no class teacher' so you can re-designate.\n" +
-      "• Their teaching_assignments on other classes auto-flip to Subject Teacher with the class's subject.\n\n" +
-      "Safe to re-run. New designations come from the Assign Teacher modal."
-    )) return;
     setMigrating(true);
     setMigrationResult(null);
     try {
@@ -948,15 +942,17 @@ const ClassesSections = () => {
 
       setMigrationResult({ classes: classesMigrated, assignments: assignmentsMigrated, demoted });
       if (ops.length === 0) {
-        toast.success("Nothing to migrate — all classes + assignments already carry S2 fields.");
+        toast.success("All set! Every class already has a class teacher and subject teachers properly assigned.");
       } else if (demoted > 0) {
         toast.success(
-          `Migrated ${classesMigrated} classes + ${assignmentsMigrated} assignments. ` +
-          `Demoted ${demoted} duplicate class-teacher designation${demoted === 1 ? "" : "s"} — re-designate via the Assign Teacher modal.`,
-          { duration: 8000 },
+          `Done! ${classesMigrated} class${classesMigrated === 1 ? "" : "es"} updated, ${assignmentsMigrated} teacher assignment${assignmentsMigrated === 1 ? "" : "s"} set up. ` +
+          `${demoted} class${demoted === 1 ? "" : "es"} now need a class teacher — click "Assign Teacher" on those rows to pick one.`,
+          { duration: 9000 },
         );
       } else {
-        toast.success(`Migrated ${classesMigrated} classes + ${assignmentsMigrated} assignments.`);
+        toast.success(
+          `Done! ${classesMigrated} class${classesMigrated === 1 ? "" : "es"} updated, ${assignmentsMigrated} teacher assignment${assignmentsMigrated === 1 ? "" : "s"} set up.`,
+        );
       }
     } catch (err) {
       console.error("[ClassesSections] class-teacher migration failed:", err);
@@ -1222,13 +1218,13 @@ const ClassesSections = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={runClassTeacherMigration}
+            onClick={() => setMigrationConfirmOpen(true)}
             disabled={migrating}
-            title="Backfill class-teacher designation for existing classes (idempotent — safe to re-run)"
+            title="One-click cleanup — makes sure every class has just one class teacher (the rest become subject teachers). Safe to run anytime."
             className="flex items-center gap-2 px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-xl text-sm font-bold hover:bg-slate-50 disabled:opacity-60 transition-colors shadow-sm"
           >
             {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
-            {migrating ? "Migrating..." : "Backfill Class Teachers"}
+            {migrating ? "Setting up..." : "Set Up Class Teachers"}
             {migrationResult && (
               <span className="text-[10px] font-black ml-1 flex items-center gap-1">
                 <span className="text-emerald-600">
@@ -1236,7 +1232,7 @@ const ClassesSections = () => {
                 </span>
                 {migrationResult.demoted > 0 && (
                   <span className="text-amber-600">
-                    · {migrationResult.demoted} demoted
+                    · {migrationResult.demoted} need teacher
                   </span>
                 )}
               </span>
@@ -1259,13 +1255,19 @@ const ClassesSections = () => {
       ) : (
         <>
           {/* Per-Section Summary Cards — one card PER class (9A, 9B, 10A, 10B…)
-              not grouped by grade. Quick at-a-glance health for every section. */}
+              not grouped by grade. Click drills into ClassPerformance view. */}
           {classes.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {classes.map(cls => {
                 const Icon = healthIcon(cls.healthScore);
                 return (
-                  <div key={cls.id} className="bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all">
+                  <button
+                    key={cls.id}
+                    type="button"
+                    onClick={() => setSelectedSection(cls)}
+                    className="text-left bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-[#1e3a8a]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a8a]/30 transition-all cursor-pointer"
+                    aria-label={`View ${cls.name} performance`}
+                  >
                     <div className="flex items-center justify-between gap-2 mb-2.5">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-black shrink-0 ${
@@ -1306,7 +1308,7 @@ const ClassesSections = () => {
                         </span>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -1713,6 +1715,75 @@ const ClassesSections = () => {
                   {inviting ? "Inviting..." : "Invite & Enroll"}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Set Up Class Teachers Modal (replaces native confirm) ── */}
+      {migrationConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-[#1e3a8a]" />
+                  Set up class teachers?
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                  One-click cleanup for {userData?.schoolName || "your school"}
+                </p>
+              </div>
+              <button
+                onClick={() => setMigrationConfirmOpen(false)}
+                disabled={migrating}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center disabled:opacity-60"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <ol className="space-y-3 text-[13px] text-slate-700 leading-relaxed">
+                <li className="flex gap-3">
+                  <span className="w-6 h-6 rounded-full bg-blue-50 text-[#1e3a8a] font-black text-[11px] flex items-center justify-center shrink-0">1</span>
+                  <span>Each class will have <strong>one class teacher</strong> — the person who marks daily attendance.</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="w-6 h-6 rounded-full bg-blue-50 text-[#1e3a8a] font-black text-[11px] flex items-center justify-center shrink-0">2</span>
+                  <span>If a teacher is currently shown as class teacher of more than one class, only the <strong>first</strong> class they were given keeps them. The others will show <em>"Assign Teacher"</em> so you can pick the right one.</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="w-6 h-6 rounded-full bg-blue-50 text-[#1e3a8a] font-black text-[11px] flex items-center justify-center shrink-0">3</span>
+                  <span>On those other classes the same teacher becomes a <strong>Subject Teacher</strong> — they can still record grades, notes, and incidents, just not daily attendance.</span>
+                </li>
+              </ol>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <p className="text-[12px] text-emerald-700 font-medium leading-relaxed">
+                  Nothing is deleted. Safe to re-run anytime.
+                </p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setMigrationConfirmOpen(false)}
+                  disabled={migrating}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setMigrationConfirmOpen(false);
+                    runClassTeacherMigration();
+                  }}
+                  disabled={migrating}
+                  className="flex-1 py-3 rounded-xl bg-[#1e3a8a] text-white text-sm font-bold hover:bg-[#1e4fc0] disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+                  {migrating ? "Setting up..." : "Yes, set them up"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

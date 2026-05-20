@@ -195,8 +195,11 @@ const ClassesSectionsMobile = ({
                   cls.attendanceNum > 0 ? RED :
                   T4;
                 return (
-                  <div key={cls.id}
-                    className="rounded-[18px] p-3 bg-white flex-shrink-0 relative overflow-hidden transition-transform active:scale-[0.96]"
+                  <button key={cls.id}
+                    type="button"
+                    onClick={() => onViewSection(cls)}
+                    aria-label={`View ${cls.name} performance`}
+                    className="text-left rounded-[18px] p-3 bg-white flex-shrink-0 relative overflow-hidden transition-transform active:scale-[0.96] cursor-pointer"
                     style={{ boxShadow: SHADOW_LG, border: "0.5px solid rgba(0,85,255,0.10)", minWidth: 152 }}>
                     <div className="absolute -top-5 -right-4 w-16 h-16 rounded-full pointer-events-none"
                       style={{ background: `radial-gradient(circle, ${accent}1A 0%, transparent 70%)` }} />
@@ -237,7 +240,7 @@ const ClassesSectionsMobile = ({
                         }}
                       />
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
