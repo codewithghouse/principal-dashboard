@@ -1287,23 +1287,11 @@ const ClassesSections = () => {
                     )}
                     <div className="space-y-1.5 text-[11px]">
                       <div className="flex justify-between">
-<<<<<<< HEAD
-                        <span className="text-slate-600 font-medium">Sections</span>
-                        <span className="font-black text-slate-900">{g.sections}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-600 font-medium">Students</span>
-                        <span className="font-black text-slate-900">{g.students}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-600 font-medium">Avg Attendance</span>
-=======
                         <span className="text-slate-400 font-medium">Students</span>
                         <span className="font-black text-slate-900">{cls.studentCount}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400 font-medium">Attendance</span>
->>>>>>> cc9836d78f3f461e53bc0d18a635285e21646916
                         <span className={`font-black ${
                           cls.attendanceNum === null ? "text-slate-300"
                           : cls.attendanceNum >= 85 ? "text-green-600"
@@ -1314,15 +1302,9 @@ const ClassesSections = () => {
                         </span>
                       </div>
                       <div className="flex justify-between">
-<<<<<<< HEAD
-                        <span className="text-slate-600 font-medium">Health Score</span>
-                        <span className={`font-black ${healthColor(g.healthScore)}`}>
-                          {g.healthScore !== null ? `${g.healthScore}/100` : "—"}
-=======
                         <span className="text-slate-400 font-medium">Health</span>
                         <span className={`font-black ${healthColor(cls.healthScore)}`}>
                           {cls.healthScore !== null ? `${cls.healthScore}/100` : "—"}
->>>>>>> cc9836d78f3f461e53bc0d18a635285e21646916
                         </span>
                       </div>
                     </div>
