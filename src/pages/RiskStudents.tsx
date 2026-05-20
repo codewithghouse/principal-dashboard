@@ -1137,7 +1137,7 @@ const RiskStudents = () => {
                   </button>
                   <button onClick={() => setSelectedStudent(s)}
                     className="flex-1 h-[42px] rounded-[13px] flex items-center justify-center gap-[7px] text-[12px] font-bold text-white active:scale-[0.95] transition-transform"
-                    style={{ background: "linear-gradient(135deg, #001040, #001888)", boxShadow: "0 4px 14px rgba(0,8,64,0.26)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
+                    style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #2447A8 100%)", boxShadow: "0 4px 14px rgba(30,58,138,0.32)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
                     <ArrowRight className="w-[13px] h-[13px]" strokeWidth={2.3} />
                     View Action
                   </button>
@@ -1399,44 +1399,53 @@ const RiskStudents = () => {
         </div>
       </div>
 
-      {/* 4 Stat Cards (filters) — Apple-level minimal */}
+      {/* 4 Stat Cards (filters) — refined with stronger label/subtitle
+          contrast, tier-tinted backdrops, top accent stripe, and a clearer
+          active state. The previous slate-400 (#94A3B8) text on both label
+          and subtitle was washed out on most monitors. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
         {[
-          { key: "CRITICAL" as FilterTab,   label: "Critical",      val: criticalCount,   sub: "Immediate action", Icon: Flame,       grad: `linear-gradient(135deg, ${dRED}, #FF6688)`,   valColor: dRED,     ringColor: "rgba(255,51,85,0.18)",  shadow: "0 6px 16px rgba(255,51,85,0.22)"  },
-          { key: "WARNING" as FilterTab,    label: "Warning",       val: warningCount,    sub: "Monitor closely",  Icon: Bell,        grad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`,  valColor: dGOLD,    ringColor: "rgba(255,170,0,0.20)",  shadow: "0 6px 16px rgba(255,170,0,0.22)"  },
-          { key: "All" as FilterTab,        label: "New This Week", val: newThisWeek,     sub: "Since Monday",     Icon: UserPlus,    grad: `linear-gradient(135deg, ${dB1}, ${dB2})`,     valColor: dB1,      ringColor: "rgba(0,85,255,0.18)",   shadow: "0 6px 16px rgba(0,85,255,0.22)"  },
-          { key: "MONITORING" as FilterTab, label: "Monitoring",    val: monitoringCount, sub: "Under watch",      Icon: ShieldAlert, grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, valColor: dGREEN_D, ringColor: "rgba(0,200,83,0.20)",   shadow: "0 6px 16px rgba(0,200,83,0.22)"  },
-        ].map(({ key, label, val, sub, Icon, grad, valColor, ringColor, shadow }) => {
+          { key: "CRITICAL" as FilterTab,   label: "Critical",      val: criticalCount,   sub: "Immediate action", Icon: Flame,       grad: `linear-gradient(135deg, ${dRED}, #FF6688)`,   valColor: dRED,     subColor: "#B81E3C", labelColor: "#7A1428", tintBg: "linear-gradient(180deg, rgba(255,51,85,0.05) 0%, rgba(255,255,255,0) 60%)", ringColor: "rgba(255,51,85,0.40)",  activeShadow: "0 10px 28px rgba(255,51,85,0.18)", shadow: "0 6px 16px rgba(255,51,85,0.22)"  },
+          { key: "WARNING" as FilterTab,    label: "Warning",       val: warningCount,    sub: "Monitor closely",  Icon: Bell,        grad: `linear-gradient(135deg, ${dGOLD}, #FFDD44)`,  valColor: "#B87000", subColor: "#7A4500", labelColor: "#5A3300", tintBg: "linear-gradient(180deg, rgba(255,170,0,0.06) 0%, rgba(255,255,255,0) 60%)", ringColor: "rgba(255,170,0,0.45)",  activeShadow: "0 10px 28px rgba(255,170,0,0.18)", shadow: "0 6px 16px rgba(255,170,0,0.22)"  },
+          { key: "All" as FilterTab,        label: "New This Week", val: newThisWeek,     sub: "Since Monday",     Icon: UserPlus,    grad: `linear-gradient(135deg, ${dB1}, ${dB2})`,     valColor: dB1,      subColor: dT2,       labelColor: dT1,       tintBg: "linear-gradient(180deg, rgba(0,85,255,0.05) 0%, rgba(255,255,255,0) 60%)",   ringColor: "rgba(0,85,255,0.40)",   activeShadow: "0 10px 28px rgba(0,85,255,0.18)",   shadow: "0 6px 16px rgba(0,85,255,0.22)"  },
+          { key: "MONITORING" as FilterTab, label: "Monitoring",    val: monitoringCount, sub: "Under watch",      Icon: ShieldAlert, grad: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, valColor: dGREEN_D, subColor: dGREEN_D,  labelColor: "#005020", tintBg: "linear-gradient(180deg, rgba(0,200,83,0.05) 0%, rgba(255,255,255,0) 60%)",   ringColor: "rgba(0,200,83,0.40)",   activeShadow: "0 10px 28px rgba(0,200,83,0.18)",   shadow: "0 6px 16px rgba(0,200,83,0.22)"  },
+        ].map(({ key, label, val, sub, Icon, grad, valColor, subColor, labelColor, tintBg, ringColor, activeShadow, shadow }) => {
           const active = filterTab === key;
           return (
             <button
               key={label}
               onClick={() => setFilterTab(key)}
-              className="bg-white rounded-[18px] px-5 py-[18px] relative text-left transition-all duration-200 ease-out hover:-translate-y-[1px] focus:outline-none"
+              className="rounded-[18px] px-5 py-[18px] relative text-left transition-all duration-200 ease-out hover:-translate-y-[2px] focus:outline-none overflow-hidden"
               style={{
+                background: "#fff",
                 boxShadow: active
-                  ? `0 0 0 1px ${ringColor}, 0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.06)`
+                  ? `0 0 0 1.5px ${ringColor}, ${activeShadow}, 0 1px 2px rgba(15,23,42,0.04)`
                   : "0 0 0 0.5px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.05)",
               }}
             >
-              <div className="flex items-start justify-between mb-3">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: "#94A3B8" }}>
-                  {label}
-                </span>
-                <div
-                  className="w-9 h-9 rounded-[11px] flex items-center justify-center shrink-0"
-                  style={{ background: grad, boxShadow: shadow }}
-                >
-                  <Icon className="w-[17px] h-[17px] text-white" strokeWidth={2.4} />
+              {/* Soft tier-tinted backdrop — fades to white at the bottom
+                  so the big number still pops without the card feeling busy. */}
+              <div className="absolute inset-0 pointer-events-none" style={{ background: tintBg }} />
+              <div className="relative">
+                <div className="flex items-start justify-between mb-3">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.10em]" style={{ color: labelColor }}>
+                    {label}
+                  </span>
+                  <div
+                    className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
+                    style={{ background: grad, boxShadow: shadow }}
+                  >
+                    <Icon className="w-[18px] h-[18px] text-white" strokeWidth={2.5} />
+                  </div>
                 </div>
+                <p
+                  className="text-[34px] font-bold tracking-tight leading-none mb-2"
+                  style={{ color: valColor, letterSpacing: "-1.2px", fontFeatureSettings: "'tnum' 1" }}
+                >
+                  {loading ? "—" : val}
+                </p>
+                <p className="text-[12px] font-semibold" style={{ color: subColor, letterSpacing: "-0.05px" }}>{sub}</p>
               </div>
-              <p
-                className="text-[32px] font-bold tracking-tight leading-none mb-2"
-                style={{ color: valColor, letterSpacing: "-1px", fontFeatureSettings: "'tnum' 1" }}
-              >
-                {loading ? "—" : val}
-              </p>
-              <p className="text-[11px] font-medium" style={{ color: "#94A3B8" }}>{sub}</p>
             </button>
           );
         })}
@@ -1467,20 +1476,20 @@ const RiskStudents = () => {
           <select
             value={classFilter}
             onChange={(e) => setClassFilter(e.target.value)}
-            className="w-full rounded-[13px] font-bold cursor-pointer block"
+            className="w-full rounded-[13px] font-bold cursor-pointer block custom-chrome"
             style={{
+              // .custom-chrome opts out of the global `select { padding/font/line-height !important }`
+              // rules in index.css. Without it, the global 12px/16px padding +
+              // 14px font + 1.5 line-height squeezes "All Classes" inside a
+              // 40px box and clips the text vertically.
+              "--cc-padding": "0 36px 0 16px",
+              "--cc-font-size": "13px",
+              "--cc-font-weight": "700",
+              "--cc-line-height": "40px",
               WebkitAppearance: "none",
               MozAppearance: "none",
               appearance: "none",
-              // Explicit height + matching line-height for perfect vertical
-              // centering across Chrome / Safari / Edge / Firefox <select>.
               height: 40,
-              lineHeight: "40px",
-              fontSize: 13,
-              paddingTop: 0,
-              paddingBottom: 0,
-              paddingLeft: 16,
-              paddingRight: 36,
               textIndent: 0,
               verticalAlign: "middle",
               background: classFilter !== "All"
@@ -1489,7 +1498,7 @@ const RiskStudents = () => {
               color: classFilter !== "All" ? "#fff" : dT2,
               border: `0.5px solid ${classFilter !== "All" ? "transparent" : dSEP}`,
               boxShadow: classFilter !== "All" ? dSH_BTN : dSH,
-            }}
+            } as any}
           >
             <option value="All" style={{ color: "#000", background: "#fff" }}>All Classes</option>
             {allClassesAvailable.map(c => (
@@ -1580,46 +1589,69 @@ const RiskStudents = () => {
                         : <ChevronDown  className="w-4 h-4" style={{ color: dB1 }} strokeWidth={2.5} />}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-[15px] font-bold truncate" style={{ color: dT1, letterSpacing: "-0.2px" }}>
+                      <div className="text-[16px] font-bold truncate" style={{ color: dT1, letterSpacing: "-0.3px" }}>
                         Class {g.label}
                       </div>
-                      <div className="flex items-center gap-2 mt-1 text-[11px] font-bold flex-wrap">
-                        <span className="px-2 py-0.5 rounded-full" style={{ background: "rgba(0,85,255,0.10)", color: dB1 }}>
-                          {g.counts.total} at-risk
-                        </span>
-                        {g.counts.critical > 0 && (
-                          <span className="px-2 py-0.5 rounded-full" style={{ background: dRED_S, color: dRED }}>
-                            {g.counts.critical} critical
-                          </span>
-                        )}
-                        {g.counts.warning > 0 && (
-                          <span className="px-2 py-0.5 rounded-full" style={{ background: "rgba(255,170,0,0.10)", color: dGOLD }}>
-                            {g.counts.warning} warning
-                          </span>
-                        )}
-                        {g.counts.monitoring > 0 && (
-                          <span className="px-2 py-0.5 rounded-full" style={{ background: dGREEN_S, color: dGREEN_D }}>
-                            {g.counts.monitoring} monitoring
-                          </span>
-                        )}
+                      {/* Stat pills — inline padding + inline-flex centering
+                          to dodge the global `span { line-height: 1.5 !important }`
+                          and `[class^="px-2"] { padding-left: 8px !important }`
+                          overrides in index.css that were clipping descenders
+                          (the "g" in "warning") and pushing text off-center. */}
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {(() => {
+                          const pillBase = {
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "5px 11px",
+                            borderRadius: 9999,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            lineHeight: 1.2,
+                            letterSpacing: "0.01em",
+                            whiteSpace: "nowrap" as const,
+                          };
+                          return (
+                            <>
+                              <span style={{ ...pillBase, background: "rgba(0,85,255,0.12)", color: dT2, border: "0.5px solid rgba(0,85,255,0.30)" }}>
+                                {g.counts.total} at-risk
+                              </span>
+                              {g.counts.critical > 0 && (
+                                <span style={{ ...pillBase, background: "rgba(255,51,85,0.12)", color: "#B81E3C", border: "0.5px solid rgba(255,51,85,0.34)" }}>
+                                  {g.counts.critical} critical
+                                </span>
+                              )}
+                              {g.counts.warning > 0 && (
+                                <span style={{ ...pillBase, background: "rgba(255,170,0,0.14)", color: "#7A4500", border: "0.5px solid rgba(255,170,0,0.38)" }}>
+                                  {g.counts.warning} warning
+                                </span>
+                              )}
+                              {g.counts.monitoring > 0 && (
+                                <span style={{ ...pillBase, background: "rgba(0,200,83,0.12)", color: dGREEN_D, border: "0.5px solid rgba(0,200,83,0.34)" }}>
+                                  {g.counts.monitoring} monitoring
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   </button>
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => setNotifyTeachersFor({ className: g.label, classId: g.classId, students: g.students })}
-                      className="h-9 px-3 rounded-[10px] flex items-center gap-1.5 text-[11px] font-bold text-white transition-transform hover:scale-[1.02]"
-                      style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: dSH_BTN }}
+                      className="custom-chrome rounded-[12px] flex items-center text-[12px] font-bold text-white transition-transform hover:scale-[1.02]"
+                      style={{ "--cc-padding": "0 16px", height: 38, background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: dSH_BTN, gap: 8, letterSpacing: "-0.1px" } as any}
                     >
-                      <GraduationCap className="w-[13px] h-[13px]" strokeWidth={2.4} />
+                      <GraduationCap className="w-[15px] h-[15px]" strokeWidth={2.5} />
                       Notify Teachers
                     </button>
                     <button
                       onClick={() => setNotifyParentsFor({ className: g.label, students: g.students })}
-                      className="h-9 px-3 rounded-[10px] flex items-center gap-1.5 text-[11px] font-bold text-white transition-transform hover:scale-[1.02]"
-                      style={{ background: `linear-gradient(135deg, ${dRED}, #FF6688)`, boxShadow: "0 4px 14px rgba(255,51,85,0.26)" }}
+                      className="custom-chrome rounded-[12px] flex items-center text-[12px] font-bold text-white transition-transform hover:scale-[1.02]"
+                      style={{ "--cc-padding": "0 16px", height: 38, background: `linear-gradient(135deg, ${dRED}, #FF6688)`, boxShadow: "0 4px 14px rgba(255,51,85,0.26)", gap: 8, letterSpacing: "-0.1px" } as any}
                     >
-                      <Send className="w-[13px] h-[13px]" strokeWidth={2.4} />
+                      <Send className="w-[15px] h-[15px]" strokeWidth={2.5} />
                       Notify All Parents
                     </button>
                   </div>
@@ -1644,14 +1676,17 @@ const RiskStudents = () => {
                                 {getInitialsD(s.name)}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap mb-1">
-                                  <div className="text-[14px] font-bold truncate" style={{ color: dT1, letterSpacing: "-0.2px" }}>{s.name}</div>
-                                  <span className="px-[8px] py-[3px] rounded-full text-[9px] font-bold uppercase tracking-[0.08em] text-white"
-                                    style={{ background: theme.grad, boxShadow: `0 2px 6px ${theme.color}44` }}>
+                                <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                                  <div className="text-[15px] font-bold truncate" style={{ color: dT1, letterSpacing: "-0.3px" }}>{s.name}</div>
+                                  <span className="px-[10px] py-[4px] rounded-full text-[10px] font-bold uppercase tracking-[0.10em] text-white"
+                                    style={{ background: theme.grad, boxShadow: `0 2px 6px ${theme.color}55` }}>
                                     {s.riskLevel}
                                   </span>
                                 </div>
-                                <div className="flex items-center gap-1.5 text-[10.5px] font-medium" style={{ color: dT3 }}>
+                                {/* Subline bumped 10.5→12px and tone darkened
+                                    dT3→dT2 so flagged-since / attendance /
+                                    average reads cleanly at desktop sizes. */}
+                                <div className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: dT2, letterSpacing: "-0.05px" }}>
                                   {s.daysFlagged > 0 ? `${s.daysFlagged}d flagged` : "Flagged today"}
                                   {s.attPct !== null && ` · Att ${s.attPct}%`}
                                   {s.avgScore !== null && ` · Avg ${s.avgScore}%`}
@@ -1662,40 +1697,42 @@ const RiskStudents = () => {
                             </button>
 
                             {s.riskFactors.length > 0 && (
-                              <div className="px-5 py-2.5 flex flex-wrap gap-1.5" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
+                              <div className="px-5 py-3 flex flex-wrap gap-2" style={{ borderBottom: `0.5px solid ${dSEP}` }}>
                                 {s.riskFactors.slice(0, 3).map((f, i) => (
-                                  <span key={i} className="inline-flex items-center px-[8px] py-[3px] rounded-full text-[10px] font-bold"
-                                    style={{ background: dRED_S, color: dRED, border: `0.5px solid ${dRED_B}` }}>
+                                  <span key={i} className="inline-flex items-center px-[10px] py-[4px] rounded-full text-[11px] font-bold"
+                                    style={{ background: "rgba(255,51,85,0.12)", color: "#B81E3C", border: `0.5px solid rgba(255,51,85,0.32)`, letterSpacing: "0.01em" }}>
                                     {f}
                                   </span>
                                 ))}
                                 {s.riskFactors.length > 3 && (
-                                  <span className="inline-flex items-center px-[8px] py-[3px] rounded-full text-[10px] font-bold"
-                                    style={{ background: dBG2, color: dT3 }}>
+                                  <span className="inline-flex items-center px-[10px] py-[4px] rounded-full text-[11px] font-bold"
+                                    style={{ background: dBG2, color: dT2, border: `0.5px solid rgba(0,85,255,0.18)` }}>
                                     +{s.riskFactors.length - 3}
                                   </span>
                                 )}
                               </div>
                             )}
 
-                            {/* Per-student actions */}
+                            {/* Per-student actions — icons bumped 12→15px
+                                with darker stroke + tighter letter-spacing
+                                for a more polished, readable bar. */}
                             <div className="flex gap-2 p-3">
                               <button onClick={() => setMeetingStudent(s)}
-                                className="flex-1 h-9 rounded-[10px] flex items-center justify-center gap-1.5 text-[11px] font-bold text-white transition-transform hover:scale-[1.02]"
-                                style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: dSH_BTN }}>
-                                <CalendarPlus className="w-[12px] h-[12px]" strokeWidth={2.3} />
+                                className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-2 text-[12px] font-bold text-white transition-transform hover:scale-[1.02]"
+                                style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})`, boxShadow: dSH_BTN, letterSpacing: "-0.1px" }}>
+                                <CalendarPlus className="w-[15px] h-[15px]" strokeWidth={2.5} />
                                 Meet
                               </button>
                               <button onClick={() => setSelectedStudent(s)}
-                                className="flex-1 h-9 rounded-[10px] flex items-center justify-center gap-1.5 text-[11px] font-bold text-white transition-transform hover:scale-[1.02]"
-                                style={{ background: "linear-gradient(135deg, #001040, #001888)", boxShadow: "0 4px 14px rgba(0,8,64,0.26)" }}>
-                                <ArrowRight className="w-[12px] h-[12px]" strokeWidth={2.3} />
+                                className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-2 text-[12px] font-bold text-white transition-transform hover:scale-[1.02]"
+                                style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #2447A8 100%)", boxShadow: "0 4px 14px rgba(30,58,138,0.32)", letterSpacing: "-0.1px" }}>
+                                <ArrowRight className="w-[15px] h-[15px]" strokeWidth={2.5} />
                                 Action
                               </button>
                               <button onClick={() => openParentChat(s)}
-                                className="flex-1 h-9 rounded-[10px] flex items-center justify-center gap-1.5 text-[11px] font-bold bg-white transition-transform hover:scale-[1.02]"
-                                style={{ border: `0.5px solid ${dSEP}`, color: dT2, boxShadow: dSH }}>
-                                <MessageSquare className="w-[12px] h-[12px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
+                                className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-2 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02]"
+                                style={{ border: `0.5px solid ${dSEP}`, color: dT2, boxShadow: dSH, letterSpacing: "-0.1px" }}>
+                                <MessageSquare className="w-[15px] h-[15px]" style={{ color: dB1 }} strokeWidth={2.5} />
                                 Notify Parent
                               </button>
                             </div>

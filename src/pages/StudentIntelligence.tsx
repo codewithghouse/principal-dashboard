@@ -859,18 +859,21 @@ export default function StudentIntelligence() {
             <div className="text-[12px] mt-1" style={{ color: dT3 }}>Auto-detected performance tiers · Filter by class · Notify in one click</div>
           </div>
         </div>
-        {/* Branch + live-time chips — same UX cue as Dashboard + Students. */}
+        {/* Branch + live-time chips — same UX cue as Dashboard + Students.
+            Tones bumped: deeper navy text, darker icon, stronger chip
+            border/background so the branch name reads clearly instead of
+            looking washed-out against the page background. */}
         <div className="flex items-center gap-2 shrink-0">
           {branchLabel && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold"
-              style={{ background: "rgba(0,85,255,0.08)", color: dB1, border: "0.5px solid rgba(0,85,255,0.18)" }}>
-              <Building2 className="w-[13px] h-[13px]" strokeWidth={2.4} />
+            <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-[12px] font-bold"
+              style={{ background: "rgba(0,85,255,0.14)", color: dT1, border: "0.5px solid rgba(0,85,255,0.32)", letterSpacing: "-0.1px" }}>
+              <Building2 className="w-[15px] h-[15px]" strokeWidth={2.6} color={dT1} />
               {branchLabel}
             </span>
           )}
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold"
-            style={{ background: "rgba(0,200,83,0.08)", color: dGREEN_D, border: "0.5px solid rgba(0,200,83,0.18)" }}>
-            <Clock className="w-[13px] h-[13px]" strokeWidth={2.4} />
+          <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-[12px] font-bold"
+            style={{ background: "rgba(0,200,83,0.14)", color: dGREEN_D, border: "0.5px solid rgba(0,200,83,0.32)", letterSpacing: "-0.1px" }}>
+            <Clock className="w-[15px] h-[15px]" strokeWidth={2.6} color={dGREEN_D} />
             {now.toLocaleString("en-IN", {
               weekday: "short", day: "numeric", month: "short",
               hour: "numeric", minute: "2-digit",
@@ -1022,28 +1025,31 @@ export default function StudentIntelligence() {
               lineHeight: 0,
             }}
           >
-            <Search size={16} color="rgba(0,85,255,0.42)" strokeWidth={2.2} />
+            <Search size={17} color="rgba(0,85,255,0.78)" strokeWidth={2.5} />
           </span>
           <input
             type="text"
             placeholder="Search student, roll no, class..."
             value={search}
             onChange={e => setSearch(e.target.value)}
+            className="custom-chrome"
             style={{
+              // .custom-chrome opts out of the global `input { padding/font-size/font-weight/line-height !important }`
+              // rules in index.css. Without it, the global 12px/16px padding wins and the icon overlaps the text.
+              "--cc-padding": "0 18px 0 54px",
+              "--cc-font-size": "13px",
+              "--cc-font-weight": "500",
+              "--cc-line-height": "44px",
               width: "100%",
               height: 44,
-              // L: 16 icon-pos + 16 icon-w + 14 gap = 46 → text never overlaps the magnifier glass.
-              padding: "0 18px 0 46px",
               borderRadius: 14,
               background: "#fff",
-              fontSize: 13,
-              fontWeight: 500,
               color: dT1,
               outline: "none",
               border: `0.5px solid ${dSEP}`,
               boxShadow: dSH,
               fontFamily: "inherit",
-            }}
+            } as any}
           />
         </div>
         {/* Class filter — minWidth ensures the dropdown chip stays a
@@ -1052,17 +1058,18 @@ export default function StudentIntelligence() {
           <select
             value={classFilter}
             onChange={e => setClassFilter(e.target.value)}
+            className="custom-chrome"
             style={{
+              // .custom-chrome opts out of the global `select { padding/font-size/font-weight/line-height !important }`
+              // rules in index.css. Without it, the icon stuck on the left visually overlaps "All Classes".
+              "--cc-padding": "0 48px 0 48px",
+              "--cc-font-size": "13px",
+              "--cc-font-weight": "700",
+              "--cc-line-height": "44px",
               height: 44,
-              // Matching line-height so Edge/Safari don't clip glyphs vertically.
-              lineHeight: "44px",
-              minWidth: 196,
-              // L: 14 icon-pos + 14 icon-w + 12 gap = 40 · R: 14 chev-pos + 16 chev-w + 12 gap = 42
-              padding: "0 42px 0 40px",
+              minWidth: 210,
               borderRadius: 14,
               background: "#fff",
-              fontSize: 13,
-              fontWeight: 700,
               letterSpacing: "0.02em",
               color: dT2,
               outline: "none",
@@ -1077,7 +1084,7 @@ export default function StudentIntelligence() {
               textOverflow: "ellipsis",
               overflow: "hidden",
               verticalAlign: "middle",
-            }}>
+            } as any}>
             <option value="all" style={{ color: "#001040", background: "#fff" }}>All Classes ({classified.length})</option>
             {classes.map(c => {
               const inClass = classified.filter(s => s.classId === c.id).length;
@@ -1228,25 +1235,27 @@ export default function StudentIntelligence() {
                   ))}
                 </div>
 
-                {/* Actions */}
+                {/* Actions — icons bumped 13 → 15px with darker tones so
+                    they're readable on the cards (the previous 13px @ 0.6
+                    alpha was a tiny faded blob). */}
                 <div className="flex gap-2 p-4">
                   <button onClick={() => setAiInsightStudent(stu)}
-                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[12px] font-bold transition-transform hover:scale-[1.02]"
+                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-2 text-[12px] font-bold transition-transform hover:scale-[1.02]"
                     style={{ background: dBG, border: `0.5px solid rgba(0,85,255,0.18)`, color: dB1, boxShadow: dSH }}>
-                    <Sparkles className="w-[13px] h-[13px]" strokeWidth={2.3} />
+                    <Sparkles className="w-[15px] h-[15px]" strokeWidth={2.5} />
                     AI Analysis
                   </button>
                   <button onClick={() => setNotifyTeacher(stu)}
-                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02]"
+                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-2 text-[12px] font-bold bg-white transition-transform hover:scale-[1.02]"
                     style={{ border: `0.5px solid ${dSEP}`, color: dT2, boxShadow: dSH }}>
-                    <GraduationCap className="w-[13px] h-[13px]" style={{ color: "rgba(0,85,255,0.6)" }} strokeWidth={2.3} />
+                    <GraduationCap className="w-[15px] h-[15px]" style={{ color: dB1 }} strokeWidth={2.5} />
                     Notify Teacher
                   </button>
                   <button onClick={() => setNotifyParent(stu)}
-                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-1.5 text-[12px] font-bold text-white transition-transform hover:scale-[1.02] relative overflow-hidden"
+                    className="flex-1 h-10 rounded-[12px] flex items-center justify-center gap-2 text-[12px] font-bold text-white transition-transform hover:scale-[1.02] relative overflow-hidden"
                     style={{ background: `linear-gradient(135deg, ${dGREEN}, #22EE66)`, boxShadow: "0 4px 14px rgba(0,200,83,0.30)" }}>
                     <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.10) 0%, transparent 52%)" }} />
-                    <MessageSquare className="w-[13px] h-[13px] relative z-10" strokeWidth={2.3} />
+                    <MessageSquare className="w-[15px] h-[15px] relative z-10" strokeWidth={2.5} />
                     <span className="relative z-10">Notify Parent</span>
                   </button>
                 </div>
@@ -1256,7 +1265,9 @@ export default function StudentIntelligence() {
         </div>
       )}
 
-      {/* AI Intelligence Card */}
+      {/* AI Intelligence Card — text contrast bumped so the label and
+          footer aren't washed out against the dark blue gradient (the
+          previous 0.55/0.45 alphas were illegible on most monitors). */}
       {!loading && counts.weak > 0 && (
         <div className="mt-5 rounded-[22px] px-7 py-6 relative overflow-hidden"
           style={{
@@ -1265,26 +1276,26 @@ export default function StudentIntelligence() {
           }}>
           <div className="absolute -top-10 -right-7 w-[200px] h-[200px] rounded-full pointer-events-none"
             style={{ background: "radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 65%)" }} />
-          <div className="flex items-center gap-2 mb-3 relative z-10">
+          <div className="flex items-center gap-2.5 mb-3 relative z-10">
             <div className="w-8 h-8 rounded-[10px] flex items-center justify-center"
-              style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
-              <Sparkles className="w-4 h-4 text-white" strokeWidth={2.4} />
+              style={{ background: "rgba(255,255,255,0.22)", border: "0.5px solid rgba(255,255,255,0.34)" }}>
+              <Sparkles className="w-4 h-4 text-white" strokeWidth={2.5} />
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.55)" }}>AI Class Intelligence</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: "rgba(255,255,255,0.85)" }}>AI Class Intelligence</span>
           </div>
           {(() => {
             const weakFirst = classified.filter(s => s.category === "weak").sort((a, b) => a.avgScore - b.avgScore)[0];
             return (
-              <p className="text-[14px] leading-[1.75] font-normal relative z-10 max-w-[900px]" style={{ color: "rgba(255,255,255,0.88)" }}>
-                <strong style={{ color: "#fff", fontWeight: 700 }}>{counts.weak} student{counts.weak === 1 ? "" : "s"}</strong> performing below passing threshold.
-                {weakFirst && <> <strong style={{ color: "#fff", fontWeight: 700 }}>{weakFirst.studentName}</strong>'s <strong style={{ color: "#fff", fontWeight: 700 }}>{weakFirst.avgScore}% average</strong> requires immediate teacher intervention.</>}
+              <p className="text-[14.5px] leading-[1.7] font-normal relative z-10 max-w-[900px]" style={{ color: "#fff" }}>
+                <strong style={{ fontWeight: 700 }}>{counts.weak} student{counts.weak === 1 ? "" : "s"}</strong> performing below passing threshold.
+                {weakFirst && <> <strong style={{ fontWeight: 700 }}>{weakFirst.studentName}</strong>'s <strong style={{ fontWeight: 700 }}>{weakFirst.avgScore}% average</strong> requires immediate teacher intervention.</>}
                 {" "}Focused revision and teacher support can significantly improve outcomes before the next assessment.
               </p>
             );
           })()}
-          <div className="flex items-center gap-2 mt-4 pt-3 relative z-10" style={{ borderTop: "0.5px solid rgba(255,255,255,0.12)" }}>
-            <div className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ background: dB4 }} />
-            <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(255,255,255,0.45)" }}>Auto-generated from real-time assessment data</span>
+          <div className="flex items-center gap-2 mt-4 pt-3 relative z-10" style={{ borderTop: "0.5px solid rgba(255,255,255,0.20)" }}>
+            <div className="w-[7px] h-[7px] rounded-full animate-pulse" style={{ background: "#7AB6FF", boxShadow: "0 0 0 2.5px rgba(122,182,255,0.35)" }} />
+            <span className="text-[10.5px] font-bold uppercase tracking-[0.12em]" style={{ color: "rgba(255,255,255,0.72)" }}>Auto-generated from real-time assessment data</span>
           </div>
         </div>
       )}

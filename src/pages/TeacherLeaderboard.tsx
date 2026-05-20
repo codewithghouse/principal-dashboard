@@ -1655,42 +1655,48 @@ export default function TeacherLeaderboard() {
             })}
           </div>
 
-          {/* Class filter */}
+          {/* Class filter — uses .custom-chrome so the global
+              `select { padding/font/line-height !important }` in
+              index.css doesn't override the 34px left padding (which
+              would push the value text onto the BookOpen icon). */}
           <div style={{ position: "relative" }}>
             <BookOpen
-              size={14}
-              color="rgba(0,85,255,.6)"
-              strokeWidth={2.2}
-              style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+              size={15}
+              color="#0055FF"
+              strokeWidth={2.5}
+              style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", zIndex: 1 }}
             />
             <select
               value={classFilter}
               onChange={(e) => setClassFilter(e.target.value)}
+              className="custom-chrome"
               style={{
+                "--cc-padding": "10px 34px 10px 38px",
+                "--cc-font-size": "12px",
+                "--cc-font-weight": "700",
+                "--cc-line-height": "1.4",
                 appearance: "none",
                 WebkitAppearance: "none",
+                MozAppearance: "none",
                 background: "#fff",
                 border: "0.5px solid rgba(0,85,255,.14)",
                 borderRadius: 14,
-                padding: "9px 34px 9px 34px",
-                fontSize: 12,
-                fontWeight: 700,
                 color: "#002080",
                 outline: "none",
                 cursor: "pointer",
                 minWidth: 190,
                 boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
                 fontFamily: "inherit",
-              }}
+              } as any}
             >
               {classOptions.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id} style={{ color: "#001040" }}>{c.name}</option>
               ))}
             </select>
             <ChevronDown
-              size={14}
-              color="rgba(0,85,255,.6)"
-              strokeWidth={2.2}
+              size={15}
+              color="#0055FF"
+              strokeWidth={2.5}
               style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
             />
           </div>
@@ -2051,33 +2057,53 @@ export default function TeacherLeaderboard() {
             </div>
           )}
 
-          {/* Search + Clear Class */}
+          {/* Search + Clear Class — flex-cell pattern keeps the magnifier
+              in its own column so the global `input { padding !important }`
+              can't push the placeholder onto the icon. */}
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-            <div style={{ position: "relative", flex: 1, maxWidth: 460 }}>
-              <Search
-                size={16}
-                color="rgba(0,85,255,.42)"
-                strokeWidth={2.2}
-                style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
-              />
+            <div style={{
+              flex: 1,
+              maxWidth: 460,
+              display: "flex",
+              alignItems: "center",
+              background: "#fff",
+              borderRadius: 14,
+              border: "0.5px solid rgba(0,85,255,.12)",
+              boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
+            }}>
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 44,
+                  alignSelf: "stretch",
+                  flexShrink: 0,
+                  pointerEvents: "none",
+                }}
+              >
+                <Search size={17} color="rgba(0,85,255,.78)" strokeWidth={2.5} />
+              </span>
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search teacher by name or email..."
+                className="custom-chrome"
                 style={{
-                  width: "100%",
-                  padding: "12px 16px 12px 42px",
-                  background: "#fff",
-                  borderRadius: 14,
-                  border: "0.5px solid rgba(0,85,255,.12)",
+                  "--cc-padding": "12px 16px 12px 0",
+                  "--cc-font-size": "13px",
+                  "--cc-font-weight": "500",
+                  "--cc-line-height": "1.5",
+                  flex: 1,
+                  minWidth: 0,
+                  background: "transparent",
                   fontFamily: "inherit",
-                  fontSize: 13,
                   color: "#001040",
-                  fontWeight: 400,
                   outline: "none",
-                  boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.08)",
-                }}
+                  border: "none",
+                } as any}
               />
             </div>
             {classFilter !== "All" && (
@@ -2656,7 +2682,12 @@ function DetailModal({ score, onClose }: { score: TeacherScore; onClose: () => v
           </div>
           <button
             onClick={onClose}
+            className="custom-chrome"
             style={{
+              // .custom-chrome zeroes padding via index.css so the global
+              // `button { padding: 8px 16px !important }` doesn't squash
+              // the 16px X icon into a 2×18 content box (which is why
+              // the close button appeared empty before).
               width: 34,
               height: 34,
               borderRadius: 11,
@@ -2670,6 +2701,7 @@ function DetailModal({ score, onClose }: { score: TeacherScore; onClose: () => v
               position: "relative",
               zIndex: 1,
             }}
+            aria-label="Close"
           >
             <X size={16} color="#fff" strokeWidth={2.3} />
           </button>
@@ -2881,12 +2913,14 @@ function DetailModal({ score, onClose }: { score: TeacherScore; onClose: () => v
             background: "#EEF4FF",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "center",
             gap: 16,
             flexShrink: 0,
           }}
         >
-          <p style={{ fontSize: 11, color: "#5070B0", fontWeight: 500, margin: 0, lineHeight: 1.55 }}>
+          {/* Bottom Close button removed — the top-right X is enough.
+              The Weighted-signals legend now centers in the footer. */}
+          <p style={{ fontSize: 11, color: "#5070B0", fontWeight: 500, margin: 0, lineHeight: 1.55, textAlign: "center" }}>
             Weighted signals:{" "}
             <strong style={{ color: "#0055FF", fontWeight: 700 }}>scores 35%</strong> ·{" "}
             <strong style={{ color: "#0055FF", fontWeight: 700 }}>pass 20%</strong> ·{" "}
@@ -2894,29 +2928,6 @@ function DetailModal({ score, onClose }: { score: TeacherScore; onClose: () => v
             <strong style={{ color: "#0055FF", fontWeight: 700 }}>assignments 15%</strong> ·{" "}
             <strong style={{ color: "#0055FF", fontWeight: 700 }}>punctuality 10%</strong>
           </p>
-          <button
-            onClick={onClose}
-            style={{
-              padding: "10px 22px",
-              borderRadius: 12,
-              background: "linear-gradient(135deg, #0055FF, #1166FF)",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 700,
-              border: "none",
-              cursor: "pointer",
-              boxShadow: "0 6px 22px rgba(0,85,255,.40), 0 2px 5px rgba(0,85,255,.20)",
-              fontFamily: "inherit",
-              letterSpacing: "0.02em",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              flexShrink: 0,
-            }}
-          >
-            <X size={14} strokeWidth={2.4} />
-            Close
-          </button>
         </div>
       </div>
     </div>

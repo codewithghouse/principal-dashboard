@@ -281,15 +281,20 @@ const HolidayRow = ({ h, onDelete, isPast = false }: { h: SchoolHoliday; onDelet
       type="button"
       onClick={onDelete}
       aria-label="Remove holiday"
-      className="active:scale-95 transition-transform"
+      title="Remove holiday"
+      className="custom-chrome active:scale-95 transition-transform"
       style={{
+        // .custom-chrome zeroes padding via index.css. Without it the
+        // global `button { padding: 8px 16px !important }` shrinks this
+        // 36×36 button to a 4×20 content box and the trash icon
+        // disappears entirely (why this column looked empty).
         width: 36, height: 36, borderRadius: 10,
-        background: "rgba(255,51,85,0.08)", border: "0.5px solid rgba(255,51,85,0.18)",
+        background: "rgba(255,51,85,0.10)", border: "0.5px solid rgba(255,51,85,0.28)",
         display: "flex", alignItems: "center", justifyContent: "center",
         cursor: "pointer",
       }}
     >
-      <Trash2 className="w-4 h-4" style={{ color: T.RED }} strokeWidth={2.2} />
+      <Trash2 size={16} color={T.RED} strokeWidth={2.5} />
     </button>
   </div>
 );
@@ -354,13 +359,21 @@ const Modal = ({ title, onClose, children }: { title: string; onClose: () => voi
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: T.T1, letterSpacing: "-0.4px" }}>{title}</div>
-        <button type="button" onClick={onClose} aria-label="Close" style={{
-          width: 32, height: 32, borderRadius: 10,
-          background: T.BG, border: "0.5px solid rgba(0,85,255,0.10)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer",
-        }}>
-          <X className="w-4 h-4" style={{ color: T.T3 }} strokeWidth={2.4} />
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="custom-chrome"
+          style={{
+            // .custom-chrome zeroes padding via index.css. Without it the
+            // global `button { padding: 8px 16px !important }` shrinks the
+            // 32×32 button to a 0×16 content box and the X disappears.
+            width: 32, height: 32, borderRadius: 10,
+            background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.22)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer",
+          }}>
+          <X size={16} color={T.T1} strokeWidth={2.6} />
         </button>
       </div>
       {children}

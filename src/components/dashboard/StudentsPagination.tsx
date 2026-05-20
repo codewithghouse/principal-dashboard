@@ -35,7 +35,9 @@ const DEFAULT_SIZES = [10, 25, 50, 100];
 
 // Theme tokens — kept local to stay self-contained. Match Students view palette.
 const B1     = "#0055FF";
+const T1     = "#001040";
 const T2     = "#002080";
+const T3     = "#5070B0";
 const T4     = "#99AACC";
 const BG2    = "#E0ECFF";
 const GRAD   = "linear-gradient(135deg, #0055FF 0%, #1166FF 100%)";
@@ -142,42 +144,62 @@ const StudentsPagination = ({
         border: "0.5px solid rgba(0,85,255,0.10)",
       }}
     >
-      {/* Footer info — always visible, even with one page */}
+      {/* Footer info — match the product's typography convention used in
+          the rest of the app (RiskStudents class-scoped footer, etc.):
+          sentence-case "Showing N of M", medium weight, no uppercase, no
+          tracking. The previous bold-uppercase-tracked treatment felt
+          like a separate brand and read poorly inside the white card. */}
       <p
         style={{
-          fontSize: isDesktop ? 11 : 10,
-          fontWeight: 700,
-          letterSpacing: "0.10em",
-          textTransform: "uppercase",
-          color: T4,
+          fontSize: isDesktop ? 13 : 11.5,
+          fontWeight: 500,
+          letterSpacing: "-0.1px",
+          color: T3,
           margin: 0,
           flex: "0 0 auto",
+          lineHeight: 1.4,
+          fontFamily: "inherit",
         }}
       >
-        Showing {pageStart}–{pageEnd} of {totalItems} {totalItems === 1 ? itemNoun.one : itemNoun.other}
+        Showing{" "}
+        <span style={{ color: T1, fontWeight: 700 }}>
+          {pageStart}–{pageEnd}
+        </span>{" "}
+        of{" "}
+        <span style={{ color: T1, fontWeight: 700 }}>{totalItems}</span>{" "}
+        {totalItems === 1 ? itemNoun.one : itemNoun.other}
       </p>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-        {/* Page-size selector — desktop only, optional */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        {/* Page-size selector — desktop only, optional. Uses .custom-chrome
+            to escape the global `select { padding/font/line-height !important }`
+            rules in index.css that previously clipped the "10" inside the box. */}
         {isDesktop && setPageSize && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: T4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 10px 4px 12px", borderRadius: 10, background: "rgba(0,85,255,0.05)", border: "0.5px solid rgba(0,85,255,0.14)" }}>
+            <span style={{ fontSize: 12, fontWeight: 500, letterSpacing: "-0.1px", color: T3, fontFamily: "inherit" }}>
               Per page
             </span>
             <select
               value={pageSize}
               onChange={(e) => setPageSize(parseInt(e.target.value, 10))}
+              className="custom-chrome"
               style={{
-                padding: "6px 10px",
+                "--cc-padding": "0 26px 0 12px",
+                "--cc-font-size": "12.5px",
+                "--cc-font-weight": "700",
+                "--cc-line-height": "30px",
+                WebkitAppearance: "none",
+                MozAppearance: "none",
+                appearance: "none",
+                height: 30,
                 borderRadius: 8,
-                border: "0.5px solid rgba(0,85,255,0.18)",
-                background: "#fff",
-                fontSize: 12,
-                fontWeight: 700,
-                color: T2,
+                border: "0.5px solid rgba(0,85,255,0.22)",
+                background: `#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230055FF' stroke-width='2.6' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 8px center`,
+                color: T1,
                 cursor: "pointer",
                 fontFamily: "inherit",
-              }}
+                boxShadow: "0 1px 2px rgba(0,85,255,0.08)",
+              } as any}
             >
               {pageSizeOptions.map((n) => (
                 <option key={n} value={n}>{n}</option>

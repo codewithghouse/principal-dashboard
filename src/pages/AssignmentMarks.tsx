@@ -1297,22 +1297,46 @@ export default function AssignmentMarks() {
       </div>
 
       {/* Search input — narrows the active class filter further by title /
-          teacher / class name (case-insensitive). */}
+          teacher / class name (case-insensitive). Uses the flex-cell pattern
+          so the magnifier sits in its own column and can't overlap the text
+          (global `input { padding !important }` in index.css would push the
+          placeholder onto the icon otherwise). */}
       {!loading && groups.length > 0 && (
-        <div className="mb-3 relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
+        <div className="mb-3 flex items-center bg-white rounded-[14px]"
+          style={{
+            border: "0.5px solid rgba(0,85,255,0.14)",
+            boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.09)",
+            position: "relative",
+          }}>
+          <span
+            aria-hidden="true"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 44,
+              alignSelf: "stretch",
+              flexShrink: 0,
+              pointerEvents: "none",
+            }}
+          >
+            <Search size={17} color="rgba(0,85,255,0.78)" strokeWidth={2.5} />
+          </span>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by assignment title, teacher, or class…"
-            className="w-full h-11 pl-10 pr-4 bg-white rounded-[14px] text-[13px] font-medium outline-none"
+            className="flex-1 min-w-0 bg-transparent outline-none custom-chrome"
             style={{
-              border: "0.5px solid rgba(0,85,255,0.14)",
+              "--cc-padding": "13px 40px 13px 0",
+              "--cc-font-size": "13px",
+              "--cc-font-weight": "500",
+              "--cc-line-height": "1.5",
               color: "#001040",
-              boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.09)",
               fontFamily: "inherit",
-            }}
+              border: "none",
+            } as any}
           />
           {searchQuery && (
             <button

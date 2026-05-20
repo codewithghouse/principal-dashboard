@@ -1310,17 +1310,17 @@ const ExamStructure = () => {
                     width: 38,
                     height: 38,
                     borderRadius: 12,
-                    background: "rgba(255,255,255,.16)",
-                    border: "0.5px solid rgba(255,255,255,.24)",
+                    background: "#fff",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     flexShrink: 0,
                     position: "relative",
                     zIndex: 1,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
                   }}
                 >
-                  <BookOpen size={18} color="#fff" strokeWidth={2.2} />
+                  <ClipboardList size={20} color="#1e3a8a" strokeWidth={2.6} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0, position: "relative", zIndex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", letterSpacing: "-0.3px", marginBottom: 2 }}>
@@ -1332,12 +1332,16 @@ const ExamStructure = () => {
                 </div>
                 <button
                   onClick={() => setShowAddModal(false)}
+                  className="custom-chrome"
                   style={{
+                    // .custom-chrome zeroes padding so the global
+                    // `button { padding: 8px 16px !important }` doesn't
+                    // squash the X icon. Solid white background + dark
+                    // navy icon for guaranteed contrast.
                     width: 30,
                     height: 30,
                     borderRadius: 10,
-                    background: "rgba(255,255,255,.14)",
-                    border: "0.5px solid rgba(255,255,255,.22)",
+                    background: "#fff",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1345,9 +1349,12 @@ const ExamStructure = () => {
                     flexShrink: 0,
                     position: "relative",
                     zIndex: 1,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                    border: "none",
                   }}
+                  aria-label="Close"
                 >
-                  <X size={14} color="#fff" strokeWidth={2.3} />
+                  <X size={16} color="#1e3a8a" strokeWidth={2.8} />
                 </button>
               </div>
 
@@ -1918,10 +1925,23 @@ const ExamStructure = () => {
                                   </span>
                                 </td>
                                 <td className="px-3 py-[10px] text-right">
-                                  <button onClick={() => removeGradeRow(exam.id, g.id)}
-                                    className="w-7 h-7 rounded-[9px] flex items-center justify-center transition-transform active:scale-90"
-                                    style={{ background: "rgba(255,51,85,0.08)", border: "0.5px solid rgba(255,51,85,0.18)" }}>
-                                    <X className="w-[13px] h-[13px]" style={{ color: "#FF3355" }} strokeWidth={2.3} />
+                                  <button
+                                    onClick={() => removeGradeRow(exam.id, g.id)}
+                                    aria-label="Remove grade row"
+                                    title="Remove this grade row"
+                                    className="custom-chrome rounded-[9px] flex items-center justify-center transition-transform active:scale-90 hover:scale-[1.06]"
+                                    style={{
+                                      // .custom-chrome zeroes padding via index.css. Without it
+                                      // the global `button { padding: 8px 16px !important }` shrinks
+                                      // the 28×28 button's content area to a negative width and the
+                                      // trash icon disappears (which is why this column looked empty).
+                                      width: 28,
+                                      height: 28,
+                                      background: "rgba(255,51,85,0.10)",
+                                      border: "0.5px solid rgba(255,51,85,0.28)",
+                                      cursor: "pointer",
+                                    }}>
+                                    <Trash2 size={14} color="#FF3355" strokeWidth={2.5} />
                                   </button>
                                 </td>
                               </tr>
@@ -1996,16 +2016,52 @@ const ExamStructure = () => {
 
             <div className="bg-[#1e3a8a] px-6 py-5 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-                  <BookOpen className="w-4 h-4 text-white" />
+                {/* Solid white container + dark navy icon = guaranteed
+                    contrast against the navy header. The previous
+                    bg-white/25 + white icon combo had ~3:1 contrast
+                    on the mid-blend, making both icons invisible. */}
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    background: "#ffffff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                  }}
+                >
+                  <ClipboardList size={22} color="#1e3a8a" strokeWidth={2.6} />
                 </div>
                 <div>
                   <h2 className="text-sm font-black text-white">New Exam Type</h2>
                   <p className="text-xs text-blue-200">Configure exam structure & grading</p>
                 </div>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
-                <X className="w-4 h-4 text-white" />
+              <button
+                onClick={() => setShowAddModal(false)}
+                aria-label="Close"
+                className="custom-chrome"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 9999,
+                  background: "#ffffff",
+                  border: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                  transition: "background 120ms",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "#EFF6FF"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "#ffffff"; }}
+              >
+                <X size={20} color="#1e3a8a" strokeWidth={2.8} />
               </button>
             </div>
 
