@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   CheckCircle, AlertCircle, XCircle, Loader2,
   GraduationCap, Users, BarChart2, CalendarCheck, Plus, X, UserPlus, UserCheck,
-  Search as SearchIcon, Mail, Check
+  Search as SearchIcon, Mail, Check, Pencil
 } from "lucide-react";
 import ClassPerformance from "@/components/ClassPerformance";
 import ClassesSectionsMobile from "@/components/dashboard/ClassesSectionsMobile";
@@ -134,7 +134,15 @@ const ClassesSections = () => {
 
   // S2 migration helper (one-shot backfill — idempotent).
   const [migrating, setMigrating]           = useState(false);
-  const [migrationResult, setMigrationResult] = useState<{ classes: number; assignments: number } | null>(null);
+  const [migrationResult, setMigrationResult] = useState<{ classes: number; assignments: number; demoted: number } | null>(null);
+
+  // ── Edit class state ─────────────────────────────────────────────────────
+  // Rename triggers parent-dashboard/functions cascadeClassRename which
+  // propagates the new className across ~25 denormalized collections.
+  const [editClassModal, setEditClassModal] = useState(false);
+  const [editingClass, setEditingClass]     = useState<ClassRow | null>(null);
+  const [editFields, setEditFields]         = useState({ name: "", grade: "", section: "", subject: "" });
+  const [savingEdit, setSavingEdit]         = useState(false);
 
   // ── Add Students modal state ───────────────────────────────────────────────
   const [studentModal,     setStudentModal]     = useState(false);
@@ -806,13 +814,27 @@ const ClassesSections = () => {
     }
   };
 
-  // ── S2 Migration helper — one-shot backfill of class-teacher designation ──
-  // Idempotent: skips docs that already have the new fields. Safe to re-run.
-  // For each class with a legacy `teacherId` but missing `classTeacherId`:
-  //   - sets classTeacherId = teacherId
-  //   - sets classTeacherEmail = teachers/{teacherId}.email (lowercased)
-  // For each active teaching_assignment without a `role` field:
-  //   - sets role = "class" (best-effort default; principal can re-designate)
+  // ── S2 Migration helper — one-shot backfill + duplicate resolution ──────
+  // Idempotent. Safe to re-run.
+  //
+  // What it does:
+  //  1. **Detect duplicates** — group classes by their "effective" primary
+  //     teacher (post-migration `classTeacherId` if set, else legacy
+  //     `teacherId`). Any teacher appearing on > 1 class violates the
+  //     one-homeroom-per-teacher rule (memory: bug_pattern_one_homeroom_per_teacher).
+  //  2. **Pick canonical class** for each duplicated teacher = earliest
+  //     `createdAt`. That stays as their homeroom.
+  //  3. **Demote** the teacher from all OTHER classes: clear
+  //     classes.teacherId / teacherName / classTeacherId / classTeacherEmail.
+  //     Those classes show "Assign Teacher" amber — principal designates the
+  //     real class teacher.
+  //  4. **Set S2 fields** on canonical class: classTeacherId + classTeacherEmail.
+  //  5. **Stamp role** on every active teaching_assignment without one:
+  //     - canonical class's TA for that teacher → role:"class"
+  //     - any other TA → role:"subject" + subject inferred from the class's
+  //       own `subject` field (so subject-teacher chips render correctly).
+  //  6. **Don't touch** classes where the primary teacher is unique (only on
+  //     one class) — just backfill classTeacherId/Email + role:"class" TA.
   // Memory: cross_dashboard_linking_rule applied — verified all 11 readers
   // tolerate the new fields (additive only, no rename).
   const runClassTeacherMigration = async () => {
@@ -820,9 +842,10 @@ const ClassesSections = () => {
     if (!schoolId) return toast.error("School context missing — please re-login.");
     if (!confirm(
       "Backfill class-teacher designation for this school?\n\n" +
-      "• Existing primary teacher on each class → marked as class teacher\n" +
-      "• Existing active teaching_assignments → marked as role: class\n\n" +
-      "Safe to re-run. New subject-teacher designations come from the Assign Teacher modal."
+      "• Sets new S2 fields on each class\n" +
+      "• Detects teachers who are class teacher of MULTIPLE classes (against the rule) and keeps them only on the FIRST class they were assigned to — the rest become 'no class teacher' so you can re-designate.\n" +
+      "• Their teaching_assignments on other classes auto-flip to Subject Teacher with the class's subject.\n\n" +
+      "Safe to re-run. New designations come from the Assign Teacher modal."
     )) return;
     setMigrating(true);
     setMigrationResult(null);
@@ -833,54 +856,130 @@ const ClassesSections = () => {
         getDocs(query(collection(db, "teaching_assignments"), where("schoolId", "==", schoolId))),
       ]);
 
+      type ClassRec = {
+        id: string;
+        createdAt: number;
+        classTeacherId: string;
+        teacherId: string;
+        subject: string;
+        name: string;
+      };
+      const classRecords: ClassRec[] = classesSnap.docs.map(d => {
+        const data = d.data() as Record<string, any>;
+        const ts = data.createdAt;
+        const createdAt: number =
+          typeof ts?.toMillis === "function" ? ts.toMillis()
+          : typeof ts === "number"            ? ts
+          : 0;
+        return {
+          id: d.id,
+          createdAt,
+          classTeacherId: typeof data.classTeacherId === "string" ? data.classTeacherId : "",
+          teacherId:      typeof data.teacherId      === "string" ? data.teacherId      : "",
+          subject:        typeof data.subject        === "string" ? data.subject        : "",
+          name:           typeof data.name           === "string" ? data.name           : "",
+        };
+      });
+      // Effective primary teacher per class: classTeacherId wins; else legacy teacherId.
+      const effectiveTeacherForClass = new Map<string, string>();
+      classRecords.forEach(c => {
+        const eff = c.classTeacherId || c.teacherId;
+        if (eff) effectiveTeacherForClass.set(c.id, eff);
+      });
+      // Group classes by their effective primary teacher.
+      const teacherToClasses = new Map<string, ClassRec[]>();
+      classRecords.forEach(c => {
+        const eff = effectiveTeacherForClass.get(c.id);
+        if (!eff) return;
+        if (!teacherToClasses.has(eff)) teacherToClasses.set(eff, []);
+        teacherToClasses.get(eff)!.push(c);
+      });
+      // For each teacher → canonical (earliest createdAt) class id.
+      const canonicalClassForTeacher = new Map<string, string>();
+      teacherToClasses.forEach((list, tid) => {
+        if (list.length === 0) return;
+        const sorted = [...list].sort((a, b) => {
+          if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+          return a.id.localeCompare(b.id);   // deterministic tie-break
+        });
+        canonicalClassForTeacher.set(tid, sorted[0].id);
+      });
+      // Quick subject lookup per class id (used for TA subject backfill).
+      const classSubjectById = new Map<string, string>();
+      const classRecById = new Map<string, ClassRec>();
+      classRecords.forEach(c => {
+        classRecById.set(c.id, c);
+        if (c.subject) classSubjectById.set(c.id, c.subject);
+      });
+
       type Op = { ref: any; data: any };
       const ops: Op[] = [];
+      let classesMigrated = 0;
+      let demoted = 0;
 
-      classesSnap.docs.forEach(d => {
-        const data = d.data() as Record<string, any>;
-        const hasNewField = typeof data.classTeacherId === "string" && data.classTeacherId.length > 0;
-        const teacherId   = typeof data.teacherId === "string" ? data.teacherId : "";
-        if (hasNewField || !teacherId) return;
-        const t = teachersById.get(teacherId);
-        const email = (t?.email || "").toLowerCase();
-        ops.push({
-          ref: d.ref,
-          data: { classTeacherId: teacherId, classTeacherEmail: email },
-        });
-      });
-      const classesMigrated = ops.length;
-
-      // For each assignment, infer role by matching against classes.teacherId
-      // (the legacy "primary teacher" denorm). If the assignment's teacher is
-      // the class's primary teacher → role:"class". Else → role:"subject".
-      // This correctly classifies subject teachers who had a teaching_assignment
-      // but were NOT the primary teacher of the class.
-      const classPrimaryById = new Map<string, string>();
-      classesSnap.docs.forEach(d => {
-        const data = d.data() as Record<string, any>;
-        if (typeof data.teacherId === "string" && data.teacherId.length > 0) {
-          classPrimaryById.set(d.id, data.teacherId);
+      // ── Pass 1: classes ───────────────────────────────────────────────
+      classRecords.forEach(c => {
+        const eff = effectiveTeacherForClass.get(c.id);
+        if (!eff) return;
+        const canonical = canonicalClassForTeacher.get(eff);
+        const isCanonical = canonical === c.id;
+        if (isCanonical) {
+          // Backfill S2 fields if missing. teacherId/teacherName left alone
+          // (already correct since this class is canonical for this teacher).
+          if (!c.classTeacherId) {
+            const t = teachersById.get(eff);
+            const email = (t?.email || "").toLowerCase();
+            ops.push({
+              ref: doc(db, "classes", c.id),
+              data: { classTeacherId: eff, classTeacherEmail: email },
+            });
+            classesMigrated++;
+          }
+        } else {
+          // Non-canonical: this teacher should NOT be class teacher here.
+          // Clear ALL teacher fields so the class shows "Assign Teacher".
+          ops.push({
+            ref: doc(db, "classes", c.id),
+            data: {
+              classTeacherId:    "",
+              classTeacherEmail: "",
+              teacherId:         "",
+              teacherName:       "",
+            },
+          });
+          demoted++;
         }
       });
 
+      // ── Pass 2: teaching_assignments ──────────────────────────────────
+      let assignmentsMigrated = 0;
       taSnap.docs.forEach(d => {
         const data = d.data() as Record<string, any>;
         const hasRole = typeof data.role === "string" && data.role.length > 0;
-        // Skip inactive — only backfill assignments that are presently active
-        // (or legacy without status). Inactive ones are historical noise.
         const s = data.status;
         const active = !s || (typeof s === "string" && s.toLowerCase() === "active");
-        if (hasRole || !active) return;
+        if (!active) return; // historical noise — skip
         const teacherId = typeof data.teacherId === "string" ? data.teacherId : "";
-        const classId   = typeof data.classId === "string"   ? data.classId   : "";
+        const classId   = typeof data.classId   === "string" ? data.classId   : "";
         const t = teacherId ? teachersById.get(teacherId) : null;
-        // Role inference: primary teacher of the class → "class"; else "subject".
-        const inferredRole = classId && classPrimaryById.get(classId) === teacherId ? "class" : "subject";
-        const patch: Record<string, any> = { role: inferredRole };
+        const canonical = canonicalClassForTeacher.get(teacherId);
+        const inferredRole: "class" | "subject" =
+          canonical && canonical === classId ? "class" : "subject";
+        const patch: Record<string, any> = {};
+        if (!hasRole) patch.role = inferredRole;
         if (!data.teacherEmail && t?.email) patch.teacherEmail = (t.email || "").toLowerCase();
-        ops.push({ ref: d.ref, data: patch });
+        if (inferredRole === "subject") {
+          const classSubj = classSubjectById.get(classId) || "";
+          // Backfill subject/subjectName only if missing — preserve any explicit
+          // subject the principal may have set already.
+          if (!data.subject && classSubj) patch.subject = classSubj;
+          if (!data.subjectName && classSubj) patch.subjectName = classSubj;
+        }
+        if (Object.keys(patch).length > 0) {
+          ops.push({ ref: d.ref, data: patch });
+          assignmentsMigrated++;
+        }
       });
-      const assignmentsMigrated = ops.length - classesMigrated;
 
       const CHUNK = 450;
       for (let i = 0; i < ops.length; i += CHUNK) {
@@ -890,9 +989,15 @@ const ClassesSections = () => {
         await batch.commit();
       }
 
-      setMigrationResult({ classes: classesMigrated, assignments: assignmentsMigrated });
+      setMigrationResult({ classes: classesMigrated, assignments: assignmentsMigrated, demoted });
       if (ops.length === 0) {
         toast.success("Nothing to migrate — all classes + assignments already carry S2 fields.");
+      } else if (demoted > 0) {
+        toast.success(
+          `Migrated ${classesMigrated} classes + ${assignmentsMigrated} assignments. ` +
+          `Demoted ${demoted} duplicate class-teacher designation${demoted === 1 ? "" : "s"} — re-designate via the Assign Teacher modal.`,
+          { duration: 8000 },
+        );
       } else {
         toast.success(`Migrated ${classesMigrated} classes + ${assignmentsMigrated} assignments.`);
       }
@@ -901,6 +1006,62 @@ const ClassesSections = () => {
       toast.error("Migration failed. Check console.");
     } finally {
       setMigrating(false);
+    }
+  };
+
+  // ── Edit class (rename + grade/section/subject) ──────────────────────────
+  // The rename cascade is server-side: parent-dashboard/functions
+  // cascadeClassRename auto-propagates the new className across ~25
+  // denormalized collections. UI just writes the source doc.
+  const openEditClass = (cls: ClassRow) => {
+    setEditingClass(cls);
+    setEditFields({
+      name:    cls.name    || "",
+      grade:   cls.grade   || "",
+      section: cls.section || "",
+      subject: cls.subject || "",
+    });
+    setEditClassModal(true);
+  };
+
+  const handleSaveClassEdit = async () => {
+    if (!editingClass) return;
+    const nextName = editFields.name.trim();
+    if (!nextName) return toast.error("Class name cannot be empty.");
+    // Duplicate-name guard — same shape as handleAddClass.
+    const nameLower = nextName.toLowerCase();
+    const gradeLower = editFields.grade.trim().toLowerCase();
+    const clash = classes.some(c =>
+      c.id !== editingClass.id
+      && c.name.toLowerCase() === nameLower
+      && (c.grade || "").toLowerCase() === gradeLower
+    );
+    if (clash) return toast.error(`Another class "${nextName}" already exists at grade ${editFields.grade || "—"}.`);
+    setSavingEdit(true);
+    try {
+      const patch: Record<string, any> = {
+        name:    nextName,
+        grade:   editFields.grade.trim(),
+        section: editFields.section.trim(),
+        subject: editFields.subject.trim(),
+      };
+      await updateDoc(doc(db, "classes", editingClass.id), patch);
+      const renamed = nextName !== editingClass.name;
+      if (renamed) {
+        toast.success(
+          `Class renamed to "${nextName}". Cascade is updating all dashboards — refresh in a few seconds.`,
+          { duration: 6000 },
+        );
+      } else {
+        toast.success(`Class "${nextName}" updated.`);
+      }
+      setEditClassModal(false);
+      setEditingClass(null);
+    } catch (err) {
+      console.error("[ClassesSections] save class edit failed:", err);
+      toast.error("Failed to save class changes.");
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -1087,6 +1248,7 @@ const ClassesSections = () => {
             setAssignTeacherId(cls.teacherId || "");
             setAssignModal(true);
           }}
+          onEditClass={cls => openEditClass(cls)}
           onOpenStudents={cls => openStudentModal(cls)}
           onViewSection={cls => setSelectedSection(cls)}
           currentPage={currentPage}
@@ -1112,8 +1274,15 @@ const ClassesSections = () => {
             {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
             {migrating ? "Migrating..." : "Backfill Class Teachers"}
             {migrationResult && (
-              <span className="text-[10px] font-black text-emerald-600 ml-1">
-                · {migrationResult.classes + migrationResult.assignments} updated
+              <span className="text-[10px] font-black ml-1 flex items-center gap-1">
+                <span className="text-emerald-600">
+                  · {migrationResult.classes + migrationResult.assignments} updated
+                </span>
+                {migrationResult.demoted > 0 && (
+                  <span className="text-amber-600">
+                    · {migrationResult.demoted} demoted
+                  </span>
+                )}
               </span>
             )}
           </button>
@@ -1225,8 +1394,17 @@ const ClassesSections = () => {
                               }`}>
                                 {cls.name.slice(0, 3)}
                               </div>
-                              <div>
-                                <p className="font-bold text-slate-900">{cls.name}</p>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <p className="font-bold text-slate-900 truncate">{cls.name}</p>
+                                  <button
+                                    onClick={() => openEditClass(cls)}
+                                    title="Edit class (rename cascades to all dashboards)"
+                                    className="text-slate-300 hover:text-[#1e3a8a] transition-colors shrink-0"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                </div>
                                 {cls.subject && <p className="text-[10px] text-slate-400 font-medium mt-0.5">{cls.subject}</p>}
                               </div>
                             </div>
@@ -1569,6 +1747,94 @@ const ClassesSections = () => {
                   {inviting ? "Inviting..." : "Invite & Enroll"}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Class Modal (rename cascades server-side) ── */}
+      {editClassModal && editingClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Pencil className="w-4 h-4 text-[#1e3a8a]" />
+                  Edit Class
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5 font-medium">{editingClass.name}</p>
+              </div>
+              <button
+                onClick={() => { setEditClassModal(false); setEditingClass(null); }}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Class Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 9A, Class 10B"
+                  value={editFields.name}
+                  onChange={e => setEditFields(p => ({ ...p, name: e.target.value }))}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                />
+                {editFields.name.trim() && editFields.name.trim() !== editingClass.name && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 leading-relaxed">
+                    <strong>Heads up:</strong> renaming this class will propagate the new name across teacher / parent / owner dashboards via background cascade. Takes a few seconds to fully sync.
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Grade</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 9, 10"
+                    value={editFields.grade}
+                    onChange={e => setEditFields(p => ({ ...p, grade: e.target.value }))}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Section</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. A, B"
+                    value={editFields.section}
+                    onChange={e => setEditFields(p => ({ ...p, section: e.target.value }))}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Subject</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Mathematics, Science"
+                  value={editFields.subject}
+                  onChange={e => setEditFields(p => ({ ...p, subject: e.target.value }))}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => { setEditClassModal(false); setEditingClass(null); }}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveClassEdit}
+                  disabled={savingEdit || !editFields.name.trim()}
+                  className="flex-1 py-3 rounded-xl bg-[#1e3a8a] text-white text-sm font-bold hover:bg-[#1e4fc0] disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  {savingEdit ? "Saving..." : "Save"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

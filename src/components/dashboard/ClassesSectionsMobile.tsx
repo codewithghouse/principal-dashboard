@@ -1,6 +1,6 @@
 import {
   Plus, Loader2, BookOpen, MoreHorizontal, Users as UsersIcon,
-  ArrowRight, AlertCircle, CheckCircle, XCircle,
+  ArrowRight, AlertCircle, CheckCircle, XCircle, Pencil,
 } from "lucide-react";
 import StudentsPagination from "./StudentsPagination";
 
@@ -45,6 +45,7 @@ export interface ClassesSectionsMobileProps {
   gradesSummary: GradeSummaryMobile[];
   onAddClass: () => void;
   onChangeTeacher: (cls: ClassRowMobile) => void;
+  onEditClass: (cls: ClassRowMobile) => void;
   onOpenStudents: (cls: ClassRowMobile) => void;
   onViewSection: (cls: ClassRowMobile) => void;
   // Pagination is owned by the parent (ClassesSections.tsx) so the page
@@ -138,7 +139,7 @@ const healthFill = (h: number | null) => {
 
 const ClassesSectionsMobile = ({
   loading, classes, gradesSummary,
-  onAddClass, onChangeTeacher, onOpenStudents, onViewSection,
+  onAddClass, onChangeTeacher, onEditClass, onOpenStudents, onViewSection,
   currentPage, setCurrentPage, pageSize, setPageSize,
 }: ClassesSectionsMobileProps) => {
 
@@ -309,8 +310,18 @@ const ClassesSectionsMobile = ({
                       {chipText}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[15px] font-bold leading-tight tracking-[-0.2px] truncate" style={{ color: T1 }}>
-                        {cls.name}
+                      <div className="flex items-center gap-[6px] min-w-0">
+                        <div className="text-[15px] font-bold leading-tight tracking-[-0.2px] truncate" style={{ color: T1 }}>
+                          {cls.name}
+                        </div>
+                        <button
+                          onClick={() => onEditClass(cls)}
+                          aria-label="Edit class"
+                          className="shrink-0 transition-transform active:scale-90"
+                          style={{ color: T4 }}
+                        >
+                          <Pencil className="w-[12px] h-[12px]" />
+                        </button>
                       </div>
                       {cls.subject && (
                         <div className="text-[11px] font-medium uppercase mt-[3px] tracking-[0.05em] truncate" style={{ color: T3 }}>
