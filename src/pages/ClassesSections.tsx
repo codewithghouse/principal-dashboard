@@ -427,6 +427,31 @@ const ClassesSections = () => {
     //   distinguish primary class teacher from subject teachers.
     const teacherEmailLower = (selectedTeacher?.email || "").toLowerCase();
 
+    // One-homeroom-per-teacher constraint check (added 2026-05-20).
+    // If the selected teacher is already class teacher of another class, the
+    // new class designation will demote them from that one. Confirm first.
+    const otherHomeroomsForAdd = selectedTeacher
+      ? classesRef.current.filter((c: any) => {
+          if (!c) return false;
+          if (c.classTeacherId === selectedTeacher.id) return true;
+          if (!c.classTeacherId && c.teacherId === selectedTeacher.id) return true;
+          return false;
+        })
+      : [];
+    if (otherHomeroomsForAdd.length > 0 && selectedTeacher) {
+      const names = otherHomeroomsForAdd
+        .map((c: any) => c.name || `${c.grade || ""}${c.section || ""}`)
+        .filter(Boolean)
+        .join(", ");
+      const ok = window.confirm(
+        `${selectedTeacher.name} is currently class teacher of: ${names}.\n\n` +
+        `A teacher can be class teacher of only ONE class. ` +
+        `Creating ${name} with them as class teacher will REMOVE their class-teacher status from ${names}.\n\n` +
+        `Continue? (Tip: leave Class Teacher empty and designate later from the modal.)`
+      );
+      if (!ok) return;
+    }
+
     setSaving(true);
     try {
       // Atomic: class + (optional) teaching_assignment in one writeBatch so
@@ -468,9 +493,56 @@ const ClassesSections = () => {
           status: "active",
           createdAt: serverTimestamp(),
         });
+        // One-homeroom enforcement: demote teacher from their previous
+        // homeroom(s) in the same atomic batch.
+        otherHomeroomsForAdd.forEach((c: any) => {
+          batch.update(doc(db, "classes", c.id), {
+            classTeacherId:    "",
+            classTeacherEmail: "",
+            teacherId:         "",
+            teacherName:       "",
+          });
+        });
       }
 
       await batch.commit();
+
+      // Deactivate this teacher's prior class-role teaching_assignments in
+      // other classes. Done as a separate query+batch because the count is
+      // bounded by one teacher's assignments (typically <10) and keeping it
+      // out of the main create batch avoids a Firestore read inside the
+      // initial setSaving optimistic path.
+      if (selectedTeacher && otherHomeroomsForAdd.length > 0) {
+        try {
+          const teacherTaSnap = await getDocs(query(
+            collection(db, "teaching_assignments"),
+            where("schoolId", "==", schoolId),
+            where("teacherId", "==", selectedTeacher.id),
+          ));
+          const demoteOps = teacherTaSnap.docs.filter(d => {
+            const data = d.data() as Record<string, any>;
+            // Only existing assignments in OTHER classes (we just created this one).
+            if (data.classId === classRef.id) return false;
+            const s = data.status;
+            const isActive = !s || (typeof s === "string" && s.toLowerCase() === "active");
+            if (!isActive) return false;
+            const r = data.role;
+            return !r || (typeof r === "string" && r.toLowerCase() === "class");
+          });
+          if (demoteOps.length > 0) {
+            const CHUNK = 450;
+            for (let i = 0; i < demoteOps.length; i += CHUNK) {
+              const slice = demoteOps.slice(i, i + CHUNK);
+              const demoteBatch = writeBatch(db);
+              slice.forEach(d => demoteBatch.update(d.ref, { status: "inactive", deactivatedAt: serverTimestamp() }));
+              await demoteBatch.commit();
+            }
+          }
+        } catch (demoteErr) {
+          console.warn("[ClassesSections] post-create demotion partial failure:", demoteErr);
+          toast.warning("Class created, but couldn't fully demote teacher from old class. Re-designate manually.");
+        }
+      }
 
       toast.success(`Class "${name}" created!${selectedTeacher ? ` Assigned to ${selectedTeacher.name}.` : ""}`);
       setAddModal(false);
@@ -517,6 +589,37 @@ const ClassesSections = () => {
       ? trimmedSubject
       : (assigningClass.subject || trimmedSubject || "");
 
+    // ── ONE-HOMEROOM-PER-TEACHER constraint (added 2026-05-20) ─────────────
+    // Real-world rule: a teacher is class teacher of AT MOST one class (their
+    // homeroom). For all other classes they may be subject teacher. Before
+    // saving a class-teacher designation, detect any other class where this
+    // teacher is currently designated (post-migration `classTeacherId` match
+    // OR legacy `teacherId` fallback) and confirm with the principal that we
+    // will demote them from those classes.
+    const otherHomerooms = role === "class"
+      ? classesRef.current.filter((c: any) => {
+          if (!c || c.id === assigningClass.id) return false;
+          if (c.classTeacherId === teacher.id) return true;
+          // Legacy fallback: pre-migration class still uses teacherId as
+          // primary designation. Treat as class teacher.
+          if (!c.classTeacherId && c.teacherId === teacher.id) return true;
+          return false;
+        })
+      : [];
+    if (otherHomerooms.length > 0) {
+      const names = otherHomerooms
+        .map((c: any) => c.name || `${c.grade || ""}${c.section || ""}`)
+        .filter(Boolean)
+        .join(", ");
+      const ok = window.confirm(
+        `${teacher.name} is currently class teacher of: ${names}.\n\n` +
+        `A teacher can be class teacher of only ONE class. ` +
+        `Assigning them here will REMOVE their class-teacher status from ${names}.\n\n` +
+        `Continue?`
+      );
+      if (!ok) return;
+    }
+
     setAssigning(true);
     try {
       // Pre-fetch everything we need to write so we can batch atomically.
@@ -530,12 +633,23 @@ const ClassesSections = () => {
       // For role==="subject" we DON'T need to pre-fetch enrollments — subject
       // teachers don't replace the primary teacher, so the enrollments rows'
       // teacherId/teacherName denorm stays pointed at the class teacher.
-      const [allTaSnap, enrollSnap] = await Promise.all([
+      //
+      // For role==="class" we ALSO pre-fetch ALL teaching_assignments for this
+      // teacher (by teacherId) so we can deactivate their role:"class" rows in
+      // OTHER classes. Enforces one-homeroom-per-teacher.
+      const [allTaSnap, teacherTaSnap, enrollSnap] = await Promise.all([
         getDocs(query(
           collection(db, "teaching_assignments"),
           where("schoolId", "==", schoolId),
           where("classId", "==", assigningClass.id),
         )),
+        role === "class"
+          ? getDocs(query(
+              collection(db, "teaching_assignments"),
+              where("schoolId", "==", schoolId),
+              where("teacherId", "==", teacher.id),
+            ))
+          : Promise.resolve({ docs: [] as any[] }),
         role === "class"
           ? getDocs(query(
               collection(db, "enrollments"),
@@ -598,6 +712,43 @@ const ClassesSections = () => {
           data: { status: "inactive", deactivatedAt: serverTimestamp() },
         });
       });
+
+      // 2b. One-homeroom-per-teacher enforcement: clear classTeacherId/Email
+      //     on any OTHER class where this teacher is currently designated
+      //     AND deactivate their role:"class" (or legacy) teaching_assignments
+      //     for those other classes.
+      if (role === "class") {
+        otherHomerooms.forEach((c: any) => {
+          ops.push({
+            kind: "update",
+            ref: doc(db, "classes", c.id),
+            data: {
+              classTeacherId:    "",
+              classTeacherEmail: "",
+              // Also clear legacy teacherId/teacherName so the demotion is
+              // visible in all readers (some still consume classes.teacherId).
+              teacherId:         "",
+              teacherName:       "",
+            },
+          });
+        });
+        // Deactivate this teacher's active class-role assignments in OTHER classes.
+        teacherTaSnap.docs.forEach((d: any) => {
+          const data = d.data() as Record<string, any>;
+          if (data.classId === assigningClass.id) return;
+          const s = data.status;
+          const isActive = !s || (typeof s === "string" && s.toLowerCase() === "active");
+          if (!isActive) return;
+          const r = data.role;
+          const isClassRoleOrLegacy = !r || (typeof r === "string" && r.toLowerCase() === "class");
+          if (!isClassRoleOrLegacy) return;
+          ops.push({
+            kind: "update",
+            ref: d.ref,
+            data: { status: "inactive", deactivatedAt: serverTimestamp() },
+          });
+        });
+      }
 
       // 3. New active teaching_assignment with explicit role + subject.
       ops.push({
@@ -699,6 +850,19 @@ const ClassesSections = () => {
       });
       const classesMigrated = ops.length;
 
+      // For each assignment, infer role by matching against classes.teacherId
+      // (the legacy "primary teacher" denorm). If the assignment's teacher is
+      // the class's primary teacher → role:"class". Else → role:"subject".
+      // This correctly classifies subject teachers who had a teaching_assignment
+      // but were NOT the primary teacher of the class.
+      const classPrimaryById = new Map<string, string>();
+      classesSnap.docs.forEach(d => {
+        const data = d.data() as Record<string, any>;
+        if (typeof data.teacherId === "string" && data.teacherId.length > 0) {
+          classPrimaryById.set(d.id, data.teacherId);
+        }
+      });
+
       taSnap.docs.forEach(d => {
         const data = d.data() as Record<string, any>;
         const hasRole = typeof data.role === "string" && data.role.length > 0;
@@ -707,10 +871,12 @@ const ClassesSections = () => {
         const s = data.status;
         const active = !s || (typeof s === "string" && s.toLowerCase() === "active");
         if (hasRole || !active) return;
-        // Also stamp teacherEmail if missing — same need as for the rule gate.
         const teacherId = typeof data.teacherId === "string" ? data.teacherId : "";
+        const classId   = typeof data.classId === "string"   ? data.classId   : "";
         const t = teacherId ? teachersById.get(teacherId) : null;
-        const patch: Record<string, any> = { role: "class" };
+        // Role inference: primary teacher of the class → "class"; else "subject".
+        const inferredRole = classId && classPrimaryById.get(classId) === teacherId ? "class" : "subject";
+        const patch: Record<string, any> = { role: inferredRole };
         if (!data.teacherEmail && t?.email) patch.teacherEmail = (t.email || "").toLowerCase();
         ops.push({ ref: d.ref, data: patch });
       });
@@ -1507,6 +1673,29 @@ const ClassesSections = () => {
                   Subject teachers can record incidents, notes, and grades — but only the class teacher marks daily attendance.
                 </p>
               )}
+              {/* One-homeroom-per-teacher conflict warning. Shown when the
+                  selected teacher is already class teacher of another class
+                  AND the chosen role is "class" — saving will move them. */}
+              {assignRole === "class" && assignTeacherId && (() => {
+                const t = teachers.find(x => x.id === assignTeacherId);
+                if (!t) return null;
+                const otherHomerooms = classesRef.current.filter((c: any) => {
+                  if (!c || (assigningClass && c.id === assigningClass.id)) return false;
+                  if (c.classTeacherId === t.id) return true;
+                  if (!c.classTeacherId && c.teacherId === t.id) return true;
+                  return false;
+                });
+                if (otherHomerooms.length === 0) return null;
+                const names = otherHomerooms
+                  .map((c: any) => c.name || `${c.grade || ""}${c.section || ""}`)
+                  .filter(Boolean)
+                  .join(", ");
+                return (
+                  <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 leading-relaxed text-amber-800">
+                    <strong>Note:</strong> {t.name} is currently class teacher of <strong>{names}</strong>. A teacher can be class teacher of only one class — saving will remove them from {names}.
+                  </div>
+                );
+              })()}
 
               <div className="flex gap-3 pt-2">
                 <button
