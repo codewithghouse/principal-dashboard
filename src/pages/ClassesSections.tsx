@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   CheckCircle, AlertCircle, XCircle, Loader2,
   GraduationCap, Users, BarChart2, CalendarCheck, Plus, X, UserPlus, UserCheck,
-  Search as SearchIcon, Mail, Check
+  Search as SearchIcon, Mail, Check, Pencil
 } from "lucide-react";
 import ClassPerformance from "@/components/ClassPerformance";
 import ClassesSectionsMobile from "@/components/dashboard/ClassesSectionsMobile";
@@ -49,14 +49,6 @@ interface ClassRow {
   // populates them, but we don't enforce it at the type level for the boundary.
   hasScoreData?: boolean;
   hasAttendanceData?: boolean;
-}
-
-interface GradeSummary {
-  grade: string;
-  sections: number;
-  students: number;
-  avgAttendance: number | null;
-  healthScore: number | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -114,7 +106,6 @@ const ClassesSections = () => {
 
   const [loading, setLoading]               = useState(true);
   const [classes, setClasses]               = useState<ClassRow[]>([]);
-  const [gradesSummary, setGradesSummary]   = useState<GradeSummary[]>([]);
   const [selectedSection, setSelectedSection] = useState<ClassRow | null>(null);
   const [addModal, setAddModal]             = useState(false);
   const [saving, setSaving]                 = useState(false);
@@ -125,7 +116,25 @@ const ClassesSections = () => {
   const [assignModal, setAssignModal]       = useState(false);
   const [assigningClass, setAssigningClass] = useState<ClassRow | null>(null);
   const [assignTeacherId, setAssignTeacherId] = useState("");
+  // S2 role-aware teacher assignment (memory: session_2026-05-19_holiday_architecture).
+  // "class" → singular primary teacher per class; replaces existing designation.
+  // "subject" → additive subject teacher; does not touch classes.classTeacherId.
+  const [assignRole, setAssignRole]         = useState<"class" | "subject">("class");
+  const [assignSubject, setAssignSubject]   = useState("");
   const [assigning, setAssigning]           = useState(false);
+
+  // S2 migration helper (one-shot backfill — idempotent).
+  const [migrating, setMigrating]           = useState(false);
+  const [migrationResult, setMigrationResult] = useState<{ classes: number; assignments: number; demoted: number } | null>(null);
+  const [migrationConfirmOpen, setMigrationConfirmOpen] = useState(false);
+
+  // ── Edit class state ─────────────────────────────────────────────────────
+  // Rename triggers parent-dashboard/functions cascadeClassRename which
+  // propagates the new className across ~25 denormalized collections.
+  const [editClassModal, setEditClassModal] = useState(false);
+  const [editingClass, setEditingClass]     = useState<ClassRow | null>(null);
+  const [editFields, setEditFields]         = useState({ name: "", grade: "", section: "", subject: "" });
+  const [savingEdit, setSavingEdit]         = useState(false);
 
   // ── Add Students modal state ───────────────────────────────────────────────
   const [studentModal,     setStudentModal]     = useState(false);
@@ -299,40 +308,6 @@ const ClassesSections = () => {
     });
 
     setClasses(rows);
-
-    // Grade summary — average ONLY across classes WITH data so that
-    // unstarted classes don't drag the grade-level average down.
-    const gradeMap: Record<string, {
-      sections: number; students: number;
-      attVals: number[]; healthVals: number[];
-    }> = {};
-    rows.forEach(r => {
-      const g = r.grade || "Ungraded";
-      if (!gradeMap[g]) gradeMap[g] = { sections: 0, students: 0, attVals: [], healthVals: [] };
-      gradeMap[g].sections++;
-      gradeMap[g].students += r.studentCount;
-      if (r.attendanceNum !== null) gradeMap[g].attVals.push(r.attendanceNum);
-      if (r.healthScore !== null)   gradeMap[g].healthVals.push(r.healthScore);
-    });
-
-    const summary: GradeSummary[] = Object.entries(gradeMap)
-      .map(([grade, v]) => ({
-        grade,
-        sections: v.sections,
-        students: v.students,
-        avgAttendance: v.attVals.length > 0
-          ? Math.round(v.attVals.reduce((a, b) => a + b, 0) / v.attVals.length)
-          : null,
-        healthScore: v.healthVals.length > 0
-          ? Math.round(v.healthVals.reduce((a, b) => a + b, 0) / v.healthVals.length)
-          : null,
-      }))
-      .sort((a, b) => {
-        const na = Number(a.grade), nb = Number(b.grade);
-        return isNaN(na) || isNaN(nb) ? a.grade.localeCompare(b.grade) : na - nb;
-      });
-
-    setGradesSummary(summary);
     setLoading(false);
   };
 
@@ -408,6 +383,40 @@ const ClassesSections = () => {
     }
 
     const selectedTeacher = teachers.find(t => t.id === newClassTeacherId);
+    // S2 class-teacher designation (memory: session_2026-05-19_holiday_architecture):
+    // - classes.classTeacherEmail is the AUTH-LEVEL match field used by the
+    //   Firestore attendance create rule (auth.uid != teachers doc id, so we
+    //   key the gate on email which Firebase Auth provides as a claim).
+    // - classes.classTeacherId stays as the Firestore teachers doc id for
+    //   UI display + back-compat with existing readers.
+    // - role:"class" on the teaching_assignment lets cross-dashboard readers
+    //   distinguish primary class teacher from subject teachers.
+    const teacherEmailLower = (selectedTeacher?.email || "").toLowerCase();
+
+    // One-homeroom-per-teacher constraint check (added 2026-05-20).
+    // If the selected teacher is already class teacher of another class, the
+    // new class designation will demote them from that one. Confirm first.
+    const otherHomeroomsForAdd = selectedTeacher
+      ? classesRef.current.filter((c: any) => {
+          if (!c) return false;
+          if (c.classTeacherId === selectedTeacher.id) return true;
+          if (!c.classTeacherId && c.teacherId === selectedTeacher.id) return true;
+          return false;
+        })
+      : [];
+    if (otherHomeroomsForAdd.length > 0 && selectedTeacher) {
+      const names = otherHomeroomsForAdd
+        .map((c: any) => c.name || `${c.grade || ""}${c.section || ""}`)
+        .filter(Boolean)
+        .join(", ");
+      const ok = window.confirm(
+        `${selectedTeacher.name} is currently class teacher of: ${names}.\n\n` +
+        `A teacher can be class teacher of only ONE class. ` +
+        `Creating ${name} with them as class teacher will REMOVE their class-teacher status from ${names}.\n\n` +
+        `Continue? (Tip: leave Class Teacher empty and designate later from the modal.)`
+      );
+      if (!ok) return;
+    }
 
     setSaving(true);
     try {
@@ -422,6 +431,12 @@ const ClassesSections = () => {
         subject:     newClass.subject.trim(),
         teacherId:   selectedTeacher?.id   || "",
         teacherName: selectedTeacher?.name || "",
+        // S2 designation fields — written alongside legacy teacherId so
+        // existing readers keep working. Empty strings (not null) match
+        // the legacy convention above; the attendance rule treats missing
+        // classTeacherEmail as "no designation → fall through to staff gate".
+        classTeacherId:    selectedTeacher?.id   || "",
+        classTeacherEmail: teacherEmailLower,
         schoolId,
         branchId,
         status: "Active",
@@ -431,19 +446,69 @@ const ClassesSections = () => {
       if (selectedTeacher) {
         const taRef = doc(collection(db, "teaching_assignments"));
         batch.set(taRef, {
-          teacherId:   selectedTeacher.id,
-          teacherName: selectedTeacher.name || "",
-          classId:     classRef.id,
-          className:   name,
-          subjectName: newClass.subject.trim(),
+          teacherId:    selectedTeacher.id,
+          teacherEmail: teacherEmailLower,
+          teacherName:  selectedTeacher.name || "",
+          classId:      classRef.id,
+          className:    name,
+          subjectName:  newClass.subject.trim(), // legacy field — readers still use this
+          subject:      newClass.subject.trim(), // S2 canonical field
+          role:         "class",                  // S2 — initial assignment IS the class teacher
           schoolId,
           branchId,
           status: "active",
           createdAt: serverTimestamp(),
         });
+        // One-homeroom enforcement: demote teacher from their previous
+        // homeroom(s) in the same atomic batch.
+        otherHomeroomsForAdd.forEach((c: any) => {
+          batch.update(doc(db, "classes", c.id), {
+            classTeacherId:    "",
+            classTeacherEmail: "",
+            teacherId:         "",
+            teacherName:       "",
+          });
+        });
       }
 
       await batch.commit();
+
+      // Deactivate this teacher's prior class-role teaching_assignments in
+      // other classes. Done as a separate query+batch because the count is
+      // bounded by one teacher's assignments (typically <10) and keeping it
+      // out of the main create batch avoids a Firestore read inside the
+      // initial setSaving optimistic path.
+      if (selectedTeacher && otherHomeroomsForAdd.length > 0) {
+        try {
+          const teacherTaSnap = await getDocs(query(
+            collection(db, "teaching_assignments"),
+            where("schoolId", "==", schoolId),
+            where("teacherId", "==", selectedTeacher.id),
+          ));
+          const demoteOps = teacherTaSnap.docs.filter(d => {
+            const data = d.data() as Record<string, any>;
+            // Only existing assignments in OTHER classes (we just created this one).
+            if (data.classId === classRef.id) return false;
+            const s = data.status;
+            const isActive = !s || (typeof s === "string" && s.toLowerCase() === "active");
+            if (!isActive) return false;
+            const r = data.role;
+            return !r || (typeof r === "string" && r.toLowerCase() === "class");
+          });
+          if (demoteOps.length > 0) {
+            const CHUNK = 450;
+            for (let i = 0; i < demoteOps.length; i += CHUNK) {
+              const slice = demoteOps.slice(i, i + CHUNK);
+              const demoteBatch = writeBatch(db);
+              slice.forEach(d => demoteBatch.update(d.ref, { status: "inactive", deactivatedAt: serverTimestamp() }));
+              await demoteBatch.commit();
+            }
+          }
+        } catch (demoteErr) {
+          console.warn("[ClassesSections] post-create demotion partial failure:", demoteErr);
+          toast.warning("Class created, but couldn't fully demote teacher from old class. Re-designate manually.");
+        }
+      }
 
       toast.success(`Class "${name}" created!${selectedTeacher ? ` Assigned to ${selectedTeacher.name}.` : ""}`);
       setAddModal(false);
@@ -476,6 +541,50 @@ const ClassesSections = () => {
       return toast.error("School context missing — please re-login.");
     }
     const branchId = assigningClass.branchId || userData?.branchId || null;
+    // S2 role gate. "class" replaces designation; "subject" is additive.
+    const role: "class" | "subject" = assignRole;
+    const teacherEmailLower = (teacher.email || "").toLowerCase();
+    // For subject role, require a subject string so the assignment is
+    // attributable — otherwise principal can't tell two subject teachers
+    // for the same class apart on lists.
+    const trimmedSubject = assignSubject.trim();
+    if (role === "subject" && !trimmedSubject) {
+      return toast.error("Please enter the subject this teacher will teach.");
+    }
+    const subjectForWrite = role === "subject"
+      ? trimmedSubject
+      : (assigningClass.subject || trimmedSubject || "");
+
+    // ── ONE-HOMEROOM-PER-TEACHER constraint (added 2026-05-20) ─────────────
+    // Real-world rule: a teacher is class teacher of AT MOST one class (their
+    // homeroom). For all other classes they may be subject teacher. Before
+    // saving a class-teacher designation, detect any other class where this
+    // teacher is currently designated (post-migration `classTeacherId` match
+    // OR legacy `teacherId` fallback) and confirm with the principal that we
+    // will demote them from those classes.
+    const otherHomerooms = role === "class"
+      ? classesRef.current.filter((c: any) => {
+          if (!c || c.id === assigningClass.id) return false;
+          if (c.classTeacherId === teacher.id) return true;
+          // Legacy fallback: pre-migration class still uses teacherId as
+          // primary designation. Treat as class teacher.
+          if (!c.classTeacherId && c.teacherId === teacher.id) return true;
+          return false;
+        })
+      : [];
+    if (otherHomerooms.length > 0) {
+      const names = otherHomerooms
+        .map((c: any) => c.name || `${c.grade || ""}${c.section || ""}`)
+        .filter(Boolean)
+        .join(", ");
+      const ok = window.confirm(
+        `${teacher.name} is currently class teacher of: ${names}.\n\n` +
+        `A teacher can be class teacher of only ONE class. ` +
+        `Assigning them here will REMOVE their class-teacher status from ${names}.\n\n` +
+        `Continue?`
+      );
+      if (!ok) return;
+    }
 
     setAssigning(true);
     try {
@@ -486,25 +595,52 @@ const ClassesSections = () => {
       // those docs from the reassignment flow → old assignments never got
       // deactivated → ghost assignments persisted → new teacher inherited
       // the class with stale records. Memory: bug_pattern_teacher_class_pickers_single_source variant.
-      const [allTaSnap, enrollSnap] = await Promise.all([
+      //
+      // For role==="subject" we DON'T need to pre-fetch enrollments — subject
+      // teachers don't replace the primary teacher, so the enrollments rows'
+      // teacherId/teacherName denorm stays pointed at the class teacher.
+      //
+      // For role==="class" we ALSO pre-fetch ALL teaching_assignments for this
+      // teacher (by teacherId) so we can deactivate their role:"class" rows in
+      // OTHER classes. Enforces one-homeroom-per-teacher.
+      const [allTaSnap, teacherTaSnap, enrollSnap] = await Promise.all([
         getDocs(query(
           collection(db, "teaching_assignments"),
           where("schoolId", "==", schoolId),
           where("classId", "==", assigningClass.id),
         )),
-        getDocs(query(
-          collection(db, "enrollments"),
-          where("schoolId", "==", schoolId),
-          where("classId", "==", assigningClass.id),
-        )),
+        role === "class"
+          ? getDocs(query(
+              collection(db, "teaching_assignments"),
+              where("schoolId", "==", schoolId),
+              where("teacherId", "==", teacher.id),
+            ))
+          : Promise.resolve({ docs: [] as any[] }),
+        role === "class"
+          ? getDocs(query(
+              collection(db, "enrollments"),
+              where("schoolId", "==", schoolId),
+              where("classId", "==", assigningClass.id),
+            ))
+          : Promise.resolve({ docs: [] as any[] }),
       ]);
       // Client-side filter — treat docs without a `status` field as active
-      // (legacy default before the field was added).
+      // (legacy default before the field was added). For role==="class" we
+      // ALSO restrict deactivation to existing role:"class" (or legacy/missing
+      // role — same as treating missing role as "class"); subject-teacher
+      // assignments must survive a class-teacher reassignment.
+      const isActive = (d: any) => {
+        const s = (d.data() as { status?: unknown }).status;
+        return !s || (typeof s === "string" && s.toLowerCase() === "active");
+      };
+      const isClassRoleOrLegacy = (d: any) => {
+        const r = (d.data() as { role?: unknown }).role;
+        return !r || (typeof r === "string" && r.toLowerCase() === "class");
+      };
       const oldTaSnap = {
-        docs: allTaSnap.docs.filter(d => {
-          const s = (d.data() as { status?: unknown }).status;
-          return !s || (typeof s === "string" && s.toLowerCase() === "active");
-        }),
+        docs: role === "class"
+          ? allTaSnap.docs.filter(d => isActive(d) && isClassRoleOrLegacy(d))
+          : [],
       };
 
       // Build the full ordered op list as plain data, then commit in 450-op
@@ -515,15 +651,26 @@ const ClassesSections = () => {
         | { kind: "update"; ref: any; data: any };
       const ops: Op[] = [];
 
-      // 1. Class doc update
-      ops.push({
-        kind: "update",
-        ref: doc(db, "classes", assigningClass.id),
-        data: { teacherId: teacher.id, teacherName: teacher.name || "" },
-      });
+      // 1. Class doc update — ONLY when designating class teacher. For
+      //    role==="subject" the primary class teacher fields stay untouched.
+      if (role === "class") {
+        ops.push({
+          kind: "update",
+          ref: doc(db, "classes", assigningClass.id),
+          data: {
+            teacherId:         teacher.id,
+            teacherName:       teacher.name || "",
+            // S2 designation fields — keyed on teacher's Firestore doc id
+            // (for UI lookup) AND email (for Firestore rule auth match).
+            classTeacherId:    teacher.id,
+            classTeacherEmail: teacherEmailLower,
+          },
+        });
+      }
 
-      // 2. Deactivate any prior active teaching_assignments for this class
-      //    so duplicate active rows don't accumulate over time.
+      // 2. Deactivate the prior CLASS-role active teaching_assignment(s) so
+      //    duplicate active class teachers don't accumulate. Subject teachers
+      //    are NOT deactivated.
       oldTaSnap.docs.forEach(d => {
         ops.push({
           kind: "update",
@@ -532,24 +679,65 @@ const ClassesSections = () => {
         });
       });
 
-      // 3. New active teaching_assignment
+      // 2b. One-homeroom-per-teacher enforcement: clear classTeacherId/Email
+      //     on any OTHER class where this teacher is currently designated
+      //     AND deactivate their role:"class" (or legacy) teaching_assignments
+      //     for those other classes.
+      if (role === "class") {
+        otherHomerooms.forEach((c: any) => {
+          ops.push({
+            kind: "update",
+            ref: doc(db, "classes", c.id),
+            data: {
+              classTeacherId:    "",
+              classTeacherEmail: "",
+              // Also clear legacy teacherId/teacherName so the demotion is
+              // visible in all readers (some still consume classes.teacherId).
+              teacherId:         "",
+              teacherName:       "",
+            },
+          });
+        });
+        // Deactivate this teacher's active class-role assignments in OTHER classes.
+        teacherTaSnap.docs.forEach((d: any) => {
+          const data = d.data() as Record<string, any>;
+          if (data.classId === assigningClass.id) return;
+          const s = data.status;
+          const isActive = !s || (typeof s === "string" && s.toLowerCase() === "active");
+          if (!isActive) return;
+          const r = data.role;
+          const isClassRoleOrLegacy = !r || (typeof r === "string" && r.toLowerCase() === "class");
+          if (!isClassRoleOrLegacy) return;
+          ops.push({
+            kind: "update",
+            ref: d.ref,
+            data: { status: "inactive", deactivatedAt: serverTimestamp() },
+          });
+        });
+      }
+
+      // 3. New active teaching_assignment with explicit role + subject.
       ops.push({
         kind: "set",
         ref: doc(collection(db, "teaching_assignments")),
         data: {
-          teacherId:   teacher.id,
-          teacherName: teacher.name || "",
-          classId:     assigningClass.id,
-          className:   assigningClass.name,
-          subjectName: assigningClass.subject || "",
+          teacherId:    teacher.id,
+          teacherEmail: teacherEmailLower,
+          teacherName:  teacher.name || "",
+          classId:      assigningClass.id,
+          className:    assigningClass.name,
+          subjectName:  subjectForWrite,        // legacy field for existing readers
+          subject:      subjectForWrite,        // S2 canonical field
+          role,                                  // S2 — "class" | "subject"
           schoolId,
           branchId,
-          status:      "active",
-          createdAt:   serverTimestamp(),
+          status:       "active",
+          createdAt:    serverTimestamp(),
         },
       });
 
-      // 4. Update all enrollments with new teacher fields
+      // 4. Update enrollments with new teacher fields — ONLY when class teacher
+      //    is being changed. Subject teacher additions never touch enrollments.
       enrollSnap.docs.forEach(d => {
         ops.push({
           kind: "update",
@@ -569,15 +757,264 @@ const ClassesSections = () => {
         await batch.commit();
       }
 
-      toast.success(`${teacher.name} assigned to ${assigningClass.name}!`);
+      const roleLabel = role === "class" ? "class teacher" : `subject teacher (${subjectForWrite})`;
+      toast.success(`${teacher.name} assigned as ${roleLabel} for ${assigningClass.name}.`);
       setAssignModal(false);
       setAssigningClass(null);
       setAssignTeacherId("");
+      setAssignRole("class");
+      setAssignSubject("");
     } catch (err) {
       console.error("[ClassesSections] assign teacher failed:", err);
       toast.error("Failed to assign teacher. Try again.");
     } finally {
       setAssigning(false);
+    }
+  };
+
+  // ── S2 Migration helper — one-shot backfill + duplicate resolution ──────
+  // Idempotent. Safe to re-run.
+  //
+  // What it does:
+  //  1. **Detect duplicates** — group classes by their "effective" primary
+  //     teacher (post-migration `classTeacherId` if set, else legacy
+  //     `teacherId`). Any teacher appearing on > 1 class violates the
+  //     one-homeroom-per-teacher rule (memory: bug_pattern_one_homeroom_per_teacher).
+  //  2. **Pick canonical class** for each duplicated teacher = earliest
+  //     `createdAt`. That stays as their homeroom.
+  //  3. **Demote** the teacher from all OTHER classes: clear
+  //     classes.teacherId / teacherName / classTeacherId / classTeacherEmail.
+  //     Those classes show "Assign Teacher" amber — principal designates the
+  //     real class teacher.
+  //  4. **Set S2 fields** on canonical class: classTeacherId + classTeacherEmail.
+  //  5. **Stamp role** on every active teaching_assignment without one:
+  //     - canonical class's TA for that teacher → role:"class"
+  //     - any other TA → role:"subject" + subject inferred from the class's
+  //       own `subject` field (so subject-teacher chips render correctly).
+  //  6. **Don't touch** classes where the primary teacher is unique (only on
+  //     one class) — just backfill classTeacherId/Email + role:"class" TA.
+  // Memory: cross_dashboard_linking_rule applied — verified all 11 readers
+  // tolerate the new fields (additive only, no rename).
+  const runClassTeacherMigration = async () => {
+    const schoolId = userData?.schoolId;
+    if (!schoolId) return toast.error("School context missing — please re-login.");
+    setMigrating(true);
+    setMigrationResult(null);
+    try {
+      const teachersById = new Map(teachers.map(t => [t.id as string, t]));
+      const [classesSnap, taSnap] = await Promise.all([
+        getDocs(query(collection(db, "classes"), where("schoolId", "==", schoolId))),
+        getDocs(query(collection(db, "teaching_assignments"), where("schoolId", "==", schoolId))),
+      ]);
+
+      type ClassRec = {
+        id: string;
+        createdAt: number;
+        classTeacherId: string;
+        teacherId: string;
+        subject: string;
+        name: string;
+      };
+      const classRecords: ClassRec[] = classesSnap.docs.map(d => {
+        const data = d.data() as Record<string, any>;
+        const ts = data.createdAt;
+        const createdAt: number =
+          typeof ts?.toMillis === "function" ? ts.toMillis()
+          : typeof ts === "number"            ? ts
+          : 0;
+        return {
+          id: d.id,
+          createdAt,
+          classTeacherId: typeof data.classTeacherId === "string" ? data.classTeacherId : "",
+          teacherId:      typeof data.teacherId      === "string" ? data.teacherId      : "",
+          subject:        typeof data.subject        === "string" ? data.subject        : "",
+          name:           typeof data.name           === "string" ? data.name           : "",
+        };
+      });
+      // Effective primary teacher per class: classTeacherId wins; else legacy teacherId.
+      const effectiveTeacherForClass = new Map<string, string>();
+      classRecords.forEach(c => {
+        const eff = c.classTeacherId || c.teacherId;
+        if (eff) effectiveTeacherForClass.set(c.id, eff);
+      });
+      // Group classes by their effective primary teacher.
+      const teacherToClasses = new Map<string, ClassRec[]>();
+      classRecords.forEach(c => {
+        const eff = effectiveTeacherForClass.get(c.id);
+        if (!eff) return;
+        if (!teacherToClasses.has(eff)) teacherToClasses.set(eff, []);
+        teacherToClasses.get(eff)!.push(c);
+      });
+      // For each teacher → canonical (earliest createdAt) class id.
+      const canonicalClassForTeacher = new Map<string, string>();
+      teacherToClasses.forEach((list, tid) => {
+        if (list.length === 0) return;
+        const sorted = [...list].sort((a, b) => {
+          if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+          return a.id.localeCompare(b.id);   // deterministic tie-break
+        });
+        canonicalClassForTeacher.set(tid, sorted[0].id);
+      });
+      // Quick subject lookup per class id (used for TA subject backfill).
+      const classSubjectById = new Map<string, string>();
+      const classRecById = new Map<string, ClassRec>();
+      classRecords.forEach(c => {
+        classRecById.set(c.id, c);
+        if (c.subject) classSubjectById.set(c.id, c.subject);
+      });
+
+      type Op = { ref: any; data: any };
+      const ops: Op[] = [];
+      let classesMigrated = 0;
+      let demoted = 0;
+
+      // ── Pass 1: classes ───────────────────────────────────────────────
+      classRecords.forEach(c => {
+        const eff = effectiveTeacherForClass.get(c.id);
+        if (!eff) return;
+        const canonical = canonicalClassForTeacher.get(eff);
+        const isCanonical = canonical === c.id;
+        if (isCanonical) {
+          // Backfill S2 fields if missing. teacherId/teacherName left alone
+          // (already correct since this class is canonical for this teacher).
+          if (!c.classTeacherId) {
+            const t = teachersById.get(eff);
+            const email = (t?.email || "").toLowerCase();
+            ops.push({
+              ref: doc(db, "classes", c.id),
+              data: { classTeacherId: eff, classTeacherEmail: email },
+            });
+            classesMigrated++;
+          }
+        } else {
+          // Non-canonical: this teacher should NOT be class teacher here.
+          // Clear ALL teacher fields so the class shows "Assign Teacher".
+          ops.push({
+            ref: doc(db, "classes", c.id),
+            data: {
+              classTeacherId:    "",
+              classTeacherEmail: "",
+              teacherId:         "",
+              teacherName:       "",
+            },
+          });
+          demoted++;
+        }
+      });
+
+      // ── Pass 2: teaching_assignments ──────────────────────────────────
+      let assignmentsMigrated = 0;
+      taSnap.docs.forEach(d => {
+        const data = d.data() as Record<string, any>;
+        const hasRole = typeof data.role === "string" && data.role.length > 0;
+        const s = data.status;
+        const active = !s || (typeof s === "string" && s.toLowerCase() === "active");
+        if (!active) return; // historical noise — skip
+        const teacherId = typeof data.teacherId === "string" ? data.teacherId : "";
+        const classId   = typeof data.classId   === "string" ? data.classId   : "";
+        const t = teacherId ? teachersById.get(teacherId) : null;
+        const canonical = canonicalClassForTeacher.get(teacherId);
+        const inferredRole: "class" | "subject" =
+          canonical && canonical === classId ? "class" : "subject";
+        const patch: Record<string, any> = {};
+        if (!hasRole) patch.role = inferredRole;
+        if (!data.teacherEmail && t?.email) patch.teacherEmail = (t.email || "").toLowerCase();
+        if (inferredRole === "subject") {
+          const classSubj = classSubjectById.get(classId) || "";
+          // Backfill subject/subjectName only if missing — preserve any explicit
+          // subject the principal may have set already.
+          if (!data.subject && classSubj) patch.subject = classSubj;
+          if (!data.subjectName && classSubj) patch.subjectName = classSubj;
+        }
+        if (Object.keys(patch).length > 0) {
+          ops.push({ ref: d.ref, data: patch });
+          assignmentsMigrated++;
+        }
+      });
+
+      const CHUNK = 450;
+      for (let i = 0; i < ops.length; i += CHUNK) {
+        const slice = ops.slice(i, i + CHUNK);
+        const batch = writeBatch(db);
+        slice.forEach(op => batch.update(op.ref, op.data));
+        await batch.commit();
+      }
+
+      setMigrationResult({ classes: classesMigrated, assignments: assignmentsMigrated, demoted });
+      if (ops.length === 0) {
+        toast.success("All set! Every class already has a class teacher and subject teachers properly assigned.");
+      } else if (demoted > 0) {
+        toast.success(
+          `Done! ${classesMigrated} class${classesMigrated === 1 ? "" : "es"} updated, ${assignmentsMigrated} teacher assignment${assignmentsMigrated === 1 ? "" : "s"} set up. ` +
+          `${demoted} class${demoted === 1 ? "" : "es"} now need a class teacher — click "Assign Teacher" on those rows to pick one.`,
+          { duration: 9000 },
+        );
+      } else {
+        toast.success(
+          `Done! ${classesMigrated} class${classesMigrated === 1 ? "" : "es"} updated, ${assignmentsMigrated} teacher assignment${assignmentsMigrated === 1 ? "" : "s"} set up.`,
+        );
+      }
+    } catch (err) {
+      console.error("[ClassesSections] class-teacher migration failed:", err);
+      toast.error("Migration failed. Check console.");
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  // ── Edit class (rename + grade/section/subject) ──────────────────────────
+  // The rename cascade is server-side: parent-dashboard/functions
+  // cascadeClassRename auto-propagates the new className across ~25
+  // denormalized collections. UI just writes the source doc.
+  const openEditClass = (cls: ClassRow) => {
+    setEditingClass(cls);
+    setEditFields({
+      name:    cls.name    || "",
+      grade:   cls.grade   || "",
+      section: cls.section || "",
+      subject: cls.subject || "",
+    });
+    setEditClassModal(true);
+  };
+
+  const handleSaveClassEdit = async () => {
+    if (!editingClass) return;
+    const nextName = editFields.name.trim();
+    if (!nextName) return toast.error("Class name cannot be empty.");
+    // Duplicate-name guard — same shape as handleAddClass.
+    const nameLower = nextName.toLowerCase();
+    const gradeLower = editFields.grade.trim().toLowerCase();
+    const clash = classes.some(c =>
+      c.id !== editingClass.id
+      && c.name.toLowerCase() === nameLower
+      && (c.grade || "").toLowerCase() === gradeLower
+    );
+    if (clash) return toast.error(`Another class "${nextName}" already exists at grade ${editFields.grade || "—"}.`);
+    setSavingEdit(true);
+    try {
+      const patch: Record<string, any> = {
+        name:    nextName,
+        grade:   editFields.grade.trim(),
+        section: editFields.section.trim(),
+        subject: editFields.subject.trim(),
+      };
+      await updateDoc(doc(db, "classes", editingClass.id), patch);
+      const renamed = nextName !== editingClass.name;
+      if (renamed) {
+        toast.success(
+          `Class renamed to "${nextName}". Cascade is updating all dashboards — refresh in a few seconds.`,
+          { duration: 6000 },
+        );
+      } else {
+        toast.success(`Class "${nextName}" updated.`);
+      }
+      setEditClassModal(false);
+      setEditingClass(null);
+    } catch (err) {
+      console.error("[ClassesSections] save class edit failed:", err);
+      toast.error("Failed to save class changes.");
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -757,13 +1194,13 @@ const ClassesSections = () => {
         <ClassesSectionsMobile
           loading={loading}
           classes={classes}
-          gradesSummary={gradesSummary}
           onAddClass={() => setAddModal(true)}
           onChangeTeacher={cls => {
             setAssigningClass(cls);
             setAssignTeacherId(cls.teacherId || "");
             setAssignModal(true);
           }}
+          onEditClass={cls => openEditClass(cls)}
           onOpenStudents={cls => openStudentModal(cls)}
           onViewSection={cls => setSelectedSection(cls)}
           currentPage={currentPage}
@@ -779,12 +1216,35 @@ const ClassesSections = () => {
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Classes & Sections</h1>
           <p className="text-sm text-slate-400 font-medium mt-1">Overview of all classes and sections</p>
         </div>
-        <button
-          onClick={() => setAddModal(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold hover:bg-[#1e4fc0] transition-colors shadow-md"
-        >
-          <Plus className="w-4 h-4" /> Add Class
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setMigrationConfirmOpen(true)}
+            disabled={migrating}
+            title="One-click cleanup — makes sure every class has just one class teacher (the rest become subject teachers). Safe to run anytime."
+            className="flex items-center gap-2 px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-xl text-sm font-bold hover:bg-slate-50 disabled:opacity-60 transition-colors shadow-sm"
+          >
+            {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+            {migrating ? "Setting up..." : "Set Up Class Teachers"}
+            {migrationResult && (
+              <span className="text-[10px] font-black ml-1 flex items-center gap-1">
+                <span className="text-emerald-600">
+                  · {migrationResult.classes + migrationResult.assignments} updated
+                </span>
+                {migrationResult.demoted > 0 && (
+                  <span className="text-amber-600">
+                    · {migrationResult.demoted} need teacher
+                  </span>
+                )}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setAddModal(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-[#1e3a8a] text-white rounded-xl text-sm font-bold hover:bg-[#1e4fc0] transition-colors shadow-md"
+          >
+            <Plus className="w-4 h-4" /> Add Class
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -794,19 +1254,40 @@ const ClassesSections = () => {
         </div>
       ) : (
         <>
-          {/* Grade Summary Cards */}
-          {gradesSummary.length > 0 && (
+          {/* Per-Section Summary Cards — one card PER class (9A, 9B, 10A, 10B…)
+              not grouped by grade. Click drills into ClassPerformance view. */}
+          {classes.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {gradesSummary.map(g => {
-                const Icon = healthIcon(g.healthScore);
+              {classes.map(cls => {
+                const Icon = healthIcon(cls.healthScore);
                 return (
-                  <div key={g.grade} className="bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex items-center justify-between mb-2.5">
-                      <h3 className="text-sm font-black text-slate-900">Grade {g.grade}</h3>
-                      <Icon className={`w-4 h-4 ${healthColor(g.healthScore)}`} />
+                  <button
+                    key={cls.id}
+                    type="button"
+                    onClick={() => setSelectedSection(cls)}
+                    className="text-left bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-[#1e3a8a]/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a8a]/30 transition-all cursor-pointer"
+                    aria-label={`View ${cls.name} performance`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-black shrink-0 ${
+                          cls.status === "Good"    ? "bg-green-500" :
+                          cls.status === "Weak"    ? "bg-rose-500" :
+                          cls.status === "No Data" ? "bg-slate-400" :
+                          "bg-amber-500"
+                        }`}>
+                          {cls.name.slice(0, 3)}
+                        </div>
+                        <h3 className="text-sm font-black text-slate-900 truncate">{cls.name}</h3>
+                      </div>
+                      <Icon className={`w-4 h-4 shrink-0 ${healthColor(cls.healthScore)}`} />
                     </div>
+                    {cls.subject && (
+                      <p className="text-[10px] text-slate-400 font-medium mb-2 truncate">{cls.subject}</p>
+                    )}
                     <div className="space-y-1.5 text-[11px]">
                       <div className="flex justify-between">
+<<<<<<< HEAD
                         <span className="text-slate-600 font-medium">Sections</span>
                         <span className="font-black text-slate-900">{g.sections}</span>
                       </div>
@@ -816,23 +1297,36 @@ const ClassesSections = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-600 font-medium">Avg Attendance</span>
+=======
+                        <span className="text-slate-400 font-medium">Students</span>
+                        <span className="font-black text-slate-900">{cls.studentCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Attendance</span>
+>>>>>>> cc9836d78f3f461e53bc0d18a635285e21646916
                         <span className={`font-black ${
-                          g.avgAttendance === null ? "text-slate-300"
-                          : g.avgAttendance >= 85 ? "text-green-600"
-                          : g.avgAttendance >= 70 ? "text-amber-500"
+                          cls.attendanceNum === null ? "text-slate-300"
+                          : cls.attendanceNum >= 85 ? "text-green-600"
+                          : cls.attendanceNum >= 70 ? "text-amber-500"
                           : "text-rose-600"
                         }`}>
-                          {g.avgAttendance !== null ? `${g.avgAttendance}%` : "—"}
+                          {cls.attendanceNum !== null ? `${cls.attendanceNum}%` : "—"}
                         </span>
                       </div>
                       <div className="flex justify-between">
+<<<<<<< HEAD
                         <span className="text-slate-600 font-medium">Health Score</span>
                         <span className={`font-black ${healthColor(g.healthScore)}`}>
                           {g.healthScore !== null ? `${g.healthScore}/100` : "—"}
+=======
+                        <span className="text-slate-400 font-medium">Health</span>
+                        <span className={`font-black ${healthColor(cls.healthScore)}`}>
+                          {cls.healthScore !== null ? `${cls.healthScore}/100` : "—"}
+>>>>>>> cc9836d78f3f461e53bc0d18a635285e21646916
                         </span>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -886,8 +1380,17 @@ const ClassesSections = () => {
                               }`}>
                                 {cls.name.slice(0, 3)}
                               </div>
-                              <div>
-                                <p className="font-bold text-slate-900">{cls.name}</p>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <p className="font-bold text-slate-900 truncate">{cls.name}</p>
+                                  <button
+                                    onClick={() => openEditClass(cls)}
+                                    title="Edit class (rename cascades to all dashboards)"
+                                    className="text-slate-300 hover:text-[#1e3a8a] transition-colors shrink-0"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                </div>
                                 {cls.subject && <p className="text-[10px] text-slate-400 font-medium mt-0.5">{cls.subject}</p>}
                               </div>
                             </div>
@@ -1244,7 +1747,164 @@ const ClassesSections = () => {
         </div>
       )}
 
-      {/* ── Assign Teacher Modal ── */}
+      {/* ── Set Up Class Teachers Modal (replaces native confirm) ── */}
+      {migrationConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-[#1e3a8a]" />
+                  Set up class teachers?
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                  One-click cleanup for {userData?.schoolName || "your school"}
+                </p>
+              </div>
+              <button
+                onClick={() => setMigrationConfirmOpen(false)}
+                disabled={migrating}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center disabled:opacity-60"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <ol className="space-y-3 text-[13px] text-slate-700 leading-relaxed">
+                <li className="flex gap-3">
+                  <span className="w-6 h-6 rounded-full bg-blue-50 text-[#1e3a8a] font-black text-[11px] flex items-center justify-center shrink-0">1</span>
+                  <span>Each class will have <strong>one class teacher</strong> — the person who marks daily attendance.</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="w-6 h-6 rounded-full bg-blue-50 text-[#1e3a8a] font-black text-[11px] flex items-center justify-center shrink-0">2</span>
+                  <span>If a teacher is currently shown as class teacher of more than one class, only the <strong>first</strong> class they were given keeps them. The others will show <em>"Assign Teacher"</em> so you can pick the right one.</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="w-6 h-6 rounded-full bg-blue-50 text-[#1e3a8a] font-black text-[11px] flex items-center justify-center shrink-0">3</span>
+                  <span>On those other classes the same teacher becomes a <strong>Subject Teacher</strong> — they can still record grades, notes, and incidents, just not daily attendance.</span>
+                </li>
+              </ol>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <p className="text-[12px] text-emerald-700 font-medium leading-relaxed">
+                  Nothing is deleted. Safe to re-run anytime.
+                </p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setMigrationConfirmOpen(false)}
+                  disabled={migrating}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setMigrationConfirmOpen(false);
+                    runClassTeacherMigration();
+                  }}
+                  disabled={migrating}
+                  className="flex-1 py-3 rounded-xl bg-[#1e3a8a] text-white text-sm font-bold hover:bg-[#1e4fc0] disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+                  {migrating ? "Setting up..." : "Yes, set them up"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Class Modal (rename cascades server-side) ── */}
+      {editClassModal && editingClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Pencil className="w-4 h-4 text-[#1e3a8a]" />
+                  Edit Class
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5 font-medium">{editingClass.name}</p>
+              </div>
+              <button
+                onClick={() => { setEditClassModal(false); setEditingClass(null); }}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Class Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 9A, Class 10B"
+                  value={editFields.name}
+                  onChange={e => setEditFields(p => ({ ...p, name: e.target.value }))}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                />
+                {editFields.name.trim() && editFields.name.trim() !== editingClass.name && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 leading-relaxed">
+                    <strong>Heads up:</strong> renaming this class will propagate the new name across teacher / parent / owner dashboards via background cascade. Takes a few seconds to fully sync.
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Grade</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 9, 10"
+                    value={editFields.grade}
+                    onChange={e => setEditFields(p => ({ ...p, grade: e.target.value }))}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Section</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. A, B"
+                    value={editFields.section}
+                    onChange={e => setEditFields(p => ({ ...p, section: e.target.value }))}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Subject</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Mathematics, Science"
+                  value={editFields.subject}
+                  onChange={e => setEditFields(p => ({ ...p, subject: e.target.value }))}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20"
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => { setEditClassModal(false); setEditingClass(null); }}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveClassEdit}
+                  disabled={savingEdit || !editFields.name.trim()}
+                  className="flex-1 py-3 rounded-xl bg-[#1e3a8a] text-white text-sm font-bold hover:bg-[#1e4fc0] disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  {savingEdit ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Assign Teacher Modal (S2: role-aware) ── */}
       {assignModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
@@ -1252,18 +1912,64 @@ const ClassesSections = () => {
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <UserPlus className="w-4 h-4 text-[#1e3a8a]" />
-                  {assigningClass?.teacherName ? "Change Class Teacher" : "Assign Class Teacher"}
+                  Assign Teacher to Class
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5 font-medium">{assigningClass?.name}</p>
               </div>
               <button
-                onClick={() => { setAssignModal(false); setAssigningClass(null); setAssignTeacherId(""); }}
+                onClick={() => { setAssignModal(false); setAssigningClass(null); setAssignTeacherId(""); setAssignRole("class"); setAssignSubject(""); }}
                 className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
               >
                 <X className="w-4 h-4 text-slate-600" />
               </button>
             </div>
             <div className="p-6 space-y-4">
+              {/* Role selector */}
+              <div>
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Role *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAssignRole("class")}
+                    className={`px-3 py-3 rounded-xl border text-left transition-colors ${
+                      assignRole === "class"
+                        ? "border-[#1e3a8a] bg-blue-50/60 ring-2 ring-[#1e3a8a]/20"
+                        : "border-slate-200 bg-white hover:bg-slate-50"
+                    }`}
+                  >
+                    <p className={`text-sm font-black ${assignRole === "class" ? "text-[#1e3a8a]" : "text-slate-800"}`}>Class Teacher</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5 font-medium leading-snug">Marks daily attendance · one per class</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssignRole("subject")}
+                    className={`px-3 py-3 rounded-xl border text-left transition-colors ${
+                      assignRole === "subject"
+                        ? "border-violet-500 bg-violet-50/60 ring-2 ring-violet-500/20"
+                        : "border-slate-200 bg-white hover:bg-slate-50"
+                    }`}
+                  >
+                    <p className={`text-sm font-black ${assignRole === "subject" ? "text-violet-700" : "text-slate-800"}`}>Subject Teacher</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5 font-medium leading-snug">Teaches a subject · multiple per class</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Subject input — REQUIRED for subject role */}
+              {assignRole === "subject" && (
+                <div>
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Subject *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Mathematics, Hindi"
+                    value={assignSubject}
+                    onChange={e => setAssignSubject(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                  />
+                </div>
+              )}
+
+              {/* Teacher select */}
               <div>
                 <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Select Teacher *</label>
                 {teachers.length === 0 ? (
@@ -1285,25 +1991,58 @@ const ClassesSections = () => {
                   </select>
                 )}
               </div>
-              {assigningClass?.teacherName && (
-                <p className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
-                  Current teacher: <span className="font-bold text-slate-600">{assigningClass.teacherName}</span>
+
+              {/* Current designation hint */}
+              {assigningClass?.teacherName && assignRole === "class" && (
+                <p className="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2">
+                  Current class teacher: <span className="font-bold text-slate-700">{assigningClass.teacherName}</span> — will be replaced.
                 </p>
               )}
+              {assignRole === "subject" && (
+                <p className="text-xs text-violet-600 bg-violet-50 rounded-lg px-3 py-2 leading-relaxed">
+                  Subject teachers can record incidents, notes, and grades — but only the class teacher marks daily attendance.
+                </p>
+              )}
+              {/* One-homeroom-per-teacher conflict warning. Shown when the
+                  selected teacher is already class teacher of another class
+                  AND the chosen role is "class" — saving will move them. */}
+              {assignRole === "class" && assignTeacherId && (() => {
+                const t = teachers.find(x => x.id === assignTeacherId);
+                if (!t) return null;
+                const otherHomerooms = classesRef.current.filter((c: any) => {
+                  if (!c || (assigningClass && c.id === assigningClass.id)) return false;
+                  if (c.classTeacherId === t.id) return true;
+                  if (!c.classTeacherId && c.teacherId === t.id) return true;
+                  return false;
+                });
+                if (otherHomerooms.length === 0) return null;
+                const names = otherHomerooms
+                  .map((c: any) => c.name || `${c.grade || ""}${c.section || ""}`)
+                  .filter(Boolean)
+                  .join(", ");
+                return (
+                  <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 leading-relaxed text-amber-800">
+                    <strong>Note:</strong> {t.name} is currently class teacher of <strong>{names}</strong>. A teacher can be class teacher of only one class — saving will remove them from {names}.
+                  </div>
+                );
+              })()}
+
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={() => { setAssignModal(false); setAssigningClass(null); setAssignTeacherId(""); }}
+                  onClick={() => { setAssignModal(false); setAssigningClass(null); setAssignTeacherId(""); setAssignRole("class"); setAssignSubject(""); }}
                   className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAssignTeacher}
-                  disabled={assigning || !assignTeacherId}
-                  className="flex-1 py-3 rounded-xl bg-[#1e3a8a] text-white text-sm font-bold hover:bg-[#1e4fc0] disabled:opacity-60 flex items-center justify-center gap-2"
+                  disabled={assigning || !assignTeacherId || (assignRole === "subject" && !assignSubject.trim())}
+                  className={`flex-1 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-60 flex items-center justify-center gap-2 ${
+                    assignRole === "class" ? "bg-[#1e3a8a] hover:bg-[#1e4fc0]" : "bg-violet-600 hover:bg-violet-700"
+                  }`}
                 >
                   {assigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
-                  {assigning ? "Assigning..." : "Assign Teacher"}
+                  {assigning ? "Assigning..." : assignRole === "class" ? "Assign Class Teacher" : "Add Subject Teacher"}
                 </button>
               </div>
             </div>

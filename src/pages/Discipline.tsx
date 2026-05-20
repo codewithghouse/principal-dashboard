@@ -1371,36 +1371,61 @@ const Discipline = () => {
                       {/* Class filter chips — horizontal scroll, principal
                           sees their classes up-front and picks the one they
                           want to log against. */}
+                      {/* Class chips — count badge now rendered as a distinct
+                          pill inside the button so "(5)" no longer reads as
+                          illegible "5r"/"Sr" garble at small font sizes. */}
                       <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, marginBottom: 8 }}>
-                        <button
-                          onClick={() => setPickerClassFilter("")}
-                          style={{
-                            flexShrink: 0,
-                            padding: "7px 12px", borderRadius: 100,
-                            background: pickerClassFilter === "" ? `linear-gradient(135deg, ${B1}, ${B2})` : "#fff",
-                            color: pickerClassFilter === "" ? "#fff" : T2,
-                            border: `0.5px solid ${pickerClassFilter === "" ? "transparent" : "rgba(0,85,255,0.18)"}`,
-                            fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
-                          }}
-                        >
-                          All ({students.length})
-                        </button>
-                        {pickerClassOptions.map(c => (
-                          <button
-                            key={c.className}
-                            onClick={() => setPickerClassFilter(c.className)}
-                            style={{
-                              flexShrink: 0,
-                              padding: "7px 12px", borderRadius: 100,
-                              background: pickerClassFilter === c.className ? `linear-gradient(135deg, ${B1}, ${B2})` : "#fff",
-                              color: pickerClassFilter === c.className ? "#fff" : T2,
-                              border: `0.5px solid ${pickerClassFilter === c.className ? "transparent" : "rgba(0,85,255,0.18)"}`,
-                              fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
-                            }}
-                          >
-                            {c.className} ({c.count})
-                          </button>
-                        ))}
+                        {(() => {
+                          const renderChip = (label: string, count: number, active: boolean, onClick: () => void) => (
+                            <button
+                              onClick={onClick}
+                              style={{
+                                flexShrink: 0,
+                                padding: "7px 8px 7px 14px",
+                                borderRadius: 100,
+                                background: active ? `linear-gradient(135deg, ${B1}, ${B2})` : "#fff",
+                                color: active ? "#fff" : T1,
+                                border: `0.5px solid ${active ? "transparent" : "rgba(0,85,255,0.22)"}`,
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 7,
+                                letterSpacing: "-0.1px",
+                              }}
+                            >
+                              <span>{label}</span>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  minWidth: 22,
+                                  height: 20,
+                                  padding: "0 7px",
+                                  borderRadius: 100,
+                                  background: active ? "rgba(255,255,255,0.26)" : "rgba(0,85,255,0.12)",
+                                  color: active ? "#fff" : B1,
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  lineHeight: 1,
+                                }}
+                              >
+                                {count}
+                              </span>
+                            </button>
+                          );
+                          return (
+                            <>
+                              {renderChip("All", students.length, pickerClassFilter === "", () => setPickerClassFilter(""))}
+                              {pickerClassOptions.map(c =>
+                                renderChip(c.className, c.count, pickerClassFilter === c.className, () => setPickerClassFilter(c.className))
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
 
                       {/* Search within selected class (or all). */}
@@ -2109,33 +2134,42 @@ const Discipline = () => {
                   </div>
                 ) : (
                   <>
-                    {/* Class filter chips */}
+                    {/* Class filter chips — count rendered as a separate
+                        pill badge inside the button for legibility (the
+                        previous inline `(5)` blended into the class label
+                        and read as garbled "5r"/"Sr" at small sizes). */}
                     <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
-                      <button
-                        type="button"
-                        onClick={() => setPickerClassFilter("")}
-                        className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap border transition-colors ${
-                          pickerClassFilter === ""
-                            ? "bg-[#1e3a8a] text-white border-transparent"
-                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                        }`}
-                      >
-                        All ({students.length})
-                      </button>
-                      {pickerClassOptions.map(c => (
-                        <button
-                          key={c.className}
-                          type="button"
-                          onClick={() => setPickerClassFilter(c.className)}
-                          className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap border transition-colors ${
-                            pickerClassFilter === c.className
-                              ? "bg-[#1e3a8a] text-white border-transparent"
-                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                          }`}
-                        >
-                          {c.className} ({c.count})
-                        </button>
-                      ))}
+                      {(() => {
+                        const renderChip = (label: string, count: number, active: boolean, onClick: () => void) => (
+                          <button
+                            type="button"
+                            onClick={onClick}
+                            className={`shrink-0 inline-flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full text-[12px] font-bold whitespace-nowrap border transition-colors ${
+                              active
+                                ? "bg-[#1e3a8a] text-white border-transparent"
+                                : "bg-white text-slate-900 border-slate-300 hover:bg-slate-50"
+                            }`}
+                          >
+                            <span>{label}</span>
+                            <span
+                              className={`inline-flex items-center justify-center px-1.5 rounded-full text-[11px] font-extrabold ${
+                                active ? "bg-white/25 text-white" : "bg-blue-100 text-[#1e3a8a]"
+                              }`}
+                              style={{ minWidth: 22, height: 18, lineHeight: 1 }}
+                            >
+                              {count}
+                            </span>
+                          </button>
+                        );
+                        return (
+                          <>
+                            {renderChip("All", students.length, pickerClassFilter === "", () => setPickerClassFilter(""))}
+                            {pickerClassOptions.map(c =>
+                              renderChip(c.className, c.count, pickerClassFilter === c.className, () => setPickerClassFilter(c.className))
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
 
                     {/* Search within selected class */}

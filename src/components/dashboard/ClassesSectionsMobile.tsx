@@ -1,6 +1,6 @@
 import {
   Plus, Loader2, BookOpen, MoreHorizontal, Users as UsersIcon,
-  ArrowRight, AlertCircle, CheckCircle, XCircle,
+  ArrowRight, AlertCircle, CheckCircle, XCircle, Pencil,
 } from "lucide-react";
 import StudentsPagination from "./StudentsPagination";
 
@@ -31,20 +31,12 @@ export interface ClassRowMobile {
   hasAttendanceData?: boolean;
 }
 
-export interface GradeSummaryMobile {
-  grade: string;
-  sections: number;
-  students: number;
-  avgAttendance: number | null;
-  healthScore: number | null;
-}
-
 export interface ClassesSectionsMobileProps {
   loading: boolean;
   classes: ClassRowMobile[];
-  gradesSummary: GradeSummaryMobile[];
   onAddClass: () => void;
   onChangeTeacher: (cls: ClassRowMobile) => void;
+  onEditClass: (cls: ClassRowMobile) => void;
   onOpenStudents: (cls: ClassRowMobile) => void;
   onViewSection: (cls: ClassRowMobile) => void;
   // Pagination is owned by the parent (ClassesSections.tsx) so the page
@@ -137,8 +129,8 @@ const healthFill = (h: number | null) => {
 };
 
 const ClassesSectionsMobile = ({
-  loading, classes, gradesSummary,
-  onAddClass, onChangeTeacher, onOpenStudents, onViewSection,
+  loading, classes,
+  onAddClass, onChangeTeacher, onEditClass, onOpenStudents, onViewSection,
   currentPage, setCurrentPage, pageSize, setPageSize,
 }: ClassesSectionsMobileProps) => {
 
@@ -180,47 +172,54 @@ const ClassesSectionsMobile = ({
       ) : (
         <>
 
-          {/* ── Grade scroll cards ── */}
-          {gradesSummary.length > 0 && (
+          {/* ── Per-section scroll cards (one card per class, not per grade) ── */}
+          {classes.length > 0 && (
             <div className="flex gap-[10px] px-5 pt-3.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-              {gradesSummary.map(g => {
-                const hf = healthFill(g.healthScore);
+              {classes.map(cls => {
+                const hf = healthFill(cls.healthScore ?? null);
                 const accent =
-                  g.healthScore === null ? T4 :
-                  g.healthScore >= 75 ? GREEN :
-                  g.healthScore >= 50 ? GOLD :
-                  g.healthScore > 0 ? ORANGE :
+                  cls.healthScore === null || cls.healthScore === undefined ? T4 :
+                  cls.healthScore >= 75 ? GREEN :
+                  cls.healthScore >= 50 ? GOLD :
+                  cls.healthScore > 0 ? ORANGE :
                   RED;
                 const Icon =
-                  g.healthScore === null ? AlertCircle :
-                  g.healthScore >= 75 ? CheckCircle :
-                  g.healthScore < 50 && g.healthScore > 0 ? XCircle :
+                  cls.healthScore === null || cls.healthScore === undefined ? AlertCircle :
+                  cls.healthScore >= 75 ? CheckCircle :
+                  cls.healthScore < 50 && cls.healthScore > 0 ? XCircle :
                   AlertCircle;
                 const attColor =
-                  g.avgAttendance === null ? T4 :
-                  g.avgAttendance >= 85 ? GREEN :
-                  g.avgAttendance >= 70 ? GOLD :
-                  g.avgAttendance > 0 ? RED :
+                  cls.attendanceNum === null || cls.attendanceNum === undefined ? T4 :
+                  cls.attendanceNum >= 85 ? GREEN :
+                  cls.attendanceNum >= 70 ? GOLD :
+                  cls.attendanceNum > 0 ? RED :
                   T4;
                 return (
-                  <div key={g.grade}
-                    className="rounded-[18px] p-3 bg-white flex-shrink-0 relative overflow-hidden transition-transform active:scale-[0.96]"
+                  <button key={cls.id}
+                    type="button"
+                    onClick={() => onViewSection(cls)}
+                    aria-label={`View ${cls.name} performance`}
+                    className="text-left rounded-[18px] p-3 bg-white flex-shrink-0 relative overflow-hidden transition-transform active:scale-[0.96] cursor-pointer"
                     style={{ boxShadow: SHADOW_LG, border: "0.5px solid rgba(0,85,255,0.10)", minWidth: 152 }}>
                     <div className="absolute -top-5 -right-4 w-16 h-16 rounded-full pointer-events-none"
                       style={{ background: `radial-gradient(circle, ${accent}1A 0%, transparent 70%)` }} />
-                    <div className="flex items-center justify-between mb-2 relative">
-                      <div className="text-[14px] font-bold tracking-[-0.3px]" style={{ color: T1 }}>Grade {g.grade}</div>
-                      <div className="w-6 h-6 rounded-[8px] flex items-center justify-center"
+                    <div className="flex items-center justify-between gap-2 mb-2 relative">
+                      <div className="text-[14px] font-bold tracking-[-0.3px] truncate" style={{ color: T1 }}>{cls.name}</div>
+                      <div className="w-6 h-6 rounded-[8px] flex items-center justify-center shrink-0"
                         style={{ background: `${accent}1F`, border: `0.5px solid ${accent}38` }}>
                         <Icon className="w-[12px] h-[12px]" strokeWidth={2.4} style={{ color: accent }} />
                       </div>
                     </div>
+                    {cls.subject && (
+                      <div className="text-[9px] font-bold uppercase tracking-[0.05em] mb-2 truncate" style={{ color: T3 }}>
+                        {cls.subject}
+                      </div>
+                    )}
                     <div>
                       {[
-                        { label: "Sections", val: String(g.sections), color: T1 },
-                        { label: "Students", val: String(g.students), color: T1 },
-                        { label: "Avg Attendance", val: g.avgAttendance !== null ? `${g.avgAttendance}%` : "—", color: attColor },
-                        { label: "Health Score", val: g.healthScore !== null ? `${g.healthScore}/100` : "—", color: hf.color },
+                        { label: "Students", val: String(cls.studentCount), color: T1 },
+                        { label: "Attendance", val: cls.attendanceNum !== null && cls.attendanceNum !== undefined ? `${cls.attendanceNum}%` : "—", color: attColor },
+                        { label: "Health", val: cls.healthScore !== null && cls.healthScore !== undefined ? `${cls.healthScore}/100` : "—", color: hf.color },
                       ].map((row, i, arr) => (
                         <div key={row.label} className="flex items-center justify-between py-[3px]"
                           style={i < arr.length - 1 ? { borderBottom: `0.5px solid ${SEP}` } : {}}>
@@ -234,12 +233,14 @@ const ClassesSectionsMobile = ({
                       <div
                         className="h-full rounded-[2px]"
                         style={{
-                          width: g.healthScore === null ? "100%" : `${Math.max(0, Math.min(100, g.healthScore))}%`,
+                          width: cls.healthScore === null || cls.healthScore === undefined
+                            ? "100%"
+                            : `${Math.max(0, Math.min(100, cls.healthScore))}%`,
                           background: hf.bar,
                         }}
                       />
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -309,8 +310,18 @@ const ClassesSectionsMobile = ({
                       {chipText}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[15px] font-bold leading-tight tracking-[-0.2px] truncate" style={{ color: T1 }}>
-                        {cls.name}
+                      <div className="flex items-center gap-[6px] min-w-0">
+                        <div className="text-[15px] font-bold leading-tight tracking-[-0.2px] truncate" style={{ color: T1 }}>
+                          {cls.name}
+                        </div>
+                        <button
+                          onClick={() => onEditClass(cls)}
+                          aria-label="Edit class"
+                          className="shrink-0 transition-transform active:scale-90"
+                          style={{ color: T4 }}
+                        >
+                          <Pencil className="w-[12px] h-[12px]" />
+                        </button>
                       </div>
                       {cls.subject && (
                         <div className="text-[11px] font-medium uppercase mt-[3px] tracking-[0.05em] truncate" style={{ color: T3 }}>

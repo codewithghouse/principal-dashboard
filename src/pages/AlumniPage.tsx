@@ -244,19 +244,21 @@ const DocCard = ({ d, deleting, onDelete }: {
       <FileText size={22} color={T.RED} />
     </div>
     <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ fontSize: 14, fontWeight: 800, color: T.T1, marginBottom: 3, letterSpacing: "-0.2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div style={{ fontSize: 14.5, fontWeight: 800, color: T.T1, marginBottom: 3, letterSpacing: "-0.2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {d.title || d.fileName || "Alumni document"}
       </div>
       {d.description && (
-        <div style={{ fontSize: 11, color: T.T3, fontWeight: 500, marginBottom: 5, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 12, color: T.T2, fontWeight: 600, marginBottom: 6, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {d.description}
         </div>
       )}
-      <div style={{ display: "flex", gap: 12, fontSize: 10, color: T.T4, fontWeight: 600, flexWrap: "wrap" }}>
-        {d.year && <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Calendar size={10} /> {String(d.year)}</span>}
+      {/* Metadata row — bumped from T4 #99AACC (washed-out) to T2 #002080
+          with bolder weight + bigger size so each chip reads clearly. */}
+      <div style={{ display: "flex", gap: 14, fontSize: 11.5, color: T.T2, fontWeight: 700, flexWrap: "wrap", alignItems: "center" }}>
+        {d.year && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Calendar size={12} strokeWidth={2.5} color={T.T1} /> {String(d.year)}</span>}
         <span>{formatBytes(d.fileSize)}</span>
         <span>{formatDate(d.uploadedAt)}</span>
-        {d.uploadedByName && <span>· {d.uploadedByName}</span>}
+        {d.uploadedByName && <span style={{ color: T.T1 }}>· {d.uploadedByName}</span>}
       </div>
     </div>
     <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -280,15 +282,22 @@ const DocCard = ({ d, deleting, onDelete }: {
         onClick={onDelete}
         disabled={deleting}
         title="Delete"
+        aria-label="Delete"
+        className="custom-chrome"
         style={{
+          // .custom-chrome zeroes padding via index.css. Without it the
+          // global `button { padding: 8px 16px !important }` reduces the
+          // 36×36 button to a 4px-wide content box and the trash icon
+          // disappears (the View next to it is an <a>, not a button, so
+          // it renders fine — that's why only this one looked empty).
           width: 36, height: 36, borderRadius: 10,
           background: "rgba(255,51,85,.10)", color: T.RED,
           display: "flex", alignItems: "center", justifyContent: "center",
-          border: "0.5px solid rgba(255,51,85,.20)", cursor: deleting ? "wait" : "pointer",
+          border: "0.5px solid rgba(255,51,85,.28)", cursor: deleting ? "wait" : "pointer",
           opacity: deleting ? 0.5 : 1,
         }}
       >
-        {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+        {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} strokeWidth={2.4} />}
       </button>
     </div>
   </div>
@@ -387,9 +396,21 @@ const UploadModal = ({ schoolId, branchId, uploadedBy, uploadedByName, onClose }
           <h3 style={{ fontSize: 15, fontWeight: 800, color: T.T1, margin: 0 }}>Upload Alumni PDF</h3>
           <button
             onClick={onClose}
-            style={{ width: 30, height: 30, borderRadius: 8, background: "rgba(0,85,255,.06)", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+            aria-label="Close"
+            className="custom-chrome"
+            style={{
+              // .custom-chrome zeroes padding via index.css. Without it the
+              // global `button { padding: 8px 16px !important }` reduces the
+              // 30×30 button to a negative-width content box and the X icon
+              // disappears entirely.
+              width: 30, height: 30, borderRadius: 8,
+              background: "rgba(0,85,255,.10)",
+              border: "0.5px solid rgba(0,85,255,.18)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer",
+            }}
           >
-            <X size={14} color={T.T3} />
+            <X size={16} color={T.T1} strokeWidth={2.5} />
           </button>
         </div>
 

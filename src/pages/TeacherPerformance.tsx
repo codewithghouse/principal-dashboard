@@ -1553,13 +1553,37 @@ const TeacherPerformance = () => {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
+          {/* Search — slimmer flex-cell pill (was visually chunky at 12px
+              vertical padding × 1.5 line-height). 8px + 18.2px + 8px ≈ 34px
+              height now — same height as the page's other chips. */}
+          <div className="flex items-center bg-white rounded-[10px] min-w-[260px]"
+            style={{ border: "0.5px solid rgba(0,85,255,0.14)", boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 1px 4px rgba(0,85,255,.06)", height: 36 }}>
+            <span
+              aria-hidden="true"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 34,
+                alignSelf: "stretch",
+                flexShrink: 0,
+                pointerEvents: "none",
+              }}
+            >
+              <Search size={15} color="rgba(0,85,255,0.78)" strokeWidth={2.5} />
+            </span>
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search teacher or subject…"
-              className="h-[42px] pl-10 pr-4 rounded-[12px] bg-white text-[13px] font-medium outline-none min-w-[280px]"
-              style={{ color: "#001040", border: "0.5px solid rgba(0,85,255,0.14)", boxShadow: "0 0 0 .5px rgba(0,85,255,.08), 0 2px 8px rgba(0,85,255,.09)" }} />
+              className="flex-1 min-w-0 bg-transparent outline-none custom-chrome"
+              style={{
+                "--cc-padding": "8px 14px 8px 0",
+                "--cc-font-size": "12.5px",
+                "--cc-font-weight": "500",
+                "--cc-line-height": "1.4",
+                color: "#001040",
+                fontFamily: "inherit",
+                border: "none",
+              } as any} />
           </div>
         </div>
       </div>

@@ -3282,13 +3282,37 @@ function StudentBreakdown({ students, termTypes }: { students: StudentFeeRow[]; 
 
       {/* Filters */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 px-5 py-3 border-y border-slate-100 bg-white">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+        {/* Search — flex-cell pattern so the global
+            `input { padding !important }` in index.css can't push
+            the placeholder onto the magnifier icon. */}
+        <div className="flex-1 max-w-xs flex items-center border border-slate-200 rounded-lg bg-slate-50 focus-within:border-blue-300">
+          <span
+            aria-hidden="true"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 32,
+              alignSelf: "stretch",
+              flexShrink: 0,
+              pointerEvents: "none",
+            }}
+          >
+            <Search size={14} color="#64748B" strokeWidth={2.4} />
+          </span>
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search student or roll no..."
-            className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50 outline-none focus:border-blue-300"
+            className="flex-1 min-w-0 bg-transparent outline-none custom-chrome"
+            style={{
+              "--cc-padding": "8px 12px 8px 0",
+              "--cc-font-size": "12px",
+              "--cc-font-weight": "500",
+              "--cc-line-height": "1.4",
+              border: "none",
+              fontFamily: "inherit",
+            } as any}
           />
         </div>
         <select
