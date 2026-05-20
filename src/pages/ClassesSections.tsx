@@ -51,14 +51,6 @@ interface ClassRow {
   hasAttendanceData?: boolean;
 }
 
-interface GradeSummary {
-  grade: string;
-  sections: number;
-  students: number;
-  avgAttendance: number | null;
-  healthScore: number | null;
-}
-
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 // Status accepts null for no-data — never fabricates "Weak" from missing
@@ -114,7 +106,6 @@ const ClassesSections = () => {
 
   const [loading, setLoading]               = useState(true);
   const [classes, setClasses]               = useState<ClassRow[]>([]);
-  const [gradesSummary, setGradesSummary]   = useState<GradeSummary[]>([]);
   const [selectedSection, setSelectedSection] = useState<ClassRow | null>(null);
   const [addModal, setAddModal]             = useState(false);
   const [saving, setSaving]                 = useState(false);
@@ -316,40 +307,6 @@ const ClassesSections = () => {
     });
 
     setClasses(rows);
-
-    // Grade summary — average ONLY across classes WITH data so that
-    // unstarted classes don't drag the grade-level average down.
-    const gradeMap: Record<string, {
-      sections: number; students: number;
-      attVals: number[]; healthVals: number[];
-    }> = {};
-    rows.forEach(r => {
-      const g = r.grade || "Ungraded";
-      if (!gradeMap[g]) gradeMap[g] = { sections: 0, students: 0, attVals: [], healthVals: [] };
-      gradeMap[g].sections++;
-      gradeMap[g].students += r.studentCount;
-      if (r.attendanceNum !== null) gradeMap[g].attVals.push(r.attendanceNum);
-      if (r.healthScore !== null)   gradeMap[g].healthVals.push(r.healthScore);
-    });
-
-    const summary: GradeSummary[] = Object.entries(gradeMap)
-      .map(([grade, v]) => ({
-        grade,
-        sections: v.sections,
-        students: v.students,
-        avgAttendance: v.attVals.length > 0
-          ? Math.round(v.attVals.reduce((a, b) => a + b, 0) / v.attVals.length)
-          : null,
-        healthScore: v.healthVals.length > 0
-          ? Math.round(v.healthVals.reduce((a, b) => a + b, 0) / v.healthVals.length)
-          : null,
-      }))
-      .sort((a, b) => {
-        const na = Number(a.grade), nb = Number(b.grade);
-        return isNaN(na) || isNaN(nb) ? a.grade.localeCompare(b.grade) : na - nb;
-      });
-
-    setGradesSummary(summary);
     setLoading(false);
   };
 
@@ -1241,7 +1198,6 @@ const ClassesSections = () => {
         <ClassesSectionsMobile
           loading={loading}
           classes={classes}
-          gradesSummary={gradesSummary}
           onAddClass={() => setAddModal(true)}
           onChangeTeacher={cls => {
             setAssigningClass(cls);
@@ -1302,41 +1258,51 @@ const ClassesSections = () => {
         </div>
       ) : (
         <>
-          {/* Grade Summary Cards */}
-          {gradesSummary.length > 0 && (
+          {/* Per-Section Summary Cards — one card PER class (9A, 9B, 10A, 10B…)
+              not grouped by grade. Quick at-a-glance health for every section. */}
+          {classes.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {gradesSummary.map(g => {
-                const Icon = healthIcon(g.healthScore);
+              {classes.map(cls => {
+                const Icon = healthIcon(cls.healthScore);
                 return (
-                  <div key={g.grade} className="bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex items-center justify-between mb-2.5">
-                      <h3 className="text-sm font-black text-slate-900">Grade {g.grade}</h3>
-                      <Icon className={`w-4 h-4 ${healthColor(g.healthScore)}`} />
+                  <div key={cls.id} className="bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-[10px] font-black shrink-0 ${
+                          cls.status === "Good"    ? "bg-green-500" :
+                          cls.status === "Weak"    ? "bg-rose-500" :
+                          cls.status === "No Data" ? "bg-slate-400" :
+                          "bg-amber-500"
+                        }`}>
+                          {cls.name.slice(0, 3)}
+                        </div>
+                        <h3 className="text-sm font-black text-slate-900 truncate">{cls.name}</h3>
+                      </div>
+                      <Icon className={`w-4 h-4 shrink-0 ${healthColor(cls.healthScore)}`} />
                     </div>
+                    {cls.subject && (
+                      <p className="text-[10px] text-slate-400 font-medium mb-2 truncate">{cls.subject}</p>
+                    )}
                     <div className="space-y-1.5 text-[11px]">
                       <div className="flex justify-between">
-                        <span className="text-slate-400 font-medium">Sections</span>
-                        <span className="font-black text-slate-900">{g.sections}</span>
-                      </div>
-                      <div className="flex justify-between">
                         <span className="text-slate-400 font-medium">Students</span>
-                        <span className="font-black text-slate-900">{g.students}</span>
+                        <span className="font-black text-slate-900">{cls.studentCount}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400 font-medium">Avg Attendance</span>
+                        <span className="text-slate-400 font-medium">Attendance</span>
                         <span className={`font-black ${
-                          g.avgAttendance === null ? "text-slate-300"
-                          : g.avgAttendance >= 85 ? "text-green-600"
-                          : g.avgAttendance >= 70 ? "text-amber-500"
+                          cls.attendanceNum === null ? "text-slate-300"
+                          : cls.attendanceNum >= 85 ? "text-green-600"
+                          : cls.attendanceNum >= 70 ? "text-amber-500"
                           : "text-rose-600"
                         }`}>
-                          {g.avgAttendance !== null ? `${g.avgAttendance}%` : "—"}
+                          {cls.attendanceNum !== null ? `${cls.attendanceNum}%` : "—"}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400 font-medium">Health Score</span>
-                        <span className={`font-black ${healthColor(g.healthScore)}`}>
-                          {g.healthScore !== null ? `${g.healthScore}/100` : "—"}
+                        <span className="text-slate-400 font-medium">Health</span>
+                        <span className={`font-black ${healthColor(cls.healthScore)}`}>
+                          {cls.healthScore !== null ? `${cls.healthScore}/100` : "—"}
                         </span>
                       </div>
                     </div>
