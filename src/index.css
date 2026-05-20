@@ -510,12 +510,26 @@ select.custom-chrome {
 button {
   padding: 8px 16px !important;
 }
-/* Compact icon-only buttons keep square padding */
+/* Compact icon-only buttons keep square padding. Include h-10/w-10
+   so the WhatsApp-style chat header & input icon buttons (Smile,
+   Paperclip, Send, Phone, Video, MoreVertical) center their lucide
+   icon instead of being squashed by the global `8px 16px` rule. */
 button[class*="h-8"],
 button[class*="h-9"],
+button[class*="h-10"],
 button[class*="w-8"],
-button[class*="w-9"] {
+button[class*="w-9"],
+button[class*="w-10"] {
   padding: 8px !important;
+}
+/* Escape hatch for buttons that set their own width/height + padding
+   via inline `style` (no Tailwind h-X/w-X class to match above). They
+   were getting clobbered by the global `8px 16px !important`, which
+   squashed AT-RISK pills, view-toggle icons, and similar inline-sized
+   buttons in DesktopStudentsView and friends. Default falls back to
+   "0" so the component's own padding (set via React style) wins. */
+button.custom-chrome {
+  padding: var(--cc-padding, 0) !important;
 }
 /* iOS-style toggle switches — custom width/height + 3px inner padding to
    position the thumb correctly. The global `button { padding: 8px 16px }`

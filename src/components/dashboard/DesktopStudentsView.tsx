@@ -177,20 +177,24 @@ const DesktopStudentsView = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search Student"
+            className="custom-chrome"
             style={{
+              // .custom-chrome opts out of the global `input { padding/font !important }` rules in index.css.
+              // Without it, the global 12px/16px padding overrides this padding and the search icon overlaps the text.
+              "--cc-padding": "14px 18px 14px 46px",
+              "--cc-font-size": "14px",
+              "--cc-font-weight": "500",
+              "--cc-line-height": "1.4",
               width: "100%",
-              padding: "14px 18px 14px 46px",
               borderRadius: 16,
               background: "#fff",
-              fontSize: 14,
-              fontWeight: 500,
               color: T1,
               outline: "none",
               border: "0.5px solid rgba(0,85,255,0.12)",
               boxShadow: SHADOW_SM,
               letterSpacing: "-0.1px",
               fontFamily: "inherit",
-            }}
+            } as any}
           />
         </div>
 
@@ -204,17 +208,18 @@ const DesktopStudentsView = ({
           <select
             value={classFilter}
             onChange={(e) => { setClassFilter(e.target.value); setCurrentPage(1); }}
+            className="custom-chrome"
             style={{
+              // .custom-chrome opts out of the global `select { padding/font !important }` rules in index.css.
+              // Without it, the GraduationCap icon visually overlaps "ALL CLASSES" because the global 12/16
+              // padding ignores the carefully tuned 46px left padding below.
+              "--cc-padding": "0 42px 0 46px",
+              "--cc-font-size": "11px",
+              "--cc-font-weight": "700",
+              "--cc-line-height": "44px",
               height: 44,
               minWidth: 178,
-              // L: 16 icon-pos + 16 icon-w + 14 gap = 46 · R: 14 chev-pos + 16 chev-w + 12 gap = 42.
-              // GraduationCap visually flares wider than its 16px box (the
-              // cap brim extends), so we use a generous 14px gap to ensure
-              // the cap never overlaps the "A" of "ALL CLASSES".
-              padding: "0 42px 0 46px",
               borderRadius: 14,
-              fontSize: 11,
-              fontWeight: 700,
               letterSpacing: "0.04em",
               textTransform: "uppercase",
               cursor: "pointer",
@@ -294,9 +299,13 @@ const DesktopStudentsView = ({
 
         <button
           onClick={() => { setAtRiskFilter((f: boolean) => !f); setCurrentPage(1); }}
+          className="custom-chrome"
           style={{
+            // .custom-chrome opts out of the global `button { padding: 8px 16px !important }`
+            // rule in index.css. Without it the 8/16 padding squashes "AT RISK 1" into "SK 1"
+            // because the inline 0 18px padding is overridden.
+            "--cc-padding": "0 18px",
             height: 44,
-            padding: "0 18px",
             borderRadius: 14,
             display: "inline-flex",
             alignItems: "center",
@@ -314,7 +323,7 @@ const DesktopStudentsView = ({
             transition: "transform .15s",
             flexShrink: 0,
             whiteSpace: "nowrap",
-          }}
+          } as any}
         >
           <AlertTriangle size={15} strokeWidth={2.5} />
           AT RISK{atRiskCount > 0 ? ` ${atRiskCount}` : ""}
@@ -353,7 +362,11 @@ const DesktopStudentsView = ({
                   onClick={() => setViewMode(mode)}
                   aria-label={label}
                   aria-pressed={active}
+                  className="custom-chrome"
                   style={{
+                    // .custom-chrome zeroes padding (via --cc-padding default in index.css)
+                    // so the global `button { padding: 8px 16px !important }` doesn't
+                    // squash the 18px lucide icon inside this 36×36 square button.
                     width: 36,
                     height: 36,
                     borderRadius: 10,
@@ -761,7 +774,11 @@ const DesktopStudentsView = ({
                               onClick={onClick}
                               title={title}
                               aria-label={title}
+                              className="custom-chrome"
                               style={{
+                                // .custom-chrome zeroes padding so the global
+                                // `button { padding: 8px 16px !important }` doesn't
+                                // squash the 14px icon in this 32×32 square.
                                 width: 32, height: 32, borderRadius: 10,
                                 display: "flex", alignItems: "center", justifyContent: "center",
                                 background: "transparent",
@@ -1137,7 +1154,11 @@ const DesktopStudentsView = ({
                   <button
                     onClick={() => onMessageClick(s)}
                     aria-label={`Message ${s.name}`}
+                    className="custom-chrome"
                     style={{
+                      // .custom-chrome zeroes padding so the global
+                      // `button { padding: 8px 16px !important }` doesn't
+                      // squash the icon in this 44×44 square button.
                       width: 44,
                       height: 44,
                       borderRadius: 14,
@@ -1160,7 +1181,11 @@ const DesktopStudentsView = ({
                   <button
                     onClick={() => onDeleteClick(s)}
                     aria-label={`Delete ${s.name}`}
+                    className="custom-chrome"
                     style={{
+                      // .custom-chrome zeroes padding so the global
+                      // `button { padding: 8px 16px !important }` doesn't
+                      // squash the trash icon in this 44×44 square button.
                       width: 44,
                       height: 44,
                       borderRadius: 14,

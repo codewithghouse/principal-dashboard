@@ -1796,20 +1796,31 @@ const Discipline = () => {
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="h-10 px-4 pr-9 rounded-[13px] text-[12px] font-bold bg-white outline-none appearance-none cursor-pointer"
+              className="rounded-[13px] bg-white outline-none cursor-pointer custom-chrome"
               style={{
+                // .custom-chrome opts out of the global `select { padding/font/line-height !important }`
+                // in index.css. Wider right-padding (48px) + min-width 170 give "Under Review"
+                // breathing room from the chevron — was bumping up against the icon.
+                "--cc-padding": "13px 48px 13px 18px",
+                "--cc-font-size": "12px",
+                "--cc-font-weight": "700",
+                "--cc-line-height": "1.5",
+                minWidth: 170,
+                WebkitAppearance: "none",
+                MozAppearance: "none",
+                appearance: "none",
                 border: `0.5px solid ${dSEP}`,
                 color: dT2,
                 boxShadow: dSH,
                 fontFamily: "inherit",
                 backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230055FF' stroke-width='2.5' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
                 backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 12px center",
-              }}>
-              <option value="all">All Status</option>
-              <option value="open">Open</option>
-              <option value="under review">Under Review</option>
-              <option value="resolved">Resolved</option>
+                backgroundPosition: "right 16px center",
+              } as any}>
+              <option value="all" style={{ color: "#001040" }}>All Status</option>
+              <option value="open" style={{ color: "#001040" }}>Open</option>
+              <option value="under review" style={{ color: "#001040" }}>Under Review</option>
+              <option value="resolved" style={{ color: "#001040" }}>Resolved</option>
             </select>
             <div className="relative flex-1 min-w-[200px] max-w-[300px]">
               <input

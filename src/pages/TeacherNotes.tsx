@@ -7,6 +7,15 @@ import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+// Inline emoji picker grid — same set used in ParentCommunication so the
+// two chat surfaces stay consistent.
+const EMOJI_PICKER = [
+  "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣",
+  "😊", "🙂", "😉", "😍", "🥰", "😘", "🤗", "🤔",
+  "😎", "🤩", "😢", "😭", "😡", "🙏", "👍", "👎",
+  "👏", "💪", "❤️", "🔥", "✨", "🎉", "🎯", "✅",
+];
+
 const TeacherNotes = () => {
   const { userData } = useAuth();
   const isMobile = useIsMobile();
@@ -25,7 +34,24 @@ const TeacherNotes = () => {
   const [teachersLoading, setTeachersLoading]   = useState(true);
   const [searchQuery, setSearchQuery]           = useState("");
   const [messageContent, setMessageContent]     = useState("");
+  // Emoji picker state for the chat input bar.
+  const [emojiOpen, setEmojiOpen]               = useState(false);
+  const emojiPickerRef                          = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Close the emoji picker on outside-click.
+  useEffect(() => {
+    if (!emojiOpen) return;
+    const onClickAway = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setEmojiOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClickAway);
+    return () => document.removeEventListener("mousedown", onClickAway);
+  }, [emojiOpen]);
+
+  const insertEmoji = (emoji: string) => setMessageContent((c) => c + emoji);
 
   // Apply deep-link once teachers list has loaded — find the matching
   // teacher, open the chat, prefill the draft. Mirrors the same pattern
@@ -620,15 +646,52 @@ const TeacherNotes = () => {
               display: "flex",
               gap: 8,
               alignItems: "center",
+              position: "relative",
             }}
           >
+            {/* Emoji picker popup — mobile, anchored above the smile button. */}
+            {emojiOpen && (
+              <div
+                ref={emojiPickerRef}
+                style={{
+                  position: "absolute",
+                  bottom: 58,
+                  left: 16,
+                  zIndex: 30,
+                  background: "#fff",
+                  borderRadius: 14,
+                  boxShadow: "0 12px 36px rgba(0,85,255,0.22), 0 0 0 0.5px rgba(0,85,255,0.12)",
+                  padding: 10,
+                  display: "grid",
+                  gridTemplateColumns: "repeat(6, 32px)",
+                  gap: 4,
+                  maxWidth: "calc(100% - 32px)",
+                  boxSizing: "content-box",
+                }}
+              >
+                {EMOJI_PICKER.map((emo) => (
+                  <button
+                    key={emo}
+                    onClick={() => insertEmoji(emo)}
+                    style={{
+                      width: 32, height: 32, borderRadius: 8, border: "none",
+                      background: "transparent", cursor: "pointer",
+                      fontSize: 20, padding: 0, lineHeight: 1,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    {emo}
+                  </button>
+                ))}
+              </div>
+            )}
             <button
-              onClick={() => setMessageContent((c) => c + "📝 ")}
+              onClick={() => setEmojiOpen((o) => !o)}
               style={{
                 width: 36,
                 height: 36,
                 borderRadius: 12,
-                background: "#fff",
+                background: emojiOpen ? "rgba(0,85,255,.10)" : "#fff",
                 border: "0.5px solid rgba(0,85,255,.14)",
                 display: "flex",
                 alignItems: "center",
@@ -639,8 +702,9 @@ const TeacherNotes = () => {
                 fontSize: 18,
               }}
               aria-label="Emoji"
+              aria-expanded={emojiOpen}
             >
-              <Smile size={18} color={T3} strokeWidth={2} />
+              <Smile size={18} color={emojiOpen ? B1 : T3} strokeWidth={2} />
             </button>
             <input
               value={messageContent}
@@ -1362,11 +1426,20 @@ const TeacherNotes = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search teachers..."
-              className="w-full outline-none"
+              className="w-full outline-none custom-chrome"
               style={{
-                padding: "10px 14px 10px 42px", background: "transparent",
-                borderRadius: 10, fontSize: 13, color: WA_TEXT, fontWeight: 400, fontFamily: "inherit",
-              }}
+                // .custom-chrome opts out of the global `input { padding/font !important }`
+                // rules in index.css. Without it, the 10px/14px/42px inline padding is
+                // overridden by global 12px/16px and the magnifier overlaps the placeholder.
+                "--cc-padding": "10px 14px 10px 42px",
+                "--cc-font-size": "13px",
+                "--cc-font-weight": "400",
+                "--cc-line-height": "1.4",
+                background: "transparent",
+                borderRadius: 10,
+                color: WA_TEXT,
+                fontFamily: "inherit",
+              } as any}
             />
           </div>
 
@@ -1644,22 +1717,56 @@ const TeacherNotes = () => {
                   <div ref={chatEndRef} />
                 </div>
 
-                {/* Input bar — WhatsApp Web */}
-                <div className="px-4 py-2.5 flex items-end gap-3 shrink-0"
+                {/* Input bar — WhatsApp Web. Smile button toggles an inline
+                    emoji picker; paperclip removed (file upload not wired). */}
+                <div className="px-4 py-2.5 flex items-end gap-3 shrink-0 relative"
                   style={{ background: WA_PANEL }}>
+                  {/* Emoji picker popup — anchored above the smile button. */}
+                  {emojiOpen && (
+                    <div
+                      ref={emojiPickerRef}
+                      style={{
+                        position: "absolute",
+                        bottom: 56,
+                        left: 12,
+                        zIndex: 30,
+                        background: "#fff",
+                        borderRadius: 14,
+                        boxShadow: "0 12px 36px rgba(11,20,26,0.18), 0 0 0 0.5px rgba(11,20,26,0.10)",
+                        padding: 10,
+                        display: "grid",
+                        gridTemplateColumns: "repeat(6, 32px)",
+                        gap: 4,
+                        maxWidth: "calc(100% - 24px)",
+                        boxSizing: "content-box",
+                      }}
+                    >
+                      {EMOJI_PICKER.map((emo) => (
+                        <button
+                          key={emo}
+                          onClick={() => insertEmoji(emo)}
+                          style={{
+                            width: 32, height: 32, borderRadius: 8, border: "none",
+                            background: "transparent", cursor: "pointer",
+                            fontSize: 20, padding: 0, lineHeight: 1,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            transition: "background 120ms",
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "#F0F2F5"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                        >
+                          {emo}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <button
-                    onClick={() => setMessageContent((c) => c + "🙂")}
+                    onClick={() => setEmojiOpen((o) => !o)}
                     className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-[rgba(11,20,26,0.06)]"
-                    style={{ cursor: "pointer" }}
-                    aria-label="Emoji">
-                    <Smile size={22} color={WA_TEXT_MUTED} strokeWidth={2} />
-                  </button>
-                  <button
-                    onClick={() => toast.info("Attachments coming soon")}
-                    className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-[rgba(11,20,26,0.06)]"
-                    style={{ cursor: "pointer" }}
-                    aria-label="Attach">
-                    <Paperclip size={20} color={WA_TEXT_MUTED} strokeWidth={2} />
+                    style={{ cursor: "pointer", background: emojiOpen ? "rgba(11,20,26,0.08)" : undefined }}
+                    aria-label="Emoji"
+                    aria-expanded={emojiOpen}>
+                    <Smile size={22} color={emojiOpen ? WA_TEAL_D : WA_TEXT_MUTED} strokeWidth={2} />
                   </button>
                   <div className="flex-1 rounded-[10px]" style={{ background: "#fff" }}>
                     <textarea

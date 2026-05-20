@@ -1509,10 +1509,10 @@ const ImportantQuestions = () => {
                       </div>
                       <span
                         style={{
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: T2,
-                          letterSpacing: "-0.1px",
+                          fontSize: 12.5,
+                          fontWeight: 800,
+                          color: "#000000",
+                          letterSpacing: "-0.2px",
                           flex: 1,
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -1525,7 +1525,7 @@ const ImportantQuestions = () => {
                         style={{
                           fontSize: 10,
                           fontWeight: 700,
-                          color: T4,
+                          color: T2,
                           flexShrink: 0,
                           background: "#E0ECFF",
                           padding: "2px 7px",
@@ -1567,8 +1567,8 @@ const ImportantQuestions = () => {
                         </div>
                         <span style={{ fontSize: 11, fontWeight: 700, color: T2 }}>{teacherName}</span>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: T4 }}>
-                        <Clock size={11} strokeWidth={2.3} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: T3 }}>
+                        <Clock size={11} strokeWidth={2.3} color={T2} />
                         {formatRelativeTime(s.uploadedAt)}
                       </div>
                       {s.subject && (
@@ -1946,15 +1946,41 @@ const ImportantQuestions = () => {
 
       {/* Filter Row */}
       <div className="flex items-center gap-3 mt-5 flex-wrap">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
+        {/* Search input — icon in its own flex cell to the left so the
+            global `input { padding !important }` in index.css cannot push
+            text on top of the magnifier. Same proven pattern used in
+            Teachers / Syllabus / Students. */}
+        <div className="flex-1 min-w-[220px] flex items-center bg-white rounded-[14px]"
+          style={{ border: `0.5px solid ${dSEP}`, boxShadow: dSH }}>
+          <span
+            aria-hidden="true"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 44,
+              alignSelf: "stretch",
+              flexShrink: 0,
+              pointerEvents: "none",
+            }}
+          >
+            <Search size={17} color="rgba(0,85,255,0.78)" strokeWidth={2.5} />
+          </span>
           <input
             type="text"
             placeholder="Search by filename, title, or teacher…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-11 pl-11 pr-4 bg-white rounded-[14px] text-[13px] font-medium outline-none"
-            style={{ border: `0.5px solid ${dSEP}`, color: dT1, boxShadow: dSH, fontFamily: "inherit" }}
+            className="flex-1 min-w-0 bg-transparent outline-none custom-chrome"
+            style={{
+              "--cc-padding": "13px 16px 13px 0",
+              "--cc-font-size": "13px",
+              "--cc-font-weight": "500",
+              "--cc-line-height": "1.5",
+              color: dT1,
+              fontFamily: "inherit",
+              border: "none",
+            } as any}
           />
         </div>
         {[
@@ -2086,30 +2112,36 @@ const ImportantQuestions = () => {
                   </div>
                 </div>
 
-                {/* Body */}
+                {/* Body — all text bumped to near-black (#0A0F1F) with
+                    stronger weights so the card reads clearly without
+                    looking washed-out at small font sizes. The previous
+                    dT2/dT3 tones rendered slate-gray due to anti-aliasing
+                    on small text against a white card. */}
                 <div className="flex-1 p-5 flex flex-col gap-3">
-                  <div className="flex items-center gap-2 text-[11px] font-medium" style={{ color: dT3 }}>
-                    <FileText className="w-[12px] h-[12px] shrink-0" style={{ color: "rgba(0,85,255,0.5)" }} strokeWidth={2.4} />
-                    <span className="truncate">{s.fileName || "file.pdf"}</span>
-                    <span className="text-[10px] font-bold px-[7px] py-[2px] rounded-full shrink-0"
-                      style={{ background: dBG, color: dT2 }}>
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-[15px] h-[15px] shrink-0" style={{ color: dB1 }} strokeWidth={2.6} />
+                    <span className="truncate text-[14px]" style={{ color: "#000000", fontWeight: 800, letterSpacing: "-0.2px" }}>
+                      {s.fileName || "file.pdf"}
+                    </span>
+                    <span className="text-[10.5px] font-bold px-[9px] py-[3px] rounded-full shrink-0"
+                      style={{ background: "rgba(0,85,255,0.14)", color: "#0A0F1F", border: "0.5px solid rgba(0,85,255,0.28)" }}>
                       {formatFileSize(s.fileSize)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 text-[11px] font-medium" style={{ color: dT3 }}>
-                    <div className="w-5 h-5 rounded-[6px] flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                  <div className="flex items-center gap-2 text-[12.5px] font-semibold">
+                    <div className="w-[22px] h-[22px] rounded-[6px] flex items-center justify-center text-[9.5px] font-bold text-white shrink-0"
                       style={{ background: `linear-gradient(135deg, ${dB1}, ${dB2})` }}>
                       {(s.uploadedByName || "U").split(" ").map(w => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase()}
                     </div>
-                    <span className="truncate" style={{ color: dT2, fontWeight: 600 }}>{s.uploadedByName || "Unknown"}</span>
-                    <span className="text-[10px]" style={{ color: dT4 }}>·</span>
-                    <span>{formatRelativeTime(s.uploadedAt)}</span>
+                    <span className="truncate" style={{ color: "#0A0F1F", fontWeight: 700 }}>{s.uploadedByName || "Unknown"}</span>
+                    <span className="text-[12px]" style={{ color: "#3A4A7A", fontWeight: 700 }}>·</span>
+                    <span style={{ color: "#3A4A7A", fontWeight: 600 }}>{formatRelativeTime(s.uploadedAt)}</span>
                   </div>
                   {s.academicYear && (
                     <div>
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-[9px] py-[3px] rounded-full uppercase tracking-[0.08em]"
-                        style={{ background: "rgba(255,170,0,0.10)", color: "#884400", border: "0.5px solid rgba(255,170,0,0.22)" }}>
-                        <Calendar className="w-[11px] h-[11px]" strokeWidth={2.4} />
+                      <span className="inline-flex items-center gap-1.5 text-[10.5px] font-bold px-[10px] py-[4px] rounded-full uppercase tracking-[0.08em]"
+                        style={{ background: "rgba(255,170,0,0.16)", color: "#5A2D00", border: "0.5px solid rgba(255,170,0,0.38)" }}>
+                        <Calendar className="w-[11px] h-[11px]" strokeWidth={2.6} />
                         {s.academicYear}
                       </span>
                     </div>

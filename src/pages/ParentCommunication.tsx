@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Loader2, MessageSquare, Search, Send, User, ChevronLeft, CheckCheck, Users, Mail, Smile, Plus, MoreVertical, Sparkles, Check, Paperclip, Phone, Video, Lock } from "lucide-react";
+import { Loader2, MessageSquare, Search, Send, User, ChevronLeft, CheckCheck, Users, Mail, Smile, Plus, MoreVertical, Sparkles, Check, Phone, Video, Lock } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import CommunicationIntelligence from "@/components/CommunicationIntelligence";
 import { db } from "@/lib/firebase";
@@ -7,6 +7,15 @@ import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, wri
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
+
+// Common emojis surfaced in the inline picker. Kept short (32) so the
+// grid renders in a single ~280×120 popup; no library dependency.
+const EMOJI_PICKER = [
+  "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣",
+  "😊", "🙂", "😉", "😍", "🥰", "😘", "🤗", "🤔",
+  "😎", "🤩", "😢", "😭", "😡", "🙏", "👍", "👎",
+  "👏", "💪", "❤️", "🔥", "✨", "🎉", "🎯", "✅",
+];
 
 const ParentCommunication = () => {
   const { userData } = useAuth();
@@ -24,9 +33,24 @@ const ParentCommunication = () => {
   const [studentsLoading, setStudentsLoading] = useState(true);
   const [searchQuery, setSearchQuery]         = useState("");
   const [messageContent, setMessageContent]   = useState("");
+  // Emoji picker state for the chat input bar.
+  const [emojiOpen, setEmojiOpen]             = useState(false);
+  const emojiPickerRef                        = useRef<HTMLDivElement>(null);
   // Honor deep-link prefill exactly once — subsequent renders keep user edits.
   const deepLinkApplied = useRef(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Close the emoji picker when the user clicks anywhere outside the popup.
+  useEffect(() => {
+    if (!emojiOpen) return;
+    const onClickAway = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setEmojiOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClickAway);
+    return () => document.removeEventListener("mousedown", onClickAway);
+  }, [emojiOpen]);
 
   // After students load, if a deep-link target was passed, auto-open that
   // chat thread + prefill the draft message. Runs once per navigation.
@@ -79,7 +103,14 @@ const ParentCommunication = () => {
     const inBranch = (raw: any) => !branchId || !raw?.branchId || raw.branchId === branchId;
     return onSnapshot(query(collection(db, "principal_to_parent_notes"), ...c), snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(inBranch) as any[];
-      data.sort((a, b) => (a.timestamp?.toMillis?.() || 0) - (b.timestamp?.toMillis?.() || 0));
+      // Pending `serverTimestamp()` writes resolve to `null` locally until the
+      // server acks (~1-2s). The previous fallback (`|| 0`) sorted them to the
+      // TOP of the list (oldest position) — so a freshly-sent message
+      // disappeared from the visible bottom and only reappeared seconds later
+      // when the server timestamp resolved. Treating null as "now" keeps the
+      // optimistic copy pinned to the bottom where the principal expects it.
+      const now = Date.now();
+      data.sort((a, b) => (a.timestamp?.toMillis?.() ?? now) - (b.timestamp?.toMillis?.() ?? now));
       setAllMessages(data);
       setLoading(false);
     });
@@ -178,6 +209,10 @@ const ParentCommunication = () => {
         read: false,
       });
     } catch { toast.error("Failed to send."); setMessageContent(content); }
+  };
+
+  const insertEmoji = (emoji: string) => {
+    setMessageContent((c) => c + emoji);
   };
 
   const fmtTime = (ts: any) =>
@@ -343,9 +378,11 @@ const ParentCommunication = () => {
               <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", letterSpacing: "-0.3px", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {selectedStudent.studentName || "Student"}
               </div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,.65)", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
-                <div style={{ width: 5, height: 5, background: "#00EE88", borderRadius: "50%" }} />
-                Parent{selectedStudent.className ? ` · ${selectedStudent.className}` : ""} · Online
+              {/* Parent presence is not tracked — removed the green dot
+                  + "Online" suffix that was always shown regardless of
+                  actual state. */}
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,.65)", fontWeight: 500 }}>
+                Parent{selectedStudent.className ? ` · ${selectedStudent.className}` : ""}
               </div>
             </div>
             <button
@@ -575,15 +612,54 @@ const ParentCommunication = () => {
               display: "flex",
               gap: 8,
               alignItems: "center",
+              position: "relative",
             }}
           >
+            {/* Emoji picker popup — mobile variant, anchored above the
+                emoji button. max-width keeps it inside the chat panel
+                on narrow phone widths. */}
+            {emojiOpen && (
+              <div
+                ref={emojiPickerRef}
+                style={{
+                  position: "absolute",
+                  bottom: 58,
+                  left: 16,
+                  zIndex: 30,
+                  background: "#fff",
+                  borderRadius: 14,
+                  boxShadow: "0 12px 36px rgba(0,85,255,0.22), 0 0 0 0.5px rgba(0,85,255,0.12)",
+                  padding: 10,
+                  display: "grid",
+                  gridTemplateColumns: "repeat(6, 32px)",
+                  gap: 4,
+                  maxWidth: "calc(100% - 32px)",
+                  boxSizing: "content-box",
+                }}
+              >
+                {EMOJI_PICKER.map((emo) => (
+                  <button
+                    key={emo}
+                    onClick={() => insertEmoji(emo)}
+                    style={{
+                      width: 32, height: 32, borderRadius: 8, border: "none",
+                      background: "transparent", cursor: "pointer",
+                      fontSize: 20, padding: 0, lineHeight: 1,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    {emo}
+                  </button>
+                ))}
+              </div>
+            )}
             <button
-              onClick={() => setMessageContent((c) => c + "🙂")}
+              onClick={() => setEmojiOpen((o) => !o)}
               style={{
                 width: 36,
                 height: 36,
                 borderRadius: 12,
-                background: "#fff",
+                background: emojiOpen ? "rgba(0,85,255,.10)" : "#fff",
                 border: "0.5px solid rgba(0,85,255,.14)",
                 display: "flex",
                 alignItems: "center",
@@ -594,8 +670,9 @@ const ParentCommunication = () => {
                 fontSize: 18,
               }}
               aria-label="Emoji"
+              aria-expanded={emojiOpen}
             >
-              <Smile size={18} color={T3} strokeWidth={2} />
+              <Smile size={18} color={emojiOpen ? B1 : T3} strokeWidth={2} />
             </button>
             <input
               value={messageContent}
@@ -1233,11 +1310,19 @@ const ParentCommunication = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search or start a new chat..."
-              className="w-full outline-none"
+              className="w-full outline-none custom-chrome"
               style={{
-                padding: "10px 14px 10px 42px", background: "transparent",
-                borderRadius: 10, fontSize: 13, color: WA_TEXT, fontWeight: 400, fontFamily: "inherit",
-              }}
+                // .custom-chrome opts out of global `input { padding/font !important }`
+                // in index.css. Without it, the 12px/16px global padding overrides
+                // the carefully tuned 42px left padding and the magnifier icon
+                // visually overlaps the placeholder text.
+                "--cc-padding": "10px 14px 10px 42px",
+                "--cc-font-size": "13px",
+                "--cc-font-weight": "400",
+                "--cc-line-height": "1.4",
+                background: "transparent",
+                borderRadius: 10, color: WA_TEXT, fontFamily: "inherit",
+              } as any}
             />
           </div>
 
@@ -1399,9 +1484,13 @@ const ParentCommunication = () => {
                     <div className="text-[16px] font-medium truncate leading-tight" style={{ color: WA_TEXT, letterSpacing: "-0.2px" }}>
                       {selectedStudent.parentName || `Parent of ${selectedStudent.studentName || "Student"}`}
                     </div>
+                    {/* Subline: student + class. Was "· online" with a green
+                        dot, but parent presence is not tracked anywhere — the
+                        "online" claim was always shown regardless of reality,
+                        which confused principals (memory: ui-misleading
+                        presence indicator removed in favor of static info). */}
                     <div className="text-[12.5px] font-normal flex items-center gap-1.5 mt-[2px] truncate" style={{ color: WA_TEXT_MUTED }}>
-                      <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ background: WA_GREEN }} />
-                      <span className="truncate">{selectedStudent.studentName || "Student"}{selectedStudent.className ? ` · ${selectedStudent.className}` : ""} · online</span>
+                      <span className="truncate">{selectedStudent.studentName || "Student"}{selectedStudent.className ? ` · ${selectedStudent.className}` : ""}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -1519,22 +1608,68 @@ const ParentCommunication = () => {
                   <div ref={chatEndRef} />
                 </div>
 
-                {/* Input bar — WhatsApp Web */}
-                <div className="px-4 py-2.5 flex items-end gap-3 shrink-0"
+                {/* Input bar — WhatsApp Web. Only the emoji picker is
+                    functional; the paperclip / file-upload affordance was
+                    removed per product decision. */}
+                <div className="px-4 py-2.5 flex items-end gap-3 shrink-0 relative"
                   style={{ background: WA_PANEL }}>
+                  {/* Emoji picker popup — anchored above the smile button.
+                      Width auto-sizes to its grid content; max-width caps
+                      it so it never overflows the chat panel's right edge
+                      (was overflowing on narrow chat columns). */}
+                  {emojiOpen && (
+                    <div
+                      ref={emojiPickerRef}
+                      style={{
+                        position: "absolute",
+                        bottom: 56,
+                        left: 12,
+                        zIndex: 30,
+                        background: "#fff",
+                        borderRadius: 14,
+                        boxShadow: "0 12px 36px rgba(11,20,26,0.18), 0 0 0 0.5px rgba(11,20,26,0.10)",
+                        padding: 10,
+                        display: "grid",
+                        gridTemplateColumns: "repeat(6, 32px)",
+                        gap: 4,
+                        maxWidth: "calc(100% - 24px)",
+                        boxSizing: "content-box",
+                      }}
+                    >
+                      {EMOJI_PICKER.map((emo) => (
+                        <button
+                          key={emo}
+                          onClick={() => insertEmoji(emo)}
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 8,
+                            border: "none",
+                            background: "transparent",
+                            cursor: "pointer",
+                            fontSize: 20,
+                            padding: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            lineHeight: 1,
+                            transition: "background 120ms",
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "#F0F2F5"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                        >
+                          {emo}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <button
-                    onClick={() => setMessageContent((c) => c + "🙂")}
+                    onClick={() => setEmojiOpen((o) => !o)}
                     className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-[rgba(11,20,26,0.06)]"
-                    style={{ cursor: "pointer" }}
-                    aria-label="Emoji">
-                    <Smile size={22} color={WA_TEXT_MUTED} strokeWidth={2} />
-                  </button>
-                  <button
-                    onClick={() => toast.info("Attachments coming soon")}
-                    className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-[rgba(11,20,26,0.06)]"
-                    style={{ cursor: "pointer" }}
-                    aria-label="Attach">
-                    <Paperclip size={20} color={WA_TEXT_MUTED} strokeWidth={2} />
+                    style={{ cursor: "pointer", background: emojiOpen ? "rgba(11,20,26,0.08)" : undefined }}
+                    aria-label="Emoji"
+                    aria-expanded={emojiOpen}>
+                    <Smile size={22} color={emojiOpen ? WA_TEAL_D : WA_TEXT_MUTED} strokeWidth={2} />
                   </button>
                   <div className="flex-1 rounded-[10px]" style={{ background: "#fff" }}>
                     <textarea

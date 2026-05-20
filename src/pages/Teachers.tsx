@@ -890,8 +890,19 @@ const Teachers = () => {
                 placeholder="Search teachers..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full py-3 pr-[14px] pl-[40px] rounded-[14px] text-[13px] font-normal outline-none bg-white"
-                style={{ border: "0.5px solid rgba(0,85,255,0.12)", color: T1, boxShadow: SH, fontFamily: "inherit" }}
+                className="w-full rounded-[14px] outline-none bg-white custom-chrome"
+                style={{
+                  // .custom-chrome dodges the global `input { padding/font !important }`
+                  // rules in index.css so the magnifier icon doesn't overlap the text.
+                  "--cc-padding": "12px 14px 12px 40px",
+                  "--cc-font-size": "13px",
+                  "--cc-font-weight": "400",
+                  "--cc-line-height": "1.4",
+                  border: "0.5px solid rgba(0,85,255,0.12)",
+                  color: T1,
+                  boxShadow: SH,
+                  fontFamily: "inherit",
+                } as any}
               />
             </div>
             <select
@@ -1517,15 +1528,50 @@ const Teachers = () => {
 
       {/* Filter Row */}
       <div className="flex items-center gap-3 mt-5 flex-wrap">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
+        {/* Search input — flex row with the icon in its OWN cell to the
+            left of the input. The input itself sits in a separate flex
+            cell so the global `input { padding/font !important }` in
+            index.css cannot push text onto the icon (different boxes,
+            no overlap is physically possible). custom-chrome lets us
+            zero out the input's left padding (icon cell already has
+            44px of space) while leaving font/line-height at the
+            global defaults so the placeholder renders cleanly. */}
+        <div className="flex-1 min-w-[220px] flex items-center bg-white rounded-[14px]"
+          style={{ border: `0.5px solid ${dSEP}`, boxShadow: dSH }}>
+          <span
+            aria-hidden="true"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 44,
+              alignSelf: "stretch",
+              flexShrink: 0,
+              pointerEvents: "none",
+            }}
+          >
+            <Search size={17} color="rgba(0,85,255,0.78)" strokeWidth={2.5} />
+          </span>
           <input
             type="text"
             placeholder="Search teachers…"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full h-11 pl-11 pr-4 bg-white rounded-[14px] text-[13px] font-medium outline-none"
-            style={{ border: `0.5px solid ${dSEP}`, color: dT1, boxShadow: dSH, fontFamily: "inherit" }}
+            className="flex-1 min-w-0 bg-transparent outline-none custom-chrome"
+            style={{
+              // Container is `items-center` (was `items-stretch` which
+              // stretched the input to 44px and shifted the baseline).
+              // Natural-size input now: 13 + 13 vertical padding + 19.5
+              // line-box (13×1.5) = 45.5px — close to the 44px selects/
+              // view-toggle and the text sits dead-center vertically.
+              "--cc-padding": "13px 16px 13px 0",
+              "--cc-font-size": "13px",
+              "--cc-font-weight": "500",
+              "--cc-line-height": "1.5",
+              color: dT1,
+              fontFamily: "inherit",
+              border: "none",
+            } as any}
           />
         </div>
         {[
@@ -1538,12 +1584,13 @@ const Teachers = () => {
             className="custom-chrome bg-white rounded-[14px] outline-none cursor-pointer"
             style={{
               // .custom-chrome opts out of the global `select { ... !important }`
-              // rules in index.css. Values come via CSS custom props because
-              // inline styles can't beat external `!important` alone.
-              // Use BALANCED top/bottom padding (12px each) — `0 0` made
-              // Chrome strip the value text when `appearance: none` was on.
-              "--cc-padding": "12px 40px 12px 16px",
-              "--cc-line-height": "1.4",
+              // rules in index.css. Padding bumped 12→13 vertical so
+              // descenders like the "j" in "Subjects" have room to render
+              // (was clipping at the bottom). Line-height 1.5 (the global
+              // default) matches the search input's baseline so all four
+              // filter-row boxes share the same visual baseline.
+              "--cc-padding": "13px 40px 13px 16px",
+              "--cc-line-height": "1.5",
               "--cc-font-size": "13px",
               "--cc-font-weight": "600",
               // Triple-vendor appearance reset (Tailwind's `appearance-none`
@@ -1796,64 +1843,12 @@ const Teachers = () => {
                 className="bg-white rounded-[20px] p-5 cursor-pointer group relative overflow-hidden transition-transform hover:scale-[1.02]"
                 style={{ boxShadow: dSH_LG, border: `0.5px solid ${dSEP}` }}>
 
-                {/* Hover actions — each button uses a tinted background that
-                    matches its action color so the icon is identifiable even
-                    at 16px (outline icons on plain white were rendering as
-                    "empty boxes" against the card and looked broken).
-                    pointer-events-none in the hidden state prevents the
-                    container from accidentally intercepting clicks or
-                    sticking visible after focus events.
-                    Hidden during edit mode so the Save/Cancel buttons next
-                    to the input have room to render unobscured. */}
-                {editingId !== t.id && (
-                <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-10">
-                  <button onClick={e => { e.stopPropagation(); handleOpenRoster(t); }}
-                    className="w-8 h-8 rounded-[10px] flex items-center justify-center hover:scale-110 transition-transform"
-                    style={{
-                      background: "rgba(0,85,255,0.10)",
-                      border: "0.5px solid rgba(0,85,255,0.22)",
-                      boxShadow: dSH,
-                    }}
-                    title="View Roster">
-                    <Eye size={16} strokeWidth={2.6} color={dB1} />
-                  </button>
-                  <button onClick={e => { e.stopPropagation(); handleTogglePrimary(t); }}
-                    className="w-8 h-8 rounded-[10px] flex items-center justify-center hover:scale-110 transition-transform"
-                    style={{
-                      background: t.isPrimarySchool ? "rgba(255,170,0,0.22)" : "rgba(255,170,0,0.10)",
-                      border: `0.5px solid ${t.isPrimarySchool ? "rgba(255,170,0,0.40)" : "rgba(255,170,0,0.22)"}`,
-                      boxShadow: dSH,
-                    }}
-                    title={t.isPrimarySchool ? "Primary school" : "Mark as primary"}>
-                    <Star
-                      size={16}
-                      strokeWidth={2.6}
-                      color={dGOLD}
-                      fill={t.isPrimarySchool ? dGOLD : "none"}
-                    />
-                  </button>
-                  <button onClick={e => { e.stopPropagation(); handleStartEdit(t); }}
-                    className="w-8 h-8 rounded-[10px] flex items-center justify-center hover:scale-110 transition-transform"
-                    style={{
-                      background: "rgba(255,136,0,0.10)",
-                      border: "0.5px solid rgba(255,136,0,0.22)",
-                      boxShadow: dSH,
-                    }}
-                    title="Edit Name">
-                    <Edit3 size={16} strokeWidth={2.6} color={dORANGE} />
-                  </button>
-                  <button onClick={e => { e.stopPropagation(); handleDeleteTeacher(t.id, t.name); }}
-                    className="w-8 h-8 rounded-[10px] flex items-center justify-center hover:scale-110 transition-transform"
-                    style={{
-                      background: "rgba(255,51,85,0.10)",
-                      border: "0.5px solid rgba(255,51,85,0.22)",
-                      boxShadow: dSH,
-                    }}
-                    title="Archive">
-                    <Trash2 size={16} strokeWidth={2.6} color={dRED} />
-                  </button>
-                </div>
-                )}
+                {/* Hover actions used to live here as `absolute top-3 right-3`
+                    and overlapped the teacher's name on narrow cards (4-col
+                    grid + long names like "moeimajaaz"). Moved into the
+                    Status row below where they share horizontal space with
+                    the status badge — no more overlap, layout is predictable.
+                    See: render block right after the Status Badge. */}
 
                 {/* Avatar row */}
                 <div className="flex items-center gap-3 mb-4">
@@ -1933,13 +1928,49 @@ const Teachers = () => {
                   </div>
                 </div>
 
-                {/* Status Badge */}
-                <div className="mt-4">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-[5px] rounded-full text-[10px] font-bold uppercase tracking-[0.08em]"
+                {/* Status Badge + hover-revealed action buttons. Buttons sit
+                    on the right side of this footer row instead of being
+                    absolute-positioned over the avatar/name — fixes the
+                    overlap bug where icons hid the teacher name on hover. */}
+                <div className="mt-4 flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-[5px] rounded-full text-[10px] font-bold uppercase tracking-[0.08em] shrink-0"
                     style={{ background: chip.bg, color: chip.color, border: `0.5px solid ${chip.border}` }}>
                     <span className="w-[6px] h-[6px] rounded-full" style={{ background: chip.color }} />
                     {t.status}
                   </span>
+                  {editingId !== t.id && (
+                    <div className="flex gap-1.5 shrink-0 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity"
+                      onClick={e => e.stopPropagation()}>
+                      <button onClick={() => handleOpenRoster(t)}
+                        className="w-8 h-8 rounded-[10px] flex items-center justify-center hover:scale-110 transition-transform"
+                        style={{ background: "rgba(0,85,255,0.10)", border: "0.5px solid rgba(0,85,255,0.22)", boxShadow: dSH }}
+                        title="View Roster">
+                        <Eye size={16} strokeWidth={2.6} color={dB1} />
+                      </button>
+                      <button onClick={() => handleTogglePrimary(t)}
+                        className="w-8 h-8 rounded-[10px] flex items-center justify-center hover:scale-110 transition-transform"
+                        style={{
+                          background: t.isPrimarySchool ? "rgba(255,170,0,0.22)" : "rgba(255,170,0,0.10)",
+                          border: `0.5px solid ${t.isPrimarySchool ? "rgba(255,170,0,0.40)" : "rgba(255,170,0,0.22)"}`,
+                          boxShadow: dSH,
+                        }}
+                        title={t.isPrimarySchool ? "Primary school" : "Mark as primary"}>
+                        <Star size={16} strokeWidth={2.6} color={dGOLD} fill={t.isPrimarySchool ? dGOLD : "none"} />
+                      </button>
+                      <button onClick={() => handleStartEdit(t)}
+                        className="w-8 h-8 rounded-[10px] flex items-center justify-center hover:scale-110 transition-transform"
+                        style={{ background: "rgba(255,136,0,0.10)", border: "0.5px solid rgba(255,136,0,0.22)", boxShadow: dSH }}
+                        title="Edit Name">
+                        <Edit3 size={16} strokeWidth={2.6} color={dORANGE} />
+                      </button>
+                      <button onClick={() => handleDeleteTeacher(t.id, t.name)}
+                        className="w-8 h-8 rounded-[10px] flex items-center justify-center hover:scale-110 transition-transform"
+                        style={{ background: "rgba(255,51,85,0.10)", border: "0.5px solid rgba(255,51,85,0.22)", boxShadow: dSH }}
+                        title="Archive">
+                        <Trash2 size={16} strokeWidth={2.6} color={dRED} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );

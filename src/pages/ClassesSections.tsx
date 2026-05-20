@@ -807,15 +807,15 @@ const ClassesSections = () => {
                     </div>
                     <div className="space-y-1.5 text-[11px]">
                       <div className="flex justify-between">
-                        <span className="text-slate-400 font-medium">Sections</span>
+                        <span className="text-slate-600 font-medium">Sections</span>
                         <span className="font-black text-slate-900">{g.sections}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400 font-medium">Students</span>
+                        <span className="text-slate-600 font-medium">Students</span>
                         <span className="font-black text-slate-900">{g.students}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400 font-medium">Avg Attendance</span>
+                        <span className="text-slate-600 font-medium">Avg Attendance</span>
                         <span className={`font-black ${
                           g.avgAttendance === null ? "text-slate-300"
                           : g.avgAttendance >= 85 ? "text-green-600"
@@ -826,7 +826,7 @@ const ClassesSections = () => {
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400 font-medium">Health Score</span>
+                        <span className="text-slate-600 font-medium">Health Score</span>
                         <span className={`font-black ${healthColor(g.healthScore)}`}>
                           {g.healthScore !== null ? `${g.healthScore}/100` : "—"}
                         </span>
@@ -977,7 +977,16 @@ const ClassesSections = () => {
                               </button>
                               <button
                                 onClick={() => setSelectedSection(cls)}
-                                className="px-5 py-2 rounded-xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-wider hover:bg-[#1e3a8a] transition-colors shadow-sm"
+                                className="px-5 py-2 rounded-xl text-white text-[11px] font-black uppercase tracking-wider transition-transform hover:scale-[1.04]"
+                                style={{
+                                  // Matches the active sidebar item color
+                                  // (`bg-[#1e3a8a]` in AppSidebar.tsx) so VIEW
+                                  // buttons feel like part of the navigation
+                                  // family. Was slate-900 (black) → briefly
+                                  // violet → now anchored to brand sidebar blue.
+                                  background: "linear-gradient(135deg, #1e3a8a 0%, #2447A8 100%)",
+                                  boxShadow: "0 4px 14px rgba(30,58,138,0.32)",
+                                }}
                               >
                                 View
                               </button>

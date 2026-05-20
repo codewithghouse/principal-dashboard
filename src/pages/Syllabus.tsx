@@ -1950,15 +1950,41 @@ const Syllabus = () => {
 
       {/* Filter Row */}
       <div className="flex items-center gap-3 mt-5 flex-wrap">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "rgba(0,85,255,0.42)" }} strokeWidth={2.2} />
+        {/* Search input — icon in its own flex cell to the left of the
+            input so the global `input { padding !important }` in index.css
+            cannot push text on top of the magnifier. Same proven pattern
+            used in Teachers / Students / StudentIntelligence. */}
+        <div className="flex-1 min-w-[220px] flex items-center bg-white rounded-[14px]"
+          style={{ border: `0.5px solid ${dSEP}`, boxShadow: dSH }}>
+          <span
+            aria-hidden="true"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 44,
+              alignSelf: "stretch",
+              flexShrink: 0,
+              pointerEvents: "none",
+            }}
+          >
+            <Search size={17} color="rgba(0,85,255,0.78)" strokeWidth={2.5} />
+          </span>
           <input
             type="text"
             placeholder="Search by filename, title, or teacher…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-11 pl-11 pr-4 bg-white rounded-[14px] text-[13px] font-medium outline-none"
-            style={{ border: `0.5px solid ${dSEP}`, color: dT1, boxShadow: dSH, fontFamily: "inherit" }}
+            className="flex-1 min-w-0 bg-transparent outline-none custom-chrome"
+            style={{
+              "--cc-padding": "13px 16px 13px 0",
+              "--cc-font-size": "13px",
+              "--cc-font-weight": "500",
+              "--cc-line-height": "1.5",
+              color: dT1,
+              fontFamily: "inherit",
+              border: "none",
+            } as any}
           />
         </div>
         {[
@@ -1970,11 +1996,14 @@ const Syllabus = () => {
             onChange={(e) => f.set(e.target.value)}
             className="custom-chrome bg-white rounded-[14px] outline-none cursor-pointer"
             style={{
-              "--cc-padding": "12px 40px 12px 16px",
-              "--cc-line-height": "1.4",
+              // Padding bumped 12→13 vertical (descender room) and
+              // min-width 160→180 so the open dropdown popup doesn't
+              // visually exceed the closed select chrome.
+              "--cc-padding": "13px 40px 13px 16px",
+              "--cc-line-height": "1.5",
               "--cc-font-size": "13px",
               "--cc-font-weight": "600",
-              minWidth: 160,
+              minWidth: 180,
               border: `0.5px solid ${dSEP}`,
               color: dT2,
               boxShadow: dSH,
@@ -1987,8 +2016,15 @@ const Syllabus = () => {
               backgroundRepeat: "no-repeat",
               backgroundPosition: "right 14px center",
             } as any}>
-            <option value="" style={{ color: "#000" }}>{f.all}</option>
-            {f.opts.map((o: string) => <option key={o} value={o} style={{ color: "#000" }}>{o}</option>)}
+            {/* Options get inline padding/font-size so the open dropdown
+                popup rows have a similar visual weight to the closed
+                chrome (browser support varies — Firefox respects it,
+                Chrome/Safari partially). Without these the popup rows
+                look noticeably more compact than the closed select. */}
+            <option value="" style={{ color: "#001040", padding: "10px 14px", fontSize: 13, fontWeight: 500 }}>{f.all}</option>
+            {f.opts.map((o: string) => (
+              <option key={o} value={o} style={{ color: "#001040", padding: "10px 14px", fontSize: 13, fontWeight: 500 }}>{o}</option>
+            ))}
           </select>
         ))}
       </div>
