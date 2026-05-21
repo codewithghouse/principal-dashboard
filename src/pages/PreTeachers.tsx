@@ -118,11 +118,11 @@ const buildPpDetector = (levelNames: string[]) => {
   };
 };
 
-// Configurable per env so a new Vercel deploy doesn't require a code edit.
-// Live deployment URL for the pre-primary-teacher-dashboard.
-const PRE_PRIMARY_DASHBOARD_URL =
-  (import.meta as any).env?.VITE_PREPRIMARY_DASHBOARD_URL ||
-  "https://pre-primary-teacher.vercel.app";
+// Hardcoded inline like the other dashboards' invite emails — matches the
+// K-12 Teachers.tsx pattern (which hardcodes teacher-dashboard-ochre.vercel.app
+// directly in the email HTML). Update this constant when the deployment URL
+// changes.
+const PRE_PRIMARY_DASHBOARD_URL = "https://pre-primary-teacher.vercel.app";
 
 // ─── Component ────────────────────────────────────────────────────────────
 const PreTeachers = () => {
