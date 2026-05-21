@@ -394,6 +394,12 @@ const PreStudents = () => {
           rollNo: rollNoNum,
           parentName: form.parentName.trim() || "",
           parentEmail: parentEmail || "",
+          // Mirror parentEmail into `email` so syncUserClaimsV2 (which
+          // recognises K-12 parents via students.email) also recognises
+          // pre-primary parents. Pre-primary kids don't have their own
+          // email at 3-6 yrs, so reusing the field is safe + matches the
+          // K-12 parent-dashboard auth pattern.
+          email: parentEmail || "",
           parentPhone: form.parentPhone.trim() || "",
           allergies: allergyList,
           medical: form.medical.trim() || "",
@@ -459,6 +465,8 @@ const PreStudents = () => {
           rollNo: rollNoNum,
           parentName: form.parentName.trim() || "",
           parentEmail: parentEmail || "",
+          // Keep `email` mirrored — see note in create flow above.
+          email: parentEmail || "",
           parentPhone: form.parentPhone.trim() || "",
           allergies: allergyList,
           medical: form.medical.trim() || "",
