@@ -17,7 +17,7 @@
  *   - teachers.stage === "pre_primary"  (canonical)
  *   - OR teachers.assignedClass contains Playgroup/Nursery/LKG/UKG (legacy fallback)
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   GraduationCap,
   Sprout,
@@ -26,11 +26,15 @@ import {
   Plus,
   Upload,
   Loader2,
-  X,
   Activity,
   CalendarCheck,
   Star,
   CheckCircle,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  Settings2,
 } from "lucide-react";
 import {
   Dialog,
@@ -47,40 +51,78 @@ import { db } from "@/lib/firebase";
 import {
   collection,
   doc,
+  getDocs,
   onSnapshot,
   query,
   serverTimestamp,
+  setDoc,
+  updateDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
 import { sendGenericInviteEmail } from "@/lib/resend";
 import { useAuth } from "@/lib/AuthContext";
 
-// ─── Constants ────────────────────────────────────────────────────────────
-const LEVELS = ["Playgroup", "Nursery", "LKG", "UKG"] as const;
-type Level = (typeof LEVELS)[number];
+// ─── Types + constants ────────────────────────────────────────────────────
+// Default levels — seeded once per school on first visit. After that, the
+// principal can add / rename / soft-delete via the "Manage levels" dialog.
+const DEFAULT_LEVELS: Array<{ key: string; name: string; order: number }> = [
+  { key: "playgroup", name: "Playgroup", order: 10 },
+  { key: "nursery", name: "Nursery", order: 20 },
+  { key: "lkg", name: "LKG", order: 30 },
+  { key: "ukg", name: "UKG", order: 40 },
+];
 
-const PP_TOKENS = ["playgroup", "nursery", "lkg", "ukg"];
+interface ClassLevel {
+  id: string;
+  schoolId: string;
+  name: string;
+  order: number;
+  active: boolean;
+  isDefault?: boolean;
+  createdAt?: any;
+}
 
-const isPrePrimary = (teacher: any): boolean => {
-  if (teacher?.stage === "pre_primary") return true;
-  const lc = String(teacher?.assignedClass ?? "").toLowerCase();
-  return PP_TOKENS.some((tok) => lc.includes(tok));
-};
-
-const detectLevel = (assignedClass?: string): Level | "" => {
-  const lc = String(assignedClass ?? "").toLowerCase();
-  if (lc.includes("playgroup")) return "Playgroup";
-  if (lc.includes("nursery")) return "Nursery";
-  if (lc.includes("lkg")) return "LKG";
-  if (lc.includes("ukg")) return "UKG";
-  return "";
+// "Looks like pre-primary" — used to filter teachers from the shared
+// `teachers` collection. Combines the canonical `stage` field with a token
+// match across the school's CURRENT level names + the legacy default set
+// (so renaming a level doesn't orphan old teachers).
+const buildPpDetector = (levelNames: string[]) => {
+  const tokens = [
+    ...DEFAULT_LEVELS.map((l) => l.key), // legacy defaults always match
+    ...levelNames.map((n) => n.toLowerCase()),
+  ];
+  return {
+    isPrePrimary: (teacher: any): boolean => {
+      if (teacher?.stage === "pre_primary") return true;
+      const lc = String(teacher?.assignedClass ?? "").toLowerCase();
+      return tokens.some((tok) => tok && lc.includes(tok));
+    },
+    detectLevel: (assignedClass?: string): string => {
+      const lc = String(assignedClass ?? "").toLowerCase();
+      // Prefer the longest match so "Pre-Nursery" wins over "Nursery"
+      const candidates = [...tokens].sort((a, b) => b.length - a.length);
+      for (const tok of candidates) {
+        if (tok && lc.includes(tok)) {
+          // Return the canonical display name (look up first in current levels,
+          // fall back to title-cased token).
+          const match = levelNames.find((n) => n.toLowerCase() === tok);
+          if (match) return match;
+          const defMatch = DEFAULT_LEVELS.find((d) => d.key === tok);
+          if (defMatch) return defMatch.name;
+          return tok.charAt(0).toUpperCase() + tok.slice(1);
+        }
+      }
+      return "";
+    },
+  };
 };
 
 // Configurable per env so a new Vercel deploy doesn't require a code edit.
+// Live deployment URL for the pre-primary-teacher-dashboard.
 const PRE_PRIMARY_DASHBOARD_URL =
   (import.meta as any).env?.VITE_PREPRIMARY_DASHBOARD_URL ||
-  "https://pre-primary-teacher-dashboard.vercel.app";
+  "https://pre-primary-teacher.vercel.app";
 
 // ─── Component ────────────────────────────────────────────────────────────
 const PreTeachers = () => {
@@ -92,9 +134,13 @@ const PreTeachers = () => {
   const [teachers, setTeachers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Class levels — Firestore-backed, school-scoped, principal-editable
+  const [levels, setLevels] = useState<ClassLevel[]>([]);
+  const [levelsLoading, setLevelsLoading] = useState(true);
+
   // Filters / search
   const [search, setSearch] = useState("");
-  const [levelFilter, setLevelFilter] = useState<"" | Level>("");
+  const [levelFilter, setLevelFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
   // Invite dialog
@@ -102,24 +148,41 @@ const PreTeachers = () => {
   const [inviteForm, setInviteForm] = useState({
     name: "",
     email: "",
-    level: "UKG" as Level,
+    level: "",
     section: "A",
   });
   const [isSending, setIsSending] = useState(false);
 
+  // "Add custom level" inline input (inside invite dialog)
+  const [showCustomLevelInput, setShowCustomLevelInput] = useState(false);
+  const [customLevelDraft, setCustomLevelDraft] = useState("");
+
+  // Manage levels dialog state
+  const [isLevelManagerOpen, setIsLevelManagerOpen] = useState(false);
+  const [renamingLevelId, setRenamingLevelId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+
+  // Token-based pre-primary detection (rebuilt when levels change so a newly
+  // created custom level instantly classifies teachers correctly).
+  const { isPrePrimary, detectLevel } = useMemo(
+    () => buildPpDetector(levels.map((l) => l.name)),
+    [levels]
+  );
+
   // Real-time teacher fetch (scoped by school) — filter pre-primary
-  // client-side to keep the query simple + use existing indexes.
+  // client-side to keep the query simple + use existing indexes. We refilter
+  // whenever the levels list changes so newly-added custom levels classify
+  // the right teachers as pre-primary.
+  const [allTeachers, setAllTeachers] = useState<any[]>([]);
+
   useEffect(() => {
     if (!schoolId) return;
     setLoading(true);
 
-    const constraints = [where("schoolId", "==", schoolId)] as const;
     const unsub = onSnapshot(
-      query(collection(db, "teachers"), ...constraints),
+      query(collection(db, "teachers"), where("schoolId", "==", schoolId)),
       (snap) => {
-        const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        const pp = all.filter(isPrePrimary);
-        setTeachers(pp);
+        setAllTeachers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
         setLoading(false);
       },
       (err) => {
@@ -130,6 +193,66 @@ const PreTeachers = () => {
 
     return () => unsub();
   }, [schoolId]);
+
+  // Reclassify when teacher list or levels change. Always exclude archived
+  // teachers from the active directory (mirrors K-12 Teachers.tsx).
+  useEffect(() => {
+    setTeachers(
+      allTeachers.filter((t) => t.status !== "Archived" && isPrePrimary(t))
+    );
+  }, [allTeachers, isPrePrimary]);
+
+  // Subscribe to school's configurable class levels. Seeds the 4 defaults
+  // on first visit (idempotent via deterministic doc IDs).
+  useEffect(() => {
+    if (!schoolId) return;
+    setLevelsLoading(true);
+
+    const unsub = onSnapshot(
+      query(
+        collection(db, "pp_class_levels"),
+        where("schoolId", "==", schoolId),
+        where("active", "==", true)
+      ),
+      async (snap) => {
+        const list = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() } as ClassLevel)
+        );
+        list.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+
+        if (list.length === 0 && userData) {
+          // No levels yet for this school → seed defaults once.
+          try {
+            await seedDefaultLevels(schoolId, userData.id || userData.uid);
+          } catch (err) {
+            console.error("[PreTeachers] seed defaults failed:", err);
+          }
+          // Listener will fire again with the seeded docs; don't setLevels here.
+          return;
+        }
+
+        setLevels(list);
+        setLevelsLoading(false);
+
+        // If the current invite-form level was deleted, reset it
+        setInviteForm((prev) => {
+          if (prev.level && !list.some((l) => l.name === prev.level)) {
+            return { ...prev, level: list[0]?.name || "" };
+          }
+          if (!prev.level && list[0]) {
+            return { ...prev, level: list[0].name };
+          }
+          return prev;
+        });
+      },
+      (err) => {
+        console.error("[PreTeachers] levels fetch failed:", err);
+        setLevelsLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, [schoolId, userData]);
 
   // Filtered + searched
   const filtered = useMemo(() => {
@@ -147,7 +270,7 @@ const PreTeachers = () => {
       }
       return true;
     });
-  }, [teachers, search, levelFilter, statusFilter]);
+  }, [teachers, search, levelFilter, statusFilter, detectLevel]);
 
   // Counters for hero + stat cards
   const stats = useMemo(() => {
@@ -172,6 +295,10 @@ const PreTeachers = () => {
       toast.error("Name and email are required.");
       return;
     }
+    if (!level) {
+      toast.error("Please pick a class level (or add a custom one).");
+      return;
+    }
     const cleanEmail = email.trim().toLowerCase();
     const cleanSection = section.trim().toUpperCase() || "A";
     const className = `${level}-${cleanSection}`;
@@ -189,7 +316,17 @@ const PreTeachers = () => {
       const teacherRef = doc(collection(db, "teachers"));
       const assignmentRef = doc(collection(db, "teaching_assignments"));
 
-      // 1. Class
+      // 1. Class — features.diaperLog auto-enabled for "younger" levels
+      // (Playgroup, Pre-Nursery, Nursery, Toddler, etc.). Principal can
+      // toggle later from the class detail page (V3).
+      const lvlLC = level.toLowerCase();
+      const isYoungerLevel =
+        lvlLC.includes("play") ||
+        lvlLC.includes("nursery") ||
+        lvlLC.includes("toddler") ||
+        lvlLC.includes("pre-n") ||
+        lvlLC.includes("pre nursery");
+
       batch.set(classRef, {
         schoolId,
         branchId,
@@ -204,7 +341,7 @@ const PreTeachers = () => {
         studentCount: 0,
         academicYear: currentAcademicYear(),
         features: {
-          diaperLog: level === "Playgroup" || level === "Nursery",
+          diaperLog: isYoungerLevel,
           napTracker: true,
           photoStudio: true,
           pickupVerification: true,
@@ -281,6 +418,162 @@ const PreTeachers = () => {
       toast.error("Failed to invite teacher. Check permissions & try again.");
     } finally {
       setIsSending(false);
+    }
+  };
+
+  // ── Archive (soft-delete) teacher ──────────────────────────────────────
+  // Mirrors K-12 Teachers.tsx#handleDeleteTeacher: updates the teacher doc
+  // (status="Archived", isActive=false, archivedAt=now) AND deactivates all
+  // their teaching_assignments rows. Records stay intact for audit + re-
+  // invite (the K-12 invite path has a "restore archived" branch keyed off
+  // status === "Archived").
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+
+  const archiveTeacher = async (teacher: any) => {
+    if (!schoolId) {
+      toast.error("School context missing — re-login and try again.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Remove ${teacher.name} from the system?\n\nTheir records (class assignments, attendance writes, observations) stay intact. They can be re-invited later using the same email.`
+      )
+    )
+      return;
+
+    setArchivingId(teacher.id);
+    try {
+      // Pre-fetch all teaching_assignments rows for this teacher so we can
+      // deactivate them in the same batch — no orphan inconsistency.
+      const aSnap = await getDocs(
+        query(
+          collection(db, "teaching_assignments"),
+          where("schoolId", "==", schoolId),
+          where("teacherId", "==", teacher.id)
+        )
+      );
+
+      type Op = { ref: any; data: any };
+      const ops: Op[] = [
+        {
+          ref: doc(db, "teachers", teacher.id),
+          data: {
+            status: "Archived",
+            isActive: false,
+            archivedAt: serverTimestamp(),
+            _lastModifiedBy: userData?.id || userData?.uid || "",
+            _lastModifiedAt: serverTimestamp(),
+          },
+        },
+        ...aSnap.docs.map((d) => ({
+          ref: d.ref,
+          data: {
+            teacherId: null,
+            status: "inactive",
+            deactivatedAt: serverTimestamp(),
+            _lastModifiedBy: userData?.id || userData?.uid || "",
+            _lastModifiedAt: serverTimestamp(),
+          },
+        })),
+      ];
+
+      // Chunk at 450 ops/batch (Firestore caps at 500) — matches the K-12
+      // pattern, future-proofs against teachers with many assignments.
+      const CHUNK = 450;
+      for (let i = 0; i < ops.length; i += CHUNK) {
+        const slice = ops.slice(i, i + CHUNK);
+        const batch = writeBatch(db);
+        slice.forEach((op) => batch.update(op.ref, op.data));
+        await batch.commit();
+      }
+
+      toast.success(`${teacher.name} archived. Records stay intact.`);
+    } catch (err) {
+      console.error("[PreTeachers] archive failed:", err);
+      toast.error("Failed to archive teacher.");
+    } finally {
+      setArchivingId(null);
+    }
+  };
+
+  // ── Level management handlers ──────────────────────────────────────────
+  const addCustomLevel = async (rawName: string) => {
+    const name = rawName.trim();
+    if (!name) return;
+    if (!schoolId || !userData) {
+      toast.error("Sign-in lost. Refresh and try again.");
+      return;
+    }
+    // Reject duplicates (case-insensitive)
+    if (levels.some((l) => l.name.toLowerCase() === name.toLowerCase())) {
+      toast.error(`"${name}" already exists.`);
+      return;
+    }
+    const newRef = doc(collection(db, "pp_class_levels"));
+    const maxOrder = levels.reduce((m, l) => Math.max(m, l.order || 0), 0);
+    try {
+      await setDoc(newRef, {
+        schoolId,
+        name,
+        order: maxOrder + 10,
+        active: true,
+        isDefault: false,
+        createdAt: serverTimestamp(),
+        createdBy: userData.id || userData.uid || "",
+        _lastModifiedBy: userData.id || userData.uid || "",
+        _lastModifiedAt: serverTimestamp(),
+      });
+      toast.success(`"${name}" added`);
+      // If the invite form had no level selected, pre-select the new one
+      setInviteForm((prev) => (prev.level ? prev : { ...prev, level }));
+      setCustomLevelDraft("");
+      setShowCustomLevelInput(false);
+    } catch (err) {
+      console.error("[PreTeachers] addCustomLevel failed:", err);
+      toast.error("Could not add level — check permissions & try again.");
+    }
+  };
+
+  const renameLevel = async (levelId: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    if (levels.some((l) => l.id !== levelId && l.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error(`"${trimmed}" already exists.`);
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "pp_class_levels", levelId), {
+        name: trimmed,
+        _lastModifiedBy: userData?.id || userData?.uid || "",
+        _lastModifiedAt: serverTimestamp(),
+      });
+      toast.success("Renamed");
+      setRenamingLevelId(null);
+      setRenameDraft("");
+    } catch (err) {
+      console.error("[PreTeachers] renameLevel failed:", err);
+      toast.error("Rename failed.");
+    }
+  };
+
+  const deleteLevel = async (levelId: string, levelName: string) => {
+    // Soft-delete only. Existing teachers / classes that already use this
+    // level name keep their `assignedClass` — they're still discoverable via
+    // the legacy default-tokens matcher.
+    if (!window.confirm(
+      `Remove "${levelName}" from the picker?\n\nThis won't delete any existing teacher or class — they'll keep their current assigned class name. You're only removing it from the dropdown.`
+    )) return;
+    try {
+      await updateDoc(doc(db, "pp_class_levels", levelId), {
+        active: false,
+        deactivatedAt: serverTimestamp(),
+        _lastModifiedBy: userData?.id || userData?.uid || "",
+        _lastModifiedAt: serverTimestamp(),
+      });
+      toast.success(`"${levelName}" removed`);
+    } catch (err) {
+      console.error("[PreTeachers] deleteLevel failed:", err);
+      toast.error("Could not remove level.");
     }
   };
 
@@ -415,14 +708,14 @@ const PreTeachers = () => {
         </div>
         <select
           value={levelFilter}
-          onChange={(e) => setLevelFilter(e.target.value as "" | Level)}
+          onChange={(e) => setLevelFilter(e.target.value)}
           className="h-11 px-4 rounded-xl border bg-white text-sm font-semibold cursor-pointer min-w-[160px]"
           style={{ borderColor: "#E0E7FF", color: "#001040" }}
         >
           <option value="">All Levels</option>
-          {LEVELS.map((l) => (
-            <option key={l} value={l}>
-              {l}
+          {levels.map((l) => (
+            <option key={l.id} value={l.name}>
+              {l.name}
             </option>
           ))}
         </select>
@@ -472,7 +765,13 @@ const PreTeachers = () => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filtered.map((t) => (
-              <TeacherCard key={t.id} teacher={t} />
+              <TeacherCard
+                key={t.id}
+                teacher={t}
+                detectLevel={detectLevel}
+                onArchive={() => archiveTeacher(t)}
+                archiving={archivingId === t.id}
+              />
             ))}
           </div>
         )}
@@ -522,24 +821,107 @@ const PreTeachers = () => {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Class level</Label>
-              <div className="grid grid-cols-4 gap-2">
-                {LEVELS.map((lvl) => (
-                  <button
-                    key={lvl}
-                    type="button"
-                    onClick={() => setInviteForm((p) => ({ ...p, level: lvl }))}
-                    className="h-10 rounded-xl text-xs font-bold transition active:scale-95"
-                    style={
-                      inviteForm.level === lvl
-                        ? { background: "#0055FF", color: "#fff" }
-                        : { background: "#F4F7FE", color: "#001040", border: "1px solid #E0E7FF" }
-                    }
-                  >
-                    {lvl}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between">
+                <Label>Class level</Label>
+                <button
+                  type="button"
+                  onClick={() => setIsLevelManagerOpen(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold"
+                  style={{ color: "#0055FF" }}
+                >
+                  <Settings2 className="w-3 h-3" />
+                  Manage levels
+                </button>
               </div>
+              {levelsLoading ? (
+                <div className="h-10 flex items-center justify-center text-xs" style={{ color: "#5070B0" }}>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {levels.map((lvl) => (
+                    <button
+                      key={lvl.id}
+                      type="button"
+                      onClick={() =>
+                        setInviteForm((p) => ({ ...p, level: lvl.name }))
+                      }
+                      className="h-10 px-3 rounded-xl text-xs font-bold transition active:scale-95"
+                      style={
+                        inviteForm.level === lvl.name
+                          ? { background: "#0055FF", color: "#fff" }
+                          : {
+                              background: "#F4F7FE",
+                              color: "#001040",
+                              border: "1px solid #E0E7FF",
+                            }
+                      }
+                    >
+                      {lvl.name}
+                    </button>
+                  ))}
+                  {!showCustomLevelInput ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomLevelInput(true)}
+                      className="h-10 px-3 rounded-xl text-xs font-bold inline-flex items-center gap-1 border-2 border-dashed"
+                      style={{
+                        borderColor: "#0055FF",
+                        color: "#0055FF",
+                        background: "#fff",
+                      }}
+                    >
+                      <Plus className="w-3 h-3" />
+                      Custom
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1 h-10 px-2 rounded-xl border-2 bg-white" style={{ borderColor: "#0055FF" }}>
+                      <input
+                        autoFocus
+                        type="text"
+                        value={customLevelDraft}
+                        onChange={(e) => setCustomLevelDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addCustomLevel(customLevelDraft);
+                          } else if (e.key === "Escape") {
+                            setShowCustomLevelInput(false);
+                            setCustomLevelDraft("");
+                          }
+                        }}
+                        placeholder="e.g., Pre-Nursery"
+                        className="w-32 text-xs font-bold outline-none"
+                        style={{ color: "#001040" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => addCustomLevel(customLevelDraft)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-white"
+                        style={{ background: "#0055FF" }}
+                        title="Add"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCustomLevelInput(false);
+                          setCustomLevelDraft("");
+                        }}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center"
+                        style={{ background: "#F4F7FE", color: "#5070B0" }}
+                        title="Cancel"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              <p className="text-[11px]" style={{ color: "#5070B0" }}>
+                Different schools use different names. Add what your school calls it.
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -591,6 +973,159 @@ const PreTeachers = () => {
               </button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Manage Levels Dialog ──────────────────────────────────────── */}
+      <Dialog open={isLevelManagerOpen} onOpenChange={setIsLevelManagerOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings2 className="w-5 h-5" style={{ color: "#0055FF" }} />
+              Manage Class Levels
+            </DialogTitle>
+            <DialogDescription>
+              Rename or remove the class levels used in your school's invite
+              picker. Removing a level only hides it from the dropdown — existing
+              teachers + classes keep their current names.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            {levels.length === 0 && (
+              <p className="text-xs text-center py-4" style={{ color: "#5070B0" }}>
+                No levels yet.
+              </p>
+            )}
+            {levels.map((lvl) => {
+              const isRenaming = renamingLevelId === lvl.id;
+              return (
+                <div
+                  key={lvl.id}
+                  className="flex items-center gap-2 p-3 rounded-xl border"
+                  style={{ background: "#F4F7FE", borderColor: "#E0E7FF" }}
+                >
+                  {isRenaming ? (
+                    <>
+                      <input
+                        autoFocus
+                        type="text"
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            renameLevel(lvl.id, renameDraft);
+                          } else if (e.key === "Escape") {
+                            setRenamingLevelId(null);
+                            setRenameDraft("");
+                          }
+                        }}
+                        className="flex-1 px-3 py-1.5 rounded-lg border text-sm font-semibold outline-none"
+                        style={{ borderColor: "#0055FF", color: "#001040" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => renameLevel(lvl.id, renameDraft)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-white"
+                        style={{ background: "#0055FF" }}
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenamingLevelId(null);
+                          setRenameDraft("");
+                        }}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: "#fff", color: "#5070B0" }}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex-1">
+                        <p className="text-sm font-bold" style={{ color: "#001040" }}>
+                          {lvl.name}
+                        </p>
+                        {lvl.isDefault && (
+                          <p className="text-[10px] uppercase tracking-wider font-bold" style={{ color: "#5070B0" }}>
+                            Default
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenamingLevelId(lvl.id);
+                          setRenameDraft(lvl.name);
+                        }}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: "#fff", color: "#0055FF" }}
+                        title="Rename"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteLevel(lvl.id, lvl.name)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: "#FEE2E2", color: "#C92A2A" }}
+                        title="Remove"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+
+            <div className="pt-2 border-t mt-2" style={{ borderColor: "#E0E7FF" }}>
+              <p className="text-[10px] uppercase tracking-widest font-bold mb-2" style={{ color: "#5070B0" }}>
+                Add new level
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={customLevelDraft}
+                  onChange={(e) => setCustomLevelDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCustomLevel(customLevelDraft);
+                    }
+                  }}
+                  placeholder="e.g., Pre-Nursery, Junior KG, Toddler Group"
+                  className="flex-1 h-10 px-3 rounded-xl border bg-white text-sm outline-none focus:ring-2"
+                  style={{ borderColor: "#E0E7FF", color: "#001040" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => addCustomLevel(customLevelDraft)}
+                  disabled={!customLevelDraft.trim()}
+                  className="px-4 h-10 rounded-xl font-bold text-sm text-white inline-flex items-center gap-1 disabled:opacity-40"
+                  style={{ background: "#0055FF" }}
+                >
+                  <Plus className="w-4 h-4" />
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setIsLevelManagerOpen(false)}
+              className="px-4 py-2 rounded-xl font-semibold text-sm border-2"
+              style={{ borderColor: "#E0E7FF", color: "#5070B0" }}
+            >
+              Done
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -696,7 +1231,17 @@ function EmptyState({
   );
 }
 
-function TeacherCard({ teacher }: { teacher: any }) {
+function TeacherCard({
+  teacher,
+  detectLevel,
+  onArchive,
+  archiving,
+}: {
+  teacher: any;
+  detectLevel: (assignedClass?: string) => string;
+  onArchive: () => void;
+  archiving: boolean;
+}) {
   const initials = String(teacher.name || "T")
     .split(/\s+/)
     .map((s: string) => s[0])
@@ -723,8 +1268,27 @@ function TeacherCard({ teacher }: { teacher: any }) {
   const av = palette[hash % palette.length];
 
   return (
-    <div className="bg-white rounded-2xl p-4 hover:shadow-md transition">
-      <div className="flex items-start gap-3">
+    <div className="group relative bg-white rounded-2xl p-4 hover:shadow-md transition">
+      {/* Archive button — top-right, visible on hover, always visible on touch */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onArchive();
+        }}
+        disabled={archiving}
+        title="Archive teacher"
+        className="absolute top-2.5 right-2.5 w-8 h-8 rounded-lg flex items-center justify-center transition opacity-0 group-hover:opacity-100 focus:opacity-100 active:scale-95 disabled:opacity-50"
+        style={{ background: "#FEE2E2", color: "#C92A2A" }}
+      >
+        {archiving ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Trash2 className="w-3.5 h-3.5" />
+        )}
+      </button>
+
+      <div className="flex items-start gap-3 pr-8">
         <div
           className="w-12 h-12 rounded-xl flex items-center justify-center text-base font-black shrink-0"
           style={{ background: av.bg, color: av.fg }}
@@ -794,4 +1358,28 @@ function currentAcademicYear(): string {
     return `${year}-${(year + 1).toString().slice(-2)}`;
   }
   return `${year - 1}-${year.toString().slice(-2)}`;
+}
+
+/**
+ * Seed the 4 default class levels for a school. Idempotent via deterministic
+ * doc IDs (`${schoolId}_${levelKey}`) so concurrent first-load triggers from
+ * multiple principal sessions just overwrite with the same data.
+ */
+async function seedDefaultLevels(schoolId: string, principalUid: string) {
+  const batch = writeBatch(db);
+  DEFAULT_LEVELS.forEach((lvl) => {
+    const ref = doc(db, "pp_class_levels", `${schoolId}_${lvl.key}`);
+    batch.set(ref, {
+      schoolId,
+      name: lvl.name,
+      order: lvl.order,
+      active: true,
+      isDefault: true,
+      createdAt: serverTimestamp(),
+      createdBy: principalUid,
+      _lastModifiedBy: principalUid,
+      _lastModifiedAt: serverTimestamp(),
+    });
+  });
+  await batch.commit();
 }
