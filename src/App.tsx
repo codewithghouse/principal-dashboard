@@ -20,6 +20,7 @@ import Students from "./pages/Students";
 import RiskStudents from "./pages/RiskStudents";
 import ClassesSections from "./pages/ClassesSections";
 import Teachers from "./pages/Teachers";
+import PreTeachers from "./pages/PreTeachers";
 import Academics from "./pages/Academics";
 import Attendance from "./pages/Attendance";
 import Discipline from "./pages/Discipline";
@@ -126,6 +127,7 @@ const AppRoutes = () => {
           <Route path="/risk-students"        element={<RiskStudents />} />
           <Route path="/classes"              element={<ClassesSections />} />
           <Route path="/teachers"             element={<Teachers />} />
+          <Route path="/pre-teachers"         element={<PreTeachers />} />
           <Route path="/academics"            element={<Academics />} />
           <Route path="/syllabus"             element={<Syllabus />} />
           <Route path="/important-questions"  element={<ImportantQuestions />} />

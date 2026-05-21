@@ -27,7 +27,8 @@ import {
   DollarSign,
   Library,
   Trophy,
-  Sparkles
+  Sparkles,
+  Sprout
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -39,6 +40,7 @@ const PRINCIPAL_MENU = [
   { title: "Risk Students",          icon: AlertTriangle,   path: "/risk-students", badge: true },
   { title: "Classes & Sections",     icon: Monitor,         path: "/classes" },
   { title: "Teachers",               icon: GraduationCap,   path: "/teachers" },
+  { title: "Pre-Teachers",           icon: Sprout,          path: "/pre-teachers" },
   { title: "Academics",              icon: BookOpen,        path: "/academics" },
   { title: "Syllabus",               icon: Library,         path: "/syllabus" },
   { title: "Important Questions",    icon: BookOpen,        path: "/important-questions" },
