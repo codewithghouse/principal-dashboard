@@ -23,7 +23,12 @@ export interface RejectedEmailPayload {
   rejectReason?: string;
 }
 
-async function post(body: Record<string, unknown>) {
+// Status codes that are typically transient (Cloudflare edge / Resend
+// upstream hiccups). We auto-retry once on these — saves the user from
+// "Email provider error" toasts caused by ~1-minute flakes.
+const TRANSIENT_STATUSES = new Set([502, 503, 504, 520, 521, 522, 524]);
+
+async function postOnce(body: Record<string, unknown>) {
   const token = await auth.currentUser?.getIdToken();
   const response = await fetch("/api/send-email", {
     method: "POST",
@@ -34,8 +39,23 @@ async function post(body: Record<string, unknown>) {
     body: JSON.stringify(body),
   });
   const data = await response.json().catch(() => ({}));
+  return { response, data };
+}
+
+async function post(body: Record<string, unknown>) {
+  let { response, data } = await postOnce(body);
+  if (!response.ok && TRANSIENT_STATUSES.has(response.status)) {
+    // Brief backoff, then one retry. Sufficient for most Cloudflare 5xx blips.
+    await new Promise((r) => setTimeout(r, 800));
+    console.warn(
+      `[resend] transient ${response.status} — retrying once…`
+    );
+    ({ response, data } = await postOnce(body));
+  }
   if (!response.ok) {
-    throw new Error((data as any)?.error || `Failed to send email (${response.status})`);
+    throw new Error(
+      (data as any)?.error || `Failed to send email (${response.status})`
+    );
   }
   return data;
 }

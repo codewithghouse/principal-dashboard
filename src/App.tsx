@@ -21,7 +21,6 @@ import RiskStudents from "./pages/RiskStudents";
 import ClassesSections from "./pages/ClassesSections";
 import Teachers from "./pages/Teachers";
 import PreTeachers from "./pages/PreTeachers";
-import PreParents from "./pages/PreParents";
 import PreStudents from "./pages/PreStudents";
 import Academics from "./pages/Academics";
 import Attendance from "./pages/Attendance";
@@ -131,7 +130,6 @@ const AppRoutes = () => {
           <Route path="/teachers"             element={<Teachers />} />
           <Route path="/pre-teachers"         element={<PreTeachers />} />
           <Route path="/pre-students"         element={<PreStudents />} />
-          <Route path="/pre-parents"          element={<PreParents />} />
           <Route path="/academics"            element={<Academics />} />
           <Route path="/syllabus"             element={<Syllabus />} />
           <Route path="/important-questions"  element={<ImportantQuestions />} />

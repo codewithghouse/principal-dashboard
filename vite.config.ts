@@ -138,13 +138,31 @@ export default defineConfig(({ mode }) => {
                     }),
                   });
 
-                  const result = await response.json().catch(() => ({}));
+                  // Read raw text first so we can still log the body even when
+                  // Resend's edge (Cloudflare) returns an HTML error page that
+                  // doesn't parse as JSON — that's how 520s look.
+                  const rawText = await response.text();
+                  let result: any = {};
+                  try {
+                    result = rawText ? JSON.parse(rawText) : {};
+                  } catch {
+                    result = { _rawSnippet: rawText.slice(0, 400) };
+                  }
                   console.log("[EMAIL] Resend response status:", response.status);
-                  console.log("[EMAIL] Resend response:", JSON.stringify(result));
+                  console.log("[EMAIL] Resend response:", result);
 
                   res.setHeader("Content-Type", "application/json");
                   res.statusCode = response.status || 200;
-                  res.end(JSON.stringify(response.ok ? { success: true, id: result.id } : { error: result?.message || "Email provider error." }));
+                  res.end(
+                    JSON.stringify(
+                      response.ok
+                        ? { success: true, id: result.id }
+                        : {
+                            error: result?.message || result?._rawSnippet ||
+                              `Email provider error (${response.status}).`,
+                          }
+                    )
+                  );
                 } catch (err: any) {
                   console.error("[EMAIL] Middleware error:", err.message);
                   res.statusCode = 500;

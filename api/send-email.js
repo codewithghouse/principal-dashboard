@@ -124,10 +124,22 @@ export default async function handler(req, res) {
         html,
       }),
     });
-    const result = await response.json().catch(() => ({}));
+    // Read raw text first — Cloudflare 5xx pages come back as HTML, which
+    // .json() would silently turn into {} and hide the real cause.
+    const rawText = await response.text();
+    let result;
+    try { result = rawText ? JSON.parse(rawText) : {}; }
+    catch { result = { _rawSnippet: rawText.slice(0, 400) }; }
+
     if (response.ok) return res.status(200).json({ success: true, id: result.id });
     console.error("[principal send-email] Resend error:", response.status, result);
-    return res.status(502).json({ error: "Email provider error." });
+    // Propagate Resend's status (e.g. 520) so the client retry logic can
+    // distinguish transient vs hard failures. Also surface a useful error
+    // message — message from Resend's JSON if available, else the raw
+    // snippet, else a generic.
+    return res.status(response.status || 502).json({
+      error: result?.message || result?._rawSnippet || `Email provider error (${response.status}).`,
+    });
   } catch (err) {
     console.error("[principal send-email] Network error:", err);
     return res.status(500).json({ error: "Failed to send email." });

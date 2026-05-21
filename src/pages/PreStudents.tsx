@@ -32,6 +32,7 @@ import {
   Trash2,
   AlertTriangle,
   Save,
+  Mail,
 } from "lucide-react";
 import {
   Dialog,
@@ -148,6 +149,42 @@ const PreStudents = () => {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+
+  // Resend the parent invite email for a student who already has parentEmail
+  // on file. Also bumps inviteSentAt / inviteCount on the student doc so
+  // principal can see the trail.
+  const resendParentInvite = async (student: StudentRow) => {
+    if (!student.parentEmail) return;
+    setResendingId(student.id);
+    try {
+      const cls = ppClasses.find((c) => c.id === student.classId);
+      await sendParentInvite({
+        schoolName: userData?.schoolName,
+        parentEmail: student.parentEmail,
+        parentName: student.parentName || "",
+        childName: student.name || "",
+        className: cls?.name || student.className || "",
+      });
+      // Stamp the resend on the student doc (audit trail).
+      try {
+        const now = serverTimestamp();
+        const batch = writeBatch(db);
+        batch.update(doc(db, "students", student.id), {
+          inviteSentAt: now,
+          inviteCount: (Number(student.inviteCount) || 0) + 1,
+          _lastModifiedBy: userData?.id || userData?.uid || "",
+          _lastModifiedAt: now,
+        });
+        await batch.commit();
+      } catch (auditErr) {
+        // Don't fail the toast if just the audit-stamp failed.
+        console.warn("[PreStudents] audit-stamp failed:", auditErr);
+      }
+    } finally {
+      setResendingId(null);
+    }
+  };
 
   // Subscribe to classes
   useEffect(() => {
@@ -766,7 +803,9 @@ const PreStudents = () => {
                 student={s}
                 onEdit={() => openEditDialog(s)}
                 onArchive={() => archiveStudent(s)}
+                onResendInvite={() => resendParentInvite(s)}
                 archiving={archivingId === s.id}
+                resending={resendingId === s.id}
               />
             ))}
           </div>
@@ -1119,12 +1158,16 @@ function StudentCard({
   student,
   onEdit,
   onArchive,
+  onResendInvite,
   archiving,
+  resending,
 }: {
   student: StudentRow;
   onEdit: () => void;
   onArchive: () => void;
+  onResendInvite: () => void;
   archiving: boolean;
+  resending: boolean;
 }) {
   const initials = String(student.name || "?")
     .split(/\s+/)
@@ -1154,6 +1197,25 @@ function StudentCard({
     <div className="group relative bg-white rounded-2xl p-4 hover:shadow-md transition">
       {/* Top-right actions */}
       <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+        {student.parentEmail && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onResendInvite();
+            }}
+            disabled={resending}
+            title={`Resend invite to ${student.parentEmail}`}
+            className="w-7 h-7 rounded-lg flex items-center justify-center active:scale-95 disabled:opacity-50"
+            style={{ background: "#D1FAE5", color: "#00834D" }}
+          >
+            {resending ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Mail className="w-3 h-3" />
+            )}
+          </button>
+        )}
         <button
           type="button"
           onClick={(e) => {

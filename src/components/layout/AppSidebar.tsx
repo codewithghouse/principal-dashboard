@@ -29,7 +29,6 @@ import {
   Trophy,
   Sparkles,
   Sprout,
-  Baby,
   Backpack
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,7 +43,6 @@ const PRINCIPAL_MENU = [
   { title: "Teachers",               icon: GraduationCap,   path: "/teachers" },
   { title: "Pre-Teachers",           icon: Sprout,          path: "/pre-teachers" },
   { title: "Pre-Students",           icon: Backpack,        path: "/pre-students" },
-  { title: "Pre-Parents",            icon: Baby,            path: "/pre-parents" },
   { title: "Academics",              icon: BookOpen,        path: "/academics" },
   { title: "Syllabus",               icon: Library,         path: "/syllabus" },
   { title: "Important Questions",    icon: BookOpen,        path: "/important-questions" },
