@@ -22,6 +22,7 @@ import ClassesSections from "./pages/ClassesSections";
 import Teachers from "./pages/Teachers";
 import PreTeachers from "./pages/PreTeachers";
 import PreStudents from "./pages/PreStudents";
+import PreAnnouncements from "./pages/PreAnnouncements";
 import Academics from "./pages/Academics";
 import Attendance from "./pages/Attendance";
 import Discipline from "./pages/Discipline";
@@ -130,6 +131,7 @@ const AppRoutes = () => {
           <Route path="/teachers"             element={<Teachers />} />
           <Route path="/pre-teachers"         element={<PreTeachers />} />
           <Route path="/pre-students"         element={<PreStudents />} />
+          <Route path="/pre-announcements"    element={<PreAnnouncements />} />
           <Route path="/academics"            element={<Academics />} />
           <Route path="/syllabus"             element={<Syllabus />} />
           <Route path="/important-questions"  element={<ImportantQuestions />} />
