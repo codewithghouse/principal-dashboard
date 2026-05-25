@@ -30,7 +30,8 @@ import {
   Sparkles,
   Sprout,
   Backpack,
-  Megaphone
+  Megaphone,
+  MessageCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -45,6 +46,7 @@ const PRINCIPAL_MENU = [
   { title: "Pre-Teachers",           icon: Sprout,          path: "/pre-teachers" },
   { title: "Pre-Students",           icon: Backpack,        path: "/pre-students" },
   { title: "Pre-Notices",            icon: Megaphone,       path: "/pre-announcements" },
+  { title: "Pre-Messages",           icon: MessageCircle,   path: "/pre-messages" },
   { title: "Academics",              icon: BookOpen,        path: "/academics" },
   { title: "Syllabus",               icon: Library,         path: "/syllabus" },
   { title: "Important Questions",    icon: BookOpen,        path: "/important-questions" },
