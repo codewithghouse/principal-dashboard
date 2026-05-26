@@ -1062,23 +1062,55 @@ const Students = () => {
 
       {/* ── Bulk Upload Modal ────────────────────────────────────────────── */}
       {showBulkModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowBulkModal(false)} />
-          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
 
             {/* Header */}
             <div className="bg-emerald-700 px-6 py-5 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-                  <FileSpreadsheet className="w-4.5 h-4.5 text-white" />
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    background: "rgba(255,255,255,0.15)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <FileSpreadsheet size={18} color="#ffffff" />
                 </div>
                 <div>
                   <h2 className="text-sm font-black text-white">Bulk Student Upload</h2>
                   <p className="text-xs text-emerald-200">Upload Excel / CSV to enroll multiple students</p>
                 </div>
               </div>
-              <button onClick={() => setShowBulkModal(false)} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
-                <X className="w-4 h-4 text-white" />
+              <button
+                onClick={() => setShowBulkModal(false)}
+                aria-label="Close"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "9999px",
+                  background: "#ffffff",
+                  color: "#000000",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 4px 6px -1px rgba(0,0,0,0.2)",
+                  fontSize: 26,
+                  fontWeight: 900,
+                  lineHeight: 1,
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: "Arial, sans-serif",
+                  paddingBottom: 4,
+                }}
+              >
+                ×
               </button>
             </div>
 
