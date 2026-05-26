@@ -32,8 +32,19 @@ export function InstallBanner() {
     return (
       <div className="fixed bottom-4 left-4 right-4 z-50 max-w-sm mx-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="bg-[#001040] text-white rounded-2xl shadow-2xl p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-            <GraduationCap className="w-5 h-5 text-white" />
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              background: "#0055FF",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <GraduationCap size={20} color="#ffffff" strokeWidth={2.5} />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold leading-tight">Install Edullent Principal</p>
@@ -43,15 +54,32 @@ export function InstallBanner() {
             onClick={handleInstall}
             className="flex items-center gap-1.5 bg-[#0055FF] text-white text-xs font-black px-3 py-2 rounded-xl shrink-0 hover:bg-[#1166FF] transition-colors"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download size={14} color="#ffffff" strokeWidth={2.5} />
             Install
           </button>
           <button
             onClick={() => setDismissed(true)}
-            className="text-white/40 hover:text-white/80 transition-colors shrink-0"
             aria-label="Dismiss"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "9999px",
+              background: "rgba(255,255,255,0.15)",
+              color: "#ffffff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20,
+              fontWeight: 900,
+              lineHeight: 1,
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "Arial, sans-serif",
+              paddingBottom: 3,
+              flexShrink: 0,
+            }}
           >
-            <X className="w-4 h-4" />
+            ×
           </button>
         </div>
       </div>
@@ -69,8 +97,19 @@ export function InstallBanner() {
       <div className="fixed bottom-4 left-4 right-4 z-50 max-w-sm mx-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="bg-[#001040] text-white rounded-2xl shadow-2xl overflow-hidden">
           <div className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-              <GraduationCap className="w-5 h-5 text-white" />
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                background: "#0055FF",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <GraduationCap size={20} color="#ffffff" strokeWidth={2.5} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold leading-tight">Install on iPhone</p>
@@ -84,10 +123,27 @@ export function InstallBanner() {
             </button>
             <button
               onClick={dismissForever}
-              className="text-white/40 hover:text-white/80 transition-colors shrink-0"
               aria-label="Dismiss"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "9999px",
+                background: "rgba(255,255,255,0.15)",
+                color: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 20,
+                fontWeight: 900,
+                lineHeight: 1,
+                border: "none",
+                cursor: "pointer",
+                fontFamily: "Arial, sans-serif",
+                paddingBottom: 3,
+                flexShrink: 0,
+              }}
             >
-              <X className="w-4 h-4" />
+              ×
             </button>
           </div>
 
