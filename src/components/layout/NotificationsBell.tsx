@@ -227,15 +227,42 @@ const NotificationsBell = () => {
                 </div>
               </div>
             </div>
-            {unreadCount > 0 && (
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <button
+                  onClick={markAllRead}
+                  className="flex items-center gap-1 text-[11px] font-bold px-[10px] py-[5px] rounded-full transition-transform hover:scale-[1.04]"
+                  style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.20)" }}>
+                  <CheckCheck className="w-[12px] h-[12px]" strokeWidth={2.4} />
+                  Mark all read
+                </button>
+              )}
               <button
-                onClick={markAllRead}
-                className="flex items-center gap-1 text-[11px] font-bold px-[10px] py-[5px] rounded-full transition-transform hover:scale-[1.04]"
-                style={{ background: "rgba(0,85,255,0.10)", color: "#0055FF", border: "0.5px solid rgba(0,85,255,0.20)" }}>
-                <CheckCheck className="w-[12px] h-[12px]" strokeWidth={2.4} />
-                Mark all read
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Close notifications"
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "9999px",
+                  background: "rgba(0,85,255,0.08)",
+                  color: "#001040",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 20,
+                  fontWeight: 900,
+                  lineHeight: 1,
+                  border: "0.5px solid rgba(0,85,255,0.15)",
+                  cursor: "pointer",
+                  fontFamily: "Arial, sans-serif",
+                  paddingBottom: 3,
+                  transition: "background-color 150ms",
+                }}
+              >
+                ×
               </button>
-            )}
+            </div>
           </div>
 
           {/* Feed */}
