@@ -198,8 +198,6 @@ const Card = ({
   );
 };
 
-const DetailLink = () => <span style={{ fontSize: 11, color: T.blue, fontWeight: 500, cursor: "pointer" }}>Details →</span>;
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -589,7 +587,7 @@ const StudentProfilePage = () => {
           </Card>
 
           {/* Subject Mastery */}
-          <Card title="Subject Mastery" action={<DetailLink />} theme="violet" icon={BookOpen} watermark={BookOpen}>
+          <Card title="Subject Mastery" theme="violet" icon={BookOpen} watermark={BookOpen}>
             {radarData.length >= 3 && (
               <div style={{ marginBottom: 12 }}>
                 <SubjectMasteryRadar data={radarData} color={T.blue} height={200} />
@@ -624,7 +622,7 @@ const StudentProfilePage = () => {
         {/* ── RIGHT: Behaviour + AI Intelligence + Parent Comms + Teacher Obs ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 12 : 16, order: isMobile ? 3 : 0 }}>
           {/* Behaviour Record */}
-          <Card title="Behaviour Record" action={<DetailLink />} theme="red" icon={Shield} watermark={AlertCircle}>
+          <Card title="Behaviour Record" theme="red" icon={Shield} watermark={AlertCircle}>
             {incidents.length === 0 ? (
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: T.glBg, borderRadius: 10 }}>
                 <CheckCircle2 size={14} color={T.grn} /><span style={{ fontSize: 12, color: T.grn, fontWeight: 500 }}>No incidents recorded</span>
@@ -645,7 +643,7 @@ const StudentProfilePage = () => {
               contradicted the "declining" copy below. Now the next-score
               projection moves WITH the trend so the number and the sentence
               tell the same story. */}
-          <Card title="AI Intelligence" action={<DetailLink />} theme="violet" icon={Brain} watermark={Brain}>
+          <Card title="AI Intelligence" theme="violet" icon={Brain} watermark={Brain}>
             {(() => {
               const noData = m.usableScoreCount === 0;
               const drift = m.trend === "up" ? +3 : m.trend === "down" ? -4 : 0;
@@ -671,7 +669,7 @@ const StudentProfilePage = () => {
           </Card>
 
           {/* Parent Communication */}
-          <Card title="Parent Communication" action={<DetailLink />} theme="green" icon={MessageSquare} watermark={MessageSquare}>
+          <Card title="Parent Communication" theme="green" icon={MessageSquare} watermark={MessageSquare}>
             {parentNotes.length === 0 ? (
               <p style={{ fontSize: 12, color: T.ink3, textAlign: "center", padding: "8px 0" }}>No messages yet</p>
             ) : sortedParentNotes.slice(0, 2).map(n => (
@@ -926,7 +924,7 @@ const StudentProfilePage = () => {
       </div>
 
       {/* ═══ PERFORMANCE TIMELINE (full width) ════════════════════════════════ */}
-      <Card title="Performance Timeline" action={<DetailLink />} theme="blue" icon={TrendingUp} watermark={Activity} style={{ marginBottom: isMobile ? 14 : 20 }}>
+      <Card title="Performance Timeline" theme="blue" icon={TrendingUp} watermark={Activity} style={{ marginBottom: isMobile ? 14 : 20 }}>
         <div style={{ height: isMobile ? 160 : 200 }}>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={m.monthly}>
@@ -950,7 +948,7 @@ const StudentProfilePage = () => {
       {/* ═══ ASSIGNMENTS + RISK ASSESSMENT (2 col) ════════════════════════════ */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 20, marginBottom: isMobile ? 14 : 20 }}>
         {/* Assignments */}
-        <Card title={`Assignments · ${m.subCount}/${m.asgCount}`} action={<span style={{ fontSize: 11, color: T.blue, fontWeight: 500, cursor: "pointer" }}>View All →</span>} theme="green" icon={CheckCircle2} watermark={FileText}>
+        <Card title={`Assignments · ${m.subCount}/${m.asgCount}`} theme="green" icon={CheckCircle2} watermark={FileText}>
           {[...assignments].sort((a, b) => (toDate(b.dueDate)?.getTime() || 0) - (toDate(a.dueDate)?.getTime() || 0)).slice(0, 5).map(a => {
             const sub = submissions.find((s: any) => s.assignmentId === a.id);
             return (
@@ -964,7 +962,7 @@ const StudentProfilePage = () => {
         </Card>
 
         {/* Risk Assessment */}
-        <Card title="Risk Assessment" action={<DetailLink />} theme="red" icon={ShieldAlert} watermark={Shield}>
+        <Card title="Risk Assessment" theme="red" icon={ShieldAlert} watermark={Shield}>
           <div style={{ fontSize: 22, fontWeight: 800, color: riskColor, marginBottom: 14 }}>{riskLevel}</div>
           {(() => {
             // Behavioural "score" — start at 100 (no incidents = perfect),
@@ -1059,7 +1057,7 @@ const StudentProfilePage = () => {
         </Card>
 
         {/* Support Actions */}
-        <Card title="Support Actions" action={<DetailLink />} theme="violet" icon={Activity} watermark={Shield}>
+        <Card title="Support Actions" theme="violet" icon={Activity} watermark={Shield}>
           {interventions.length === 0 ? (
             <p style={{ fontSize: 12, color: T.ink3, textAlign: "center", padding: "20px 0" }}>No active interventions</p>
           ) : interventions.map(iv => (
@@ -1085,7 +1083,7 @@ const StudentProfilePage = () => {
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 20, marginBottom: isMobile ? 14 : 20 }}>
         {/* Already covered in left column - skip radar duplicate */}
         {/* Incidents */}
-        <Card title="Incidents" action={<DetailLink />} theme="red" icon={AlertCircle} watermark={AlertCircle}>
+        <Card title="Incidents" theme="red" icon={AlertCircle} watermark={AlertCircle}>
           {incidents.length === 0 ? (
             <div style={{ textAlign: "center", padding: "20px 0" }}>
               <CheckCircle2 size={24} color={T.grn} style={{ margin: "0 auto 8px" }} />
@@ -1131,7 +1129,7 @@ const StudentProfilePage = () => {
       {/* ═══ COMMUNICATIONS + SCORE HISTORY (2 col) ═══════════════════════════ */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 20, marginBottom: isMobile ? 14 : 20 }}>
         {/* Communications */}
-        <Card title={`Communications · ${parentNotes.length} entries`} action={<span style={{ fontSize: 11, color: T.blue, cursor: "pointer" }}>View All →</span>} theme="green" icon={MessageSquare} watermark={MessageSquare}>
+        <Card title={`Communications · ${parentNotes.length} entries`} theme="green" icon={MessageSquare} watermark={MessageSquare}>
           {sortedParentNotes.slice(0, 3).map(n => {
             const teacher = isTeacherNote(n);
             return (
@@ -1149,7 +1147,7 @@ const StudentProfilePage = () => {
         </Card>
 
         {/* Score History */}
-        <Card title={`Score History · ${testScores.length} records`} action={<span style={{ fontSize: 11, color: T.blue, cursor: "pointer" }}>View All →</span>} theme="blue" icon={FileText} watermark={BarChart3}>
+        <Card title={`Score History · ${testScores.length} records`} theme="blue" icon={FileText} watermark={BarChart3}>
           {barChartData.length > 0 && (
             <div style={{ height: 150, marginBottom: 12 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -1194,7 +1192,7 @@ const StudentProfilePage = () => {
       {(studentRatings.length > 0 || improvementAreas.length > 0) && (
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 20, marginBottom: isMobile ? 14 : 20 }}>
           {/* Teacher Ratings */}
-          <Card title={`Teacher Ratings · ${studentRatings.length}`} action={<DetailLink />} theme="gold" icon={Star} watermark={Star}>
+          <Card title={`Teacher Ratings · ${studentRatings.length}`} theme="gold" icon={Star} watermark={Star}>
             {studentRatings.length === 0 ? (
               <p style={{ fontSize: 12, color: T.ink3, textAlign: "center", padding: "16px 0" }}>No teacher ratings yet</p>
             ) : (
@@ -1244,7 +1242,7 @@ const StudentProfilePage = () => {
           </Card>
 
           {/* Improvement Areas */}
-          <Card title={`Improvement Areas · ${improvementAreas.length}`} action={<DetailLink />} theme="violet" icon={TrendingUp} watermark={TrendingUp}>
+          <Card title={`Improvement Areas · ${improvementAreas.length}`} theme="violet" icon={TrendingUp} watermark={TrendingUp}>
             {improvementAreas.length === 0 ? (
               <p style={{ fontSize: 12, color: T.ink3, textAlign: "center", padding: "16px 0" }}>No improvement areas tracked</p>
             ) : (
