@@ -1268,17 +1268,28 @@ const Students = () => {
            Modal-dismiss (backdrop click + X) is disabled while a delete
            is in flight to avoid orphaned half-deletes. */}
       {studentToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => !deleting && setStudentToDelete(null)}
           />
-          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
             {/* Red header — destructive intent telegraph */}
             <div className="bg-rose-600 px-6 py-5 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-                  <Trash2 className="w-[18px] h-[18px] text-white" />
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    background: "rgba(255,255,255,0.15)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Trash2 size={18} color="#ffffff" />
                 </div>
                 <div>
                   <h2 className="text-sm font-black text-white">Delete Student</h2>
@@ -1288,10 +1299,27 @@ const Students = () => {
               {!deleting && (
                 <button
                   onClick={() => setStudentToDelete(null)}
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
                   aria-label="Close"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "9999px",
+                    background: "#ffffff",
+                    color: "#000000",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 4px 6px -1px rgba(0,0,0,0.2)",
+                    fontSize: 26,
+                    fontWeight: 900,
+                    lineHeight: 1,
+                    border: "none",
+                    cursor: "pointer",
+                    fontFamily: "Arial, sans-serif",
+                    paddingBottom: 4,
+                  }}
                 >
-                  <X className="w-4 h-4 text-white" />
+                  ×
                 </button>
               )}
             </div>
