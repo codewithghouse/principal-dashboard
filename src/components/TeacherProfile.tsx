@@ -66,7 +66,6 @@ const Card=({children,title,action,style:st}:{children:React.ReactNode;title?:st
     <div style={{padding:"16px 20px"}}>{children}</div>
   </div>
 );
-const DLink=()=><span style={{fontSize:11,color:T.blue,fontWeight:500,cursor:"pointer"}}>Details →</span>;
 const StarRow=({rating}:{rating:number})=><div style={{display:"flex",gap:2}}>{[1,2,3,4,5].map(i=><Star key={i} size={14} fill={i<=Math.round(rating)?"#f59e0b":"none"} color={i<=Math.round(rating)?"#f59e0b":"#e2e8f0"}/>)}</div>;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -696,7 +695,7 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
               <div><div style={{fontSize:15,fontWeight:600,color:T.ink}}>This Month</div><div style={{fontSize:12,color:T.ink3,marginTop:2}}>Classes: {thisMonth.classesTaken}/{thisMonth.totalClasses}</div><div style={{fontSize:11,color:T.ink3,marginTop:2}}>Tests: {thisMonth.testsCount} // Meetings: {thisMonth.meetingsCount}</div></div>
             </div>
           </Card>
-          <Card title="Subject Mastery" action={<DLink/>}>
+          <Card title="Subject Mastery">
             {radarData.length>=3&&<div style={{marginBottom:12}}><SubjectMasteryRadar data={radarData} color={T.blue} height={200}/></div>}
             {subjectData.map(s=><div key={s.name} title={s.name} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><span style={{fontSize:11,color:T.ink3,width:80,flexShrink:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</span><div style={{flex:1,height:6,background:T.s1,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${s.avg}%`,background:s.avg>=75?T.blue:s.avg>=50?T.grn:T.red,borderRadius:3}}/></div><span style={{fontSize:12,fontWeight:600,color:T.ink,width:28,textAlign:"right"}}>{s.avg}</span></div>)}
           </Card>
@@ -727,14 +726,14 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
 
         {/* RIGHT */}
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <Card title="Assigned Classes" action={<DLink/>}>
+          <Card title="Assigned Classes">
             {assignedClasses.length===0?<p style={{fontSize:12,color:T.ink3,textAlign:"center"}}>No classes</p>:
               assignedClasses.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${T.s2}`}}>
                 <div><div style={{fontSize:13,fontWeight:500,color:T.ink}}>{c.name||c.id}</div><div style={{fontSize:10,color:T.ink3,marginTop:2}}>{c.stuCount} students</div></div>
                 <div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:600,color:c.avgScore!=null?(c.avgScore>=75?T.grn:c.avgScore>=55?T.amb:T.red):T.ink3}}>{c.avgScore!=null?`${c.avgScore}%`:"—"}</div><div style={{fontSize:10,color:c.perf==="Good"?T.grn:c.perf==="Average"?T.amb:T.red}}>{c.perf}</div></div>
               </div>)}
           </Card>
-          <Card title="AI Intelligence" action={<DLink/>}>
+          <Card title="AI Intelligence">
             {/* Overall rating message — gated on real data; no false
                 "Needs Improvement" verdict for teachers with no exams yet. */}
             <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
@@ -753,7 +752,7 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
                     : "Performance below expectations. Intervention recommended."}
             </p>
           </Card>
-          <Card title={`Reviews · ${reviews.length}`} action={<DLink/>}>
+          <Card title={`Reviews · ${reviews.length}`}>
             {reviews.length===0?<p style={{fontSize:12,color:T.ink3,textAlign:"center"}}>No reviews yet</p>:
               reviews.slice(0,3).map(r=><div key={r.id} style={{padding:"8px 0",borderBottom:`1px solid ${T.s2}`}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,fontWeight:500,color:T.ink}}>{r.parentName||r.studentName||"Parent"}</span><StarRow rating={r.rating||0}/></div>
@@ -770,7 +769,7 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
       </div>
 
       {/* ═══ PERFORMANCE TIMELINE (full width) ═══ */}
-      <Card title="Performance Timeline" action={<DLink/>} style={{marginBottom:20}}>
+      <Card title="Performance Timeline" style={{marginBottom:20}}>
         <div style={{height:200}}><ResponsiveContainer width="100%" height="100%"><AreaChart data={monthlyTrend}><defs><linearGradient id="tpbg1" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={T.blue} stopOpacity={0.15}/><stop offset="95%" stopColor={T.blue} stopOpacity={0}/></linearGradient><linearGradient id="tpbg2" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={T.grn} stopOpacity={0.15}/><stop offset="95%" stopColor={T.grn} stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke={T.s2}/><XAxis dataKey="month" tick={{fill:T.ink3,fontSize:11}}/><YAxis tick={{fill:T.ink3,fontSize:11}} domain={[0,100]}/><Tooltip contentStyle={{background:T.white,border:`1px solid ${T.bdr}`,borderRadius:8,fontSize:12}}/><Area type="monotone" dataKey="score" stroke={T.blue} fill="url(#tpbg1)" strokeWidth={2.5}/><Area type="monotone" dataKey="passRate" stroke={T.grn} fill="url(#tpbg2)" strokeWidth={2} strokeDasharray="5 3"/></AreaChart></ResponsiveContainer></div>
       </Card>
 
@@ -801,7 +800,7 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
 
       {/* ═══ CLASSES + RISK (2 col) ═══ */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:20}}>
-        <Card title={`Top Students · ${studentRankings.length}`} action={<span style={{fontSize:11,color:T.blue,cursor:"pointer"}}>View All →</span>}>
+        <Card title={`Top Students · ${studentRankings.length}`}>
           {studentRankings.slice(0,5).map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.s2}`}}>
             <div style={{width:28,height:28,borderRadius:8,background:i<3?T.blBg:T.s1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:i<3?T.blue:T.ink3}}>{i+1}</div>
             <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:500,color:T.ink}}>{s.name}</div><div style={{fontSize:10,color:T.ink3}}>{s.className}</div></div>
@@ -809,7 +808,7 @@ const TeacherProfile = ({ teacher, onBack }: TeacherProfileProps) => {
           </div>)}
           {studentRankings.length===0&&<p style={{fontSize:12,color:T.ink3,textAlign:"center"}}>No student data</p>}
         </Card>
-        <Card title="Risk Assessment" action={<DLink/>}>
+        <Card title="Risk Assessment">
           <div style={{fontSize:22,fontWeight:800,color:riskColor,marginBottom:14}}>{riskLevel}</div>
           {[{l:"CLASS AVG",v:perfMetrics.classAvg},{l:"PASS RATE",v:perfMetrics.passRate},{l:"ATTENDANCE",v:attRate},{l:"SATISFACTION",v:perfMetrics.satisfaction}].map(r=>{
             const c=r.v===null?T.ink3:r.v>=80?T.blue:r.v>=50?T.amb:T.red;

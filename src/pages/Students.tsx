@@ -173,7 +173,7 @@ const Students = () => {
   const [viewMode, setViewMode]             = useState<"grid" | "list">("grid");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [saving, setSaving]                 = useState(false);
-  const [newStudent, setNewStudent]         = useState({ name: "", email: "", classId: "" });
+  const [newStudent, setNewStudent]         = useState({ name: "", email: "", classId: "", grade: "", section: "" });
   const [atRiskFilter, setAtRiskFilter]     = useState(false);
   const [classFilter, setClassFilter]       = useState("ALL");
 
@@ -561,7 +561,7 @@ const Students = () => {
 
       toast.success(`${studentName} enrolled & invitation sent!`);
       setIsAddModalOpen(false);
-      setNewStudent({ name: "", email: "", classId: "" });
+      setNewStudent({ name: "", email: "", classId: "", grade: "", section: "" });
     } catch {
       toast.error("Enrollment failed. Please try again.");
     } finally {
@@ -1327,81 +1327,187 @@ const Students = () => {
         </div>
       )}
 
-      {/* Add Student Modal */}
-      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-[480px] rounded-[2rem] p-0 overflow-hidden bg-white">
-          <div className="bg-[#1e3a8a] px-6 sm:px-10 py-6 sm:py-8">
-            <DialogTitle className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-3">
-              <GraduationCap className="w-6 h-6" /> Add New Student
-            </DialogTitle>
-            <DialogDescription className="text-blue-200/60 font-bold uppercase text-[10px] tracking-widest mt-1">
-              Institutional Enrollment Registry
-            </DialogDescription>
-          </div>
-
-          <div className="p-6 sm:p-10 space-y-5">
-            <div className="space-y-2">
-              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Full Name *</Label>
-              <Input
-                placeholder="e.g. Rahul Sharma"
-                value={newStudent.name}
-                onChange={e => setNewStudent({ ...newStudent, name: e.target.value })}
-                className="rounded-xl border-slate-200 font-bold py-6 px-5 focus:ring-[#1e3a8a]"
-              />
+      {/* Add Student Modal — plain div modal to avoid Radix transform/animation shake */}
+      {isAddModalOpen && (
+        <div
+          onClick={() => { setIsAddModalOpen(false); setNewStudent({ name: "", email: "", classId: "", grade: "", section: "" }); }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            overflowY: "auto",
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 480,
+              background: "#fff",
+              borderRadius: 32,
+              overflow: "hidden",
+              boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
+            }}
+          >
+            <div
+              style={{
+                background: "#1e3a8a",
+                padding: "28px 32px",
+                position: "relative",
+              }}
+            >
+              <h2
+                style={{
+                  color: "#ffffff",
+                  fontSize: 22,
+                  fontWeight: 900,
+                  letterSpacing: "-0.5px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingRight: 48,
+                  margin: 0,
+                }}
+              >
+                <GraduationCap className="w-6 h-6" /> Add New Student
+              </h2>
+              <p
+                style={{
+                  color: "rgba(191, 219, 254, 0.7)",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  fontSize: 10,
+                  letterSpacing: "0.15em",
+                  marginTop: 4,
+                  marginBottom: 0,
+                }}
+              >
+                Institutional Enrollment Registry
+              </p>
+              <button
+                type="button"
+                onClick={() => { setIsAddModalOpen(false); setNewStudent({ name: "", email: "", classId: "", grade: "", section: "" }); }}
+                aria-label="Close"
+                style={{
+                  position: "absolute",
+                  right: 16,
+                  top: 16,
+                  width: 36,
+                  height: 36,
+                  borderRadius: "9999px",
+                  background: "#ffffff",
+                  color: "#000000",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 4px 6px -1px rgba(0,0,0,0.2)",
+                  fontSize: 26,
+                  fontWeight: 900,
+                  lineHeight: 1,
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: "Arial, sans-serif",
+                  paddingBottom: 4,
+                }}
+              >
+                ×
+              </button>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Email</Label>
-              <Input
-                type="email"
-                placeholder="student@example.com"
-                value={newStudent.email}
-                onChange={e => setNewStudent({ ...newStudent, email: e.target.value })}
-                className="rounded-xl border-slate-200 font-bold py-6 px-5"
-              />
-            </div>
+            <div className="p-6 sm:p-10 space-y-5">
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Full Name *</Label>
+                <Input
+                  placeholder="e.g. Rahul Sharma"
+                  value={newStudent.name}
+                  onChange={e => setNewStudent({ ...newStudent, name: e.target.value })}
+                  className="rounded-xl border-slate-200 font-bold py-6 px-5 focus:ring-[#1e3a8a]"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Class *</Label>
-              {classes.length > 0 ? (
-                <select
-                  value={newStudent.classId}
-                  onChange={e => setNewStudent({ ...newStudent, classId: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-4 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] appearance-none"
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Email *</Label>
+                <Input
+                  type="email"
+                  placeholder="student@example.com"
+                  value={newStudent.email}
+                  onChange={e => setNewStudent({ ...newStudent, email: e.target.value })}
+                  className="rounded-xl border-slate-200 font-bold py-6 px-5"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Class *</Label>
+                {classes.length > 0 ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <select
+                        value={newStudent.grade}
+                        onChange={e => {
+                          const grade = e.target.value;
+                          const match = classes.find(c => String(c.grade || "").trim() === grade && String(c.section || "").trim().toUpperCase() === newStudent.section);
+                          setNewStudent({ ...newStudent, grade, classId: match?.id || "" });
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-4 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] appearance-none"
+                      >
+                        <option value="">Grade...</option>
+                        {Array.from({ length: 10 }, (_, i) => String(i + 1)).map(g => (
+                          <option key={g} value={g}>Grade {g}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={newStudent.section}
+                        onChange={e => {
+                          const section = e.target.value;
+                          const match = classes.find(c => String(c.grade || "").trim() === newStudent.grade && String(c.section || "").trim().toUpperCase() === section);
+                          setNewStudent({ ...newStudent, section, classId: match?.id || "" });
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-4 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] appearance-none"
+                      >
+                        <option value="">Section...</option>
+                        {["A", "B", "C", "D"].map(s => (
+                          <option key={s} value={s}>Section {s}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {newStudent.grade && newStudent.section && !newStudent.classId && (
+                      <div className="text-[11px] font-bold text-amber-600 ml-1 mt-1">
+                        No class found for Grade {newStudent.grade}{newStudent.section}. Create it in Classes & Sections first.
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="w-full bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm font-bold text-amber-700">
+                    No classes found. Ask teacher to create classes first.
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleAddStudent}
+                  disabled={saving || !newStudent.name || !newStudent.classId}
+                  className="flex-1 bg-[#1e3a8a] text-white px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-colors shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  <option value="">Select a class...</option>
-                  {classes.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}{c.grade ? ` — Grade ${c.grade}` : ""}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="w-full bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm font-bold text-amber-700">
-                  No classes found. Ask teacher to create classes first.
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={handleAddStudent}
-                disabled={saving || !newStudent.name || !newStudent.classId}
-                className="flex-1 bg-[#1e3a8a] text-white px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-                Add Student
-              </button>
-              <button
-                onClick={() => { setIsAddModalOpen(false); setNewStudent({ name: "", email: "", classId: "" }); }}
-                className="px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-50 hover:bg-slate-100 transition-all"
-              >
-                Cancel
-              </button>
+                  {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Add Student
+                </button>
+                <button
+                  onClick={() => { setIsAddModalOpen(false); setNewStudent({ name: "", email: "", classId: "", grade: "", section: "" }); }}
+                  className="px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-50 hover:bg-slate-100 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
     </div>
   );

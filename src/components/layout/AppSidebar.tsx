@@ -30,8 +30,7 @@ import {
   Sparkles,
   Sprout,
   Backpack,
-  Megaphone,
-  MessageCircle
+  Megaphone
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
