@@ -54,6 +54,8 @@ const PRINCIPAL_MENU = [
   { title: "Parent Communication",   icon: MessageSquare,   path: "/parent-communication" },
   { title: "Teacher Notes",          icon: MessageCircle,   path: "/teacher-notes" },
   { title: "Exams & Results",        icon: FileText,        path: "/exams" },
+  { title: "K-12 Results Upload",    icon: FileText,        path: "/results-k12" },
+  { title: "Pre-Primary Results",    icon: FileText,        path: "/results-pp" },
   { title: "Assignments & Marks",    icon: ClipboardList,   path: "/assignments" },
   { title: "Teacher Performance",    icon: TrendingUp,      path: "/teacher-performance" },
   { title: "Teacher Leaderboard",    icon: Trophy,          path: "/teacher-leaderboard" },

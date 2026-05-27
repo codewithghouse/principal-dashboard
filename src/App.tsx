@@ -30,6 +30,8 @@ import Discipline from "./pages/Discipline";
 import ParentCommunication from "./pages/ParentCommunication";
 import TeacherNotes from "./pages/TeacherNotes";
 import ExamsResults from "./pages/ExamsResults";
+import PrincipalResultsK12 from "./pages/PrincipalResultsK12";
+import PrincipalResultsPP from "./pages/PrincipalResultsPP";
 import AssignmentMarks from "./pages/AssignmentMarks";
 import Reports from "./pages/Reports";
 import SettingsPage from "./pages/SettingsPage";
@@ -142,6 +144,8 @@ const AppRoutes = () => {
           <Route path="/parent-communication" element={<ParentCommunication />} />
           <Route path="/teacher-notes"        element={<TeacherNotes />} />
           <Route path="/exams"                element={<ExamsResults />} />
+          <Route path="/results-k12"          element={<PrincipalResultsK12 />} />
+          <Route path="/results-pp"           element={<PrincipalResultsPP />} />
           <Route path="/assignments"          element={<AssignmentMarks />} />
           <Route path="/reports"              element={<Reports />} />
           <Route path="/help"                 element={<Help />} />
