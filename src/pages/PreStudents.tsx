@@ -90,6 +90,7 @@ interface StudentRow extends DocumentData {
   medical?: string;
   diet?: string;
   comfortCue?: string;
+  photoConsent?: boolean;
   status?: string;
   isActive?: boolean;
   inviteSentAt?: any;
@@ -108,6 +109,7 @@ interface FormState {
   allergies: string;
   medical: string;
   comfortCue: string;
+  photoConsent: boolean;
   inviteParentNow: boolean;
 }
 
@@ -124,6 +126,7 @@ const EMPTY_FORM: FormState = {
   allergies: "",
   medical: "",
   comfortCue: "",
+  photoConsent: true,
   inviteParentNow: true,
 };
 
@@ -309,6 +312,7 @@ const PreStudents = () => {
       allergies: (student.allergies || []).join(", "),
       medical: student.medical || "",
       comfortCue: student.comfortCue || "",
+      photoConsent: student.photoConsent !== false,
       inviteParentNow: false,
     });
     setDialog({ type: "edit", student });
@@ -405,6 +409,9 @@ const PreStudents = () => {
           medical: form.medical.trim() || "",
           diet: form.diet || "Veg",
           comfortCue: form.comfortCue.trim() || "",
+          photoConsent: form.photoConsent,
+          photoConsentBy: form.photoConsent ? "Principal" : "Principal (denied)",
+          photoConsentAt: now,
           status: "active",
           isActive: true,
           stage: "pre_primary",
@@ -472,6 +479,9 @@ const PreStudents = () => {
           medical: form.medical.trim() || "",
           diet: form.diet || "Veg",
           comfortCue: form.comfortCue.trim() || "",
+          photoConsent: form.photoConsent,
+          photoConsentBy: form.photoConsent ? "Principal" : "Principal (denied)",
+          photoConsentAt: now,
           updatedAt: now,
           ...audit,
         });
@@ -1014,6 +1024,39 @@ const PreStudents = () => {
                   className="w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 resize-none"
                   style={{ borderColor: "#E0E7FF", color: "#001040" }}
                 />
+              </Field>
+              {/* Photo-sharing consent — schools often collect this on the
+                  admission form; record it here. Parents can change it later
+                  from their app. */}
+              <Field
+                label="Photo sharing consent"
+                hint="Allow this child in class photos shared via the app"
+              >
+                <label
+                  className="flex items-center gap-3 rounded-xl border px-3 py-2.5 cursor-pointer"
+                  style={{
+                    borderColor: form.photoConsent ? "#A7F3D0" : "#FECACA",
+                    background: form.photoConsent ? "#F0FDF4" : "#FEF2F2",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.photoConsent}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, photoConsent: e.target.checked }))
+                    }
+                    className="w-4 h-4"
+                    style={{ accentColor: "#10B981" }}
+                  />
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: form.photoConsent ? "#047857" : "#B91C1C" }}
+                  >
+                    {form.photoConsent
+                      ? "📸 Photos allowed — child can be tagged & shared"
+                      : "🔒 Photos OFF — child won't be tagged anywhere"}
+                  </span>
+                </label>
               </Field>
             </FormSection>
 
